@@ -101,10 +101,7 @@ func (a *Anthropic) Complete(ctx context.Context, req Request, ev *StreamEvents)
 
 	st := &anStream{ev: ev, blocks: map[int]*anBlock{}}
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
-		wrapped := scanErr
-		if !strings.HasPrefix(scanErr.Error(), "anthropic:") {
-			wrapped = fmt.Errorf("anthropic: %w", scanErr)
-		}
+		wrapped := fmt.Errorf("anthropic: %w", scanErr)
 		if st.sawData {
 			return st.completion(), wrapped
 		}
@@ -251,9 +248,14 @@ func parseToolInput(args string) map[string]any {
 // everything through this one's tail. It operates on the per-request wire
 // structures only (freshly built by anWireMessages), which is what keeps the
 // caller's transcript marker-free — old moving markers can never accumulate.
-// A string content becomes a one-block array; a non-empty block array gets
-// the marker on its last block; empty or unrecognized shapes pass through
-// unmarked — caching is an optimization, never a correctness requirement.
+// A non-empty string content becomes a one-block array; a non-empty block
+// array gets the marker on its last block; empty strings, empty arrays, and
+// unrecognized shapes pass through unmarked — caching is an optimization,
+// never a correctness requirement. The empty-string case matters: the API
+// rejects empty text blocks, and a transcript CAN legitimately end on an
+// empty message (Run finalizes a turn cancelled after only tool-call deltas
+// as an assistant message with no content), so converting "" into an empty
+// marked text block would turn a valid request into a 400.
 func markTranscriptTail(msgs []map[string]any) {
 	if len(msgs) == 0 {
 		return
@@ -261,6 +263,9 @@ func markTranscriptTail(msgs []map[string]any) {
 	last := msgs[len(msgs)-1]
 	switch c := last["content"].(type) {
 	case string:
+		if c == "" {
+			return
+		}
 		last["content"] = []map[string]any{{"type": "text", "text": c, "cache_control": cacheEphemeral}}
 	case []map[string]any:
 		if len(c) == 0 {
@@ -320,9 +325,38 @@ type anUsage struct {
 	CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
 }
 
-// anError is the payload of an error event.
+// anError is the payload of an error event; Type discriminates against the
+// documented error-type table (the human-readable message stays in the raw
+// event JSON, which becomes the APIError body).
 type anError struct {
-	Message string `json:"message"`
+	Type string `json:"type"`
+}
+
+// anthropicErrorStatus maps a stream error event's error type onto the HTTP
+// status Anthropic documents for it, so an in-stream error classifies for
+// retry exactly like its non-2xx counterpart. Unrecognized types map to 500:
+// an unknown in-stream failure is a server-side abort, and treating it as
+// transient is the safe default.
+func anthropicErrorStatus(errType string) int {
+	switch errType {
+	case "invalid_request_error":
+		return 400
+	case "authentication_error":
+		return 401
+	case "permission_error", "billing_error":
+		return 403
+	case "not_found_error":
+		return 404
+	case "request_too_large":
+		return 413
+	case "rate_limit_error":
+		return 429
+	case "api_error":
+		return 500
+	case "overloaded_error":
+		return 529
+	}
+	return 500
 }
 
 // anBlock accumulates one content block across start/delta/stop events.
@@ -441,11 +475,25 @@ func (st *anStream) onData(data []byte) error {
 	case "message_stop":
 		st.sawData = true
 	case "error":
-		emsg := "stream error"
-		if msg.Error != nil && msg.Error.Message != "" {
-			emsg = msg.Error.Message
+		// The Messages API can reject or abort a request in-stream: an HTTP
+		// 200 whose stream carries an error event (overloaded_error arrives
+		// this way). Map the event onto the same *APIError a non-2xx response
+		// produces — status from the documented error-type table, body = the
+		// raw event JSON — so retry classification (IsTransient) and overflow
+		// detection work identically on both delivery paths. Deliberately not
+		// marked as sawData: when the error is the first thing on the stream,
+		// the call stays retryable.
+		errType := ""
+		if msg.Error != nil {
+			errType = msg.Error.Type
 		}
-		return fmt.Errorf("anthropic: stream error: %s", emsg)
+		status := anthropicErrorStatus(errType)
+		body := string(data)
+		return &APIError{
+			Status:          status,
+			Body:            body,
+			ContextOverflow: status == http.StatusBadRequest && contextOverflowRe.MatchString(body),
+		}
 	}
 	return nil
 }

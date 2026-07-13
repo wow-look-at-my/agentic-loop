@@ -81,6 +81,32 @@ func TestRunOpenAIOverflowNotRetried(t *testing.T) {
 	assert.Len(t, res.Messages, 1)
 }
 
+func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
+	// An overloaded_error delivered IN-STREAM (HTTP 200 + error event, before
+	// any data) maps to a 529 APIError and is retried like any 5xx.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		if hits.Add(1) == 1 {
+			_, _ = w.Write([]byte("event: error\ndata: " +
+				`{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}` + "\n\n"))
+			return
+		}
+		_, _ = w.Write([]byte("event: content_block_delta\ndata: " +
+			`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"recovered"}}` + "\n\n" +
+			"event: message_delta\ndata: " +
+			`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n"))
+	}))
+	defer srv.Close()
+
+	res, err := Run(context.Background(),
+		Config{Provider: &Anthropic{BaseURL: srv.URL}, Retry: retryTestPolicy(4)},
+		Request{Model: "m", MaxTokens: 64, Messages: []Message{{Role: RoleUser, Content: "q"}}})
+	require.NoError(t, err)
+	assert.Equal(t, "recovered", res.Final.Content)
+	assert.Equal(t, int32(2), hits.Load(), "the in-stream overload was retried once, then succeeded")
+}
+
 // countingFailRT is a RoundTripper that always fails, counting attempts.
 type countingFailRT struct{ calls atomic.Int32 }
 

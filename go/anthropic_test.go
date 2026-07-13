@@ -293,17 +293,76 @@ func TestAnthropicTriStateCacheFields(t *testing.T) {
 	assert.Equal(t, 2, comp.Usage.CompletionTokens)
 }
 
-func TestAnthropicErrorEvent(t *testing.T) {
+func TestAnthropicErrorEventMapsToAPIError(t *testing.T) {
+	cases := []struct {
+		errType    string
+		wantStatus int
+		transient  bool
+	}{
+		{"overloaded_error", 529, true},
+		{"rate_limit_error", 429, true},
+		{"api_error", 500, true},
+		{"invalid_request_error", 400, false},
+		{"authentication_error", 401, false},
+		{"permission_error", 403, false},
+		{"billing_error", 403, false},
+		{"not_found_error", 404, false},
+		{"request_too_large", 413, false},
+		{"mystery_future_error", 500, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.errType, func(t *testing.T) {
+			payload := `{"type":"error","error":{"type":"` + tc.errType + `","message":"boom"}}`
+			h := &anSSEHandler{events: [][2]string{{"error", payload}}}
+			srv := httptest.NewServer(h)
+			defer srv.Close()
+			p := &Anthropic{BaseURL: srv.URL}
+			comp, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
+			assert.Nil(t, comp, "nothing streamed before the error event, so the call stays retryable")
+			require.Error(t, err)
+			var ae *APIError
+			require.ErrorAs(t, err, &ae, "in-stream error events map to APIError")
+			assert.Equal(t, tc.wantStatus, ae.Status, "status from the documented error-type table")
+			assert.Equal(t, payload, ae.Body, "the raw event JSON is the error body")
+			assert.Equal(t, tc.transient, IsTransient(err))
+			assert.Contains(t, err.Error(), "boom", "the server's message stays visible in the error text")
+		})
+	}
+}
+
+func TestAnthropicErrorEventOverflowConsistent(t *testing.T) {
+	// A 400-mapped in-stream error is checked against the overflow regex just
+	// like a non-2xx body.
 	h := &anSSEHandler{events: [][2]string{
+		{"error", `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}`},
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	p := &Anthropic{BaseURL: srv.URL}
+	_, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
+	require.Error(t, err)
+	assert.True(t, IsContextOverflow(err))
+	assert.False(t, IsTransient(err))
+}
+
+func TestAnthropicErrorEventAfterDataKeepsPartial(t *testing.T) {
+	// An error event after data has streamed still classifies (529 transient),
+	// but the partial completion rides alongside the error — and Run's
+	// nothing-streamed guard is what keeps such a call from being re-sent.
+	h := &anSSEHandler{events: [][2]string{
+		{"message_start", `{"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}`},
+		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
+		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"par"}}`},
 		{"error", `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`},
 	}}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	p := &Anthropic{BaseURL: srv.URL}
 	comp, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
-	assert.Nil(t, comp, "nothing streamed before the error event")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Overloaded")
+	assert.True(t, IsTransient(err))
+	require.NotNil(t, comp, "partial completion returned alongside the error")
+	assert.Equal(t, "par", comp.Message.Content)
 }
 
 func TestAnthropicNonOKOverflow(t *testing.T) {
@@ -316,6 +375,31 @@ func TestAnthropicNonOKOverflow(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, IsContextOverflow(err))
 	assert.False(t, IsTransient(err))
+}
+
+func TestAnthropicEmptyTailUnmarked(t *testing.T) {
+	// An empty-string tail must NOT be converted into a marked (empty) text
+	// block — the API rejects empty text blocks, and Run can legitimately
+	// produce an empty trailing assistant message (a turn cancelled after
+	// only tool-call deltas streamed, replayed by the caller).
+	h := &anSSEHandler{events: minimalAnEvents("ok")}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	p := &Anthropic{BaseURL: srv.URL}
+	req := Request{
+		Model:     "m",
+		Messages:  []Message{{Role: RoleUser, Content: "hi"}, {Role: RoleAssistant, Content: ""}},
+		MaxTokens: 64,
+	}
+	_, err := p.Complete(context.Background(), req, nil)
+	require.NoError(t, err)
+
+	body := bodyMap(t, h.body)
+	msgs := body["messages"].([]any)
+	lastMsg := msgs[len(msgs)-1].(map[string]any)
+	assert.Equal(t, "", lastMsg["content"], "an empty tail stays a plain string, never an empty text block")
+	assert.NotContains(t, string(h.body), "cache_control",
+		"no marker anywhere: the tail is unmarkable and there is no system prompt")
 }
 
 func TestAnthropicAssistantOnlyTextNoToolContinuation(t *testing.T) {

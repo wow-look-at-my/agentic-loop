@@ -171,11 +171,17 @@ the caller's messages):
 markers per request (API max 4):
 1. STATIC on the (last) system block — the cache hierarchy is tools →
    system → messages, so this one marker covers the tools array too.
-2. MOVING on the **last content block of the last message**: a string
-   content becomes a one-block text array carrying the marker; a non-empty
-   block array gets the marker on a copy of its last block; empty arrays
-   and unrecognized shapes pass through UNMARKED (caching is an
-   optimization, never a correctness requirement).
+2. MOVING on the **last content block of the last message**: a NON-EMPTY
+   string content becomes a one-block text array carrying the marker; a
+   non-empty block array gets the marker on a copy of its last block; empty
+   strings, empty arrays, and unrecognized shapes pass through UNMARKED
+   (caching is an optimization, never a correctness requirement). The
+   empty-string case is a deliberate deviation from the TS reference (which
+   converted `""` too): the API rejects empty text blocks, and this
+   library's own Run can leave a transcript ending on an EMPTY assistant
+   message (a turn cancelled after only tool-call deltas streamed, tool
+   calls then cleared) — marking that tail would turn a replay of it into a
+   guaranteed 400.
 Markers exist only in the per-request wire copy; the persistent transcript
 must remain marker-free (pin with a test that calls twice and deep-equals
 the caller's messages before/after). `DisableCaching` removes both markers.
@@ -200,7 +206,19 @@ name is redundant):
   `max_tokens`, `stop_sequence` pass through); `usage.output_tokens` is a
   cumulative snapshot — OVERWRITE, never sum.
 - `message_stop`: done. `ping`: ignored. Unparseable payloads: ignored.
-- `error`: `{error:{message}}` → abort the stream with that message.
+- `error`: abort the stream with the dialect-agnostic `APIError` — status
+  from Anthropic's documented error-type table (`invalid_request_error` →
+  400, `authentication_error` → 401, `permission_error` / `billing_error` →
+  403, `not_found_error` → 404, `request_too_large` → 413,
+  `rate_limit_error` → 429, `api_error` → 500, `overloaded_error` → 529;
+  anything unrecognized → 500, so unknown server aborts stay retryable),
+  body = the RAW event JSON. This makes an in-stream overload/rate-limit
+  (HTTP 200 + error event) classify as transient exactly like its non-2xx
+  counterpart, and a 400-mapped body is still checked against the overflow
+  regex. The error event does NOT count as streamed data, so an error event
+  that arrives before any content leaves the call retryable; after data, the
+  partial completion rides alongside the error and the loop's
+  nothing-streamed guard prevents the re-send.
 
 **Usage normalization**: Anthropic `input_tokens` EXCLUDES cached tokens —
 `promptTokens = input + cache_read + cache_creation` (so both dialects
@@ -391,7 +409,12 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   unchanged after two calls, thinking replayed first with signature,
   redacted_thinking round-trip, tool_result folding with is_error,
   max_tokens fail-fast, tri-state cache fields, full-prompt normalization,
-  DisableCaching strips all markers.
+  DisableCaching strips all markers, empty-string tail left unmarked (and
+  never converted to a text block), in-stream error events mapped to
+  APIError per the type→status table (529/429 transient, 400 checked for
+  overflow, raw event JSON as body; before any data the call stays
+  retryable — pinned end to end by a Run-over-httptest retry — while after
+  data the partial completion is returned alongside the error).
 - OpenAI: both reasoning field names (reasoning_content precedence),
   split tool-call deltas by index, cumulative usage on every chunk,
   prompt_progress, stream_options default + caller override,

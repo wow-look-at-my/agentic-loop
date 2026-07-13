@@ -144,6 +144,11 @@ base × 2^(n−1), no jitter) retries only what `IsTransient` allows: HTTP 408,
 429, any 5xx, and network/transport errors. Context cancellation and other
 4xx are permanent. A 400 whose body says the prompt exceeded the context
 window is flagged — check with `IsContextOverflow(err)` — and never retried.
+Anthropic in-stream `error` events (an HTTP 200 whose stream carries the
+error — how `overloaded_error` typically arrives) are mapped onto the same
+`APIError` using Anthropic's documented error-type → status table, so an
+in-stream overload (529) or rate limit (429) retries exactly like its
+non-2xx counterpart.
 
 Inside `Run`, a model call is re-attempted **only when the failed attempt
 streamed nothing**; once data arrived, the partial assistant message is
