@@ -434,6 +434,14 @@ executors composed via the Composite; callers who don't use them see zero
 behavior change. Both are ports from the source application; the strings
 below are contract.
 
+Both executors use `config.provider` exactly as given — never wrapped
+implicitly. The source application routed every one of these model calls
+(the sub-agent's nested loop, the context-summary briefing, and the web
+summary) through its param-strip recovery layer (§7), so a caller/port
+reproduces the source exactly by handing the built-ins a
+param-stripper-wrapped Provider — the same wrapped value given to the
+loop's own config.
+
 ### 10a. run_subagent (`NewSubagentExecutor(SubagentConfig)`)
 
 Config: `provider`, `model`, `maxTokens`, `extra`, `retry` (the nested

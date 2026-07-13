@@ -213,6 +213,14 @@ Neither executor is approval-gated (`NeedsApproval` is always false) —
 approval wiring stays the caller's concern; wrap the executor if launching
 sub-agents or fetching should be gated.
 
+Both built-ins use the `Provider` you hand them exactly as given — the
+library never wraps it. In the source application every one of these model
+calls (the sub-agent's nested loop, the context-summary briefing, and the
+web summary) went through its rejected-parameter recovery; to reproduce
+that, pass a `NewParamStripper`-wrapped provider in
+`SubagentConfig`/`WebFetchConfig` — the same wrapped value you give
+`Config.Provider`.
+
 ### The loop
 
 `Run(ctx, cfg, req)` drives the turn loop: call the model, execute the
