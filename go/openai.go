@@ -9,59 +9,53 @@ import (
 	"strings"
 )
 
-// OpenAI is a Provider for OpenAI-compatible chat-completions APIs. BaseURL
-// is the API root including the version segment (e.g.
-// "https://api.openai.com/v1"; empty defaults to that); requests POST to
-// BaseURL + "/chat/completions". APIKey, when non-empty, is sent as a Bearer
-// token, and Headers are applied after the defaults so a caller-supplied
-// header can override them. SelfHosted adds cache_prompt:true to every
+// openaiProvider is the Provider for OpenAI-compatible chat-completions APIs,
+// built by NewProvider with DialectOpenAI. baseURL is the API root including
+// the version segment (e.g. "https://api.openai.com/v1"); requests POST to
+// baseURL + "/chat/completions". apiKey, when non-empty, is sent as a Bearer
+// token, and headers are applied after the defaults so a caller-supplied
+// header can override them. selfHosted adds cache_prompt:true to every
 // request — the KV-cache prefix-reuse opt-in llama.cpp-style servers honor —
 // and must stay false for hosted OpenAI/Azure, which reject unknown body
-// fields with a 400. The zero value of HTTPClient uses http.DefaultClient.
+// fields with a 400. A nil httpClient uses http.DefaultClient.
 //
-// The exported fields are read-only during Complete, so an OpenAI value is
-// safe for concurrent use.
-type OpenAI struct {
-	BaseURL    string
-	APIKey     string
-	HTTPClient *http.Client
-	UserAgent  string
-	SelfHosted bool
-	Headers    map[string]string
+// The fields are read-only during Complete, so a value is safe for concurrent
+// use.
+type openaiProvider struct {
+	baseURL    string
+	apiKey     string
+	httpClient *http.Client
+	userAgent  string
+	selfHosted bool
+	headers    map[string]string
 }
-
-const defaultOpenAIBaseURL = "https://api.openai.com/v1"
 
 // oaReserved are the Extra keys the typed core always overrides.
 var oaReserved = map[string]bool{"messages": true, "model": true, "stream": true, "tools": true}
 
 // Complete implements Provider over a streaming chat completion.
-func (o *OpenAI) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	body, err := o.buildBody(req)
 	if err != nil {
 		return nil, err
 	}
-	base := o.BaseURL
-	if base == "" {
-		base = defaultOpenAIBaseURL
-	}
-	url := strings.TrimRight(base, "/") + "/chat/completions"
+	url := strings.TrimRight(o.baseURL, "/") + "/chat/completions"
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, badRequestErr("openai: build request: " + err.Error())
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Accept", "text/event-stream")
-	if o.APIKey != "" {
-		hreq.Header.Set("Authorization", "Bearer "+o.APIKey)
+	if o.apiKey != "" {
+		hreq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
-	if o.UserAgent != "" {
-		hreq.Header.Set("User-Agent", o.UserAgent)
+	if o.userAgent != "" {
+		hreq.Header.Set("User-Agent", o.userAgent)
 	}
-	for k, v := range o.Headers {
+	for k, v := range o.headers {
 		hreq.Header.Set(k, v)
 	}
-	client := o.HTTPClient
+	client := o.httpClient
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -94,9 +88,9 @@ func (o *OpenAI) Complete(ctx context.Context, req Request, ev *StreamEvents) (*
 // stream_options key via Extra — without it OpenAI and most compatibles omit
 // usage from streamed responses entirely. MaxTokens > 0 sets max_tokens
 // (overriding an Extra value); 0 leaves the field to Extra or the provider
-// default. CacheKey, when set, rides as prompt_cache_key, and SelfHosted adds
+// default. CacheKey, when set, rides as prompt_cache_key, and selfHosted adds
 // cache_prompt:true.
-func (o *OpenAI) buildBody(req Request) ([]byte, error) {
+func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.Extra {
 		if oaReserved[k] {
@@ -127,7 +121,7 @@ func (o *OpenAI) buildBody(req Request) ([]byte, error) {
 	if req.CacheKey != "" {
 		body["prompt_cache_key"] = req.CacheKey
 	}
-	if o.SelfHosted {
+	if o.selfHosted {
 		body["cache_prompt"] = true
 	}
 	b, err := json.Marshal(body)
@@ -231,6 +225,9 @@ func oaWireMessages(system string, msgs []Message) []oaMessage {
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
+	// Timings is the llama.cpp-style timing snapshot llama.cpp/ollama attach
+	// to streamed chunks; each occurrence replaces the previous (last wins).
+	Timings *Timings `json:"timings,omitempty"`
 	// PromptProgress is a non-standard prefill-progress update some upstreams
 	// emit before the first token while a long prompt is ingested. It rides a
 	// choices-less chunk.
@@ -373,6 +370,7 @@ type oaStream struct {
 	acc     *toolCallAccumulator
 	finish  string
 	usage   *Usage
+	timings *Timings
 	sawData bool
 }
 
@@ -380,7 +378,9 @@ type oaStream struct {
 // (keep-alive noise). A prompt_progress chunk is forwarded and carries
 // nothing else; usage snapshots are merged newest-wins (never summed) so both
 // the OpenAI single-final-chunk and the xAI usage-on-every-chunk conventions
-// yield the same result.
+// yield the same result; timings snapshots replace each other (last wins). A
+// callback error aborts the stream: state is accumulated BEFORE each emit, so
+// the partial completion includes everything through the failing delta.
 func (st *oaStream) onData(data []byte) error {
 	var chunk oaChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
@@ -388,25 +388,38 @@ func (st *oaStream) onData(data []byte) error {
 	}
 	if chunk.PromptProgress != nil {
 		st.sawData = true
-		st.ev.emitProgress(*chunk.PromptProgress)
-		return nil
+		return st.ev.emitProgress(*chunk.PromptProgress)
 	}
 	if chunk.Usage != nil {
 		st.sawData = true
 		u := chunk.Usage.toUsage()
 		st.usage = mergeUsage(st.usage, &u)
-		st.ev.emitUsage(*st.usage)
+		if err := st.ev.emitUsage(*st.usage); err != nil {
+			return err
+		}
+	}
+	if chunk.Timings != nil {
+		st.sawData = true
+		t := *chunk.Timings
+		st.timings = &t
+		if err := st.ev.emitTimings(t); err != nil {
+			return err
+		}
 	}
 	for _, ch := range chunk.Choices {
 		if ch.Delta.Content != "" {
 			st.sawData = true
 			st.content.WriteString(ch.Delta.Content)
-			st.ev.emitText(ch.Delta.Content)
+			if err := st.ev.emitText(ch.Delta.Content); err != nil {
+				return err
+			}
 		}
 		if rc := ch.Delta.reasoning(); rc != "" {
 			st.sawData = true
 			st.reason.WriteString(rc)
-			st.ev.emitReasoning(rc)
+			if err := st.ev.emitReasoning(rc); err != nil {
+				return err
+			}
 		}
 		if len(ch.Delta.ToolCalls) > 0 {
 			st.sawData = true
@@ -423,7 +436,8 @@ func (st *oaStream) onData(data []byte) error {
 // completion assembles the final (or partial) result: accumulated content,
 // reasoning as a single ThinkingBlock, assembled tool calls, the merged
 // usage with the total floored at prompt+completion (a genuine surplus —
-// reasoning tokens — is preserved), and the normalized stop reason.
+// reasoning tokens — is preserved), the last timings snapshot (nil when the
+// upstream reported none), and the normalized stop reason.
 func (st *oaStream) completion() *Completion {
 	var calls []ToolCall
 	if !st.acc.empty() {
@@ -444,7 +458,13 @@ func (st *oaStream) completion() *Completion {
 	if st.usage != nil {
 		u = floorTotal(*st.usage)
 	}
-	return &Completion{Message: msg, Usage: u, StopReason: normalizeStopReason(finish)}
+	return &Completion{
+		Message:       msg,
+		Usage:         u,
+		UsageReported: st.usage != nil,
+		Timings:       st.timings,
+		StopReason:    normalizeStopReason(finish),
+	}
 }
 
 // normalizeStopReason maps OpenAI finish reasons onto the normalized

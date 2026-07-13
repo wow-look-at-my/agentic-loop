@@ -36,7 +36,7 @@ func TestRunOpenAI429ThenSuccess(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: &OpenAI{BaseURL: srv.URL}, Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "recovered", res.Final.Content)
@@ -56,7 +56,7 @@ func TestRunOpenAI524Retried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: &OpenAI{BaseURL: srv.URL}, Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
 		Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "after 524", res.Final.Content)
@@ -72,7 +72,7 @@ func TestRunOpenAIOverflowNotRetried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: &OpenAI{BaseURL: srv.URL}, Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.True(t, IsContextOverflow(err))
@@ -100,7 +100,7 @@ func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: &Anthropic{BaseURL: srv.URL}, Retry: retryTestPolicy(4)},
+		Config{Provider: anProvider(t, srv.URL), Retry: retryTestPolicy(4)},
 		Request{Model: "m", MaxTokens: 64, Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "recovered", res.Final.Content)
@@ -117,7 +117,7 @@ func (rt *countingFailRT) RoundTrip(*http.Request) (*http.Response, error) {
 
 func TestRunOpenAINetworkErrorRetried(t *testing.T) {
 	rt := &countingFailRT{}
-	p := &OpenAI{BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}}
+	p := mustProvider(t, ProviderConfig{Dialect: DialectOpenAI, BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}})
 	_, err := Run(context.Background(), Config{Provider: p, Retry: retryTestPolicy(3)}, Request{Model: "m"})
 	require.Error(t, err)
 	assert.Equal(t, int32(3), rt.calls.Load(), "network errors are retried up to the attempt cap")
@@ -136,7 +136,7 @@ func TestRunOpenAIPartialStreamNotRetried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: &OpenAI{BaseURL: srv.URL}, Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load(), "no re-attempt after a partial stream")
@@ -159,7 +159,7 @@ func TestRunEndToEndToolRoundTripOverOpenAI(t *testing.T) {
 
 	exec := &fakeExec{tools: []Tool{{Name: "echo"}}}
 	res, err := Run(context.Background(),
-		Config{Provider: &OpenAI{BaseURL: srv.URL}, Tools: exec, Retry: retryTestPolicy(2)},
+		Config{Provider: oaProvider(t, srv.URL), Tools: exec, Retry: retryTestPolicy(2)},
 		Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "start"}}})
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load())

@@ -94,7 +94,7 @@ func TestParamStripperNeverOnCancel(t *testing.T) {
 func TestParamStripperNeverAfterDelivery(t *testing.T) {
 	apiErr := &APIError{Status: 400, Body: "unsupported parameter: reasoning_effort"}
 	inner := &scriptProvider{steps: []scriptStep{
-		{err: apiErr, emit: func(ev *StreamEvents) { ev.emitText("half a token") }},
+		{err: apiErr, emit: func(ev *StreamEvents) { _ = ev.emitText("half a token") }},
 	}}
 	s := NewParamStripper(inner)
 	_, err := s.Complete(context.Background(), Request{Model: "m", Extra: map[string]any{"reasoning_effort": "high"}}, nil)
@@ -130,7 +130,7 @@ func TestParamStripperOverOpenAIProvider(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := NewParamStripper(&OpenAI{BaseURL: srv.URL})
+	p := NewParamStripper(oaProvider(t, srv.URL))
 	comp, err := p.Complete(context.Background(), Request{
 		Model:    "m",
 		Messages: []Message{{Role: RoleUser, Content: "q"}},

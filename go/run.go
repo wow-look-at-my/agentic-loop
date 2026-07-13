@@ -26,10 +26,33 @@ const noOutputPlaceholder = "(subagent produced no output)"
 // model call, OnToolCall fires before each requested tool call is handled,
 // and OnToolResult fires with its recorded result (executed, denied, or a
 // teaching error). All optional.
+//
+// Like the stream callbacks, OnToolCall and OnToolResult may return a non-nil
+// error to abort the run: the turn is finalized the way a cancellation is —
+// the pending batch is cleared so the transcript stays replayable with no
+// orphan tool calls — and the partial Result is returned together with that
+// error (errors.Is against the caller's sentinel holds; the error is never
+// classified transient).
 type Events struct {
 	StreamEvents
-	OnToolCall   func(ToolCall)
-	OnToolResult func(ToolCall, ToolResult)
+	OnToolCall   func(ToolCall) error
+	OnToolResult func(ToolCall, ToolResult) error
+}
+
+// emitToolCall forwards a requested tool call, tolerating nil callbacks.
+func (e *Events) emitToolCall(c ToolCall) error {
+	if e == nil || e.OnToolCall == nil {
+		return nil
+	}
+	return wrapCallbackErr(e.OnToolCall(c))
+}
+
+// emitToolResult forwards a recorded tool result, tolerating nil callbacks.
+func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
+	if e == nil || e.OnToolResult == nil {
+		return nil
+	}
+	return wrapCallbackErr(e.OnToolResult(c, r))
 }
 
 // Config wires one Run: the Provider to call, the ToolExecutor whose tools
@@ -44,6 +67,12 @@ type Config struct {
 	MaxTurns int
 	Retry    *RetryPolicy
 	Events   Events
+
+	// turnHook, when non-nil, is invoked with the 1-based turn number as each
+	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
+	// turn). It is unexported: package-internal machinery — the subagent
+	// executor's live activity telemetry — not public API.
+	turnHook func(turn int)
 }
 
 // Result is the outcome of a Run. Messages is the input transcript plus
@@ -76,7 +105,11 @@ type Result struct {
 // current assistant message keeps its content and reasoning but its ToolCalls
 // are cleared and the batch's already-appended tool results are dropped, so
 // the returned transcript stays replayable with no orphan tool calls; the
-// partial Result is returned alongside the error.
+// partial Result is returned alongside the error. An error returned by
+// OnToolCall or OnToolResult ends the run the same way, and a stream
+// callback error surfaces through the model call as a partial completion
+// plus the callback's error — in every case the partial Result rides
+// alongside the error and the transcript carries no orphan tool calls.
 //
 // Model calls are retried per cfg.Retry, but only when the failed attempt
 // streamed nothing; once data arrived the partial assistant message is
@@ -120,6 +153,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 
 	for turn := 0; ; turn++ {
+		if cfg.turnHook != nil {
+			cfg.turnHook(turn + 1)
+		}
 		// On the last permitted turn, withhold tools so the model must answer
 		// rather than request another (never-executed) tool call.
 		lastTurn := turn == maxTurns-1
@@ -154,27 +190,31 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if len(calls) > 0 && !lastTurn {
 			transcript = append(transcript, assistant)
 			aIdx := len(transcript) - 1
+			// abortBatch ends the run mid-batch — an approval decision that
+			// never arrived, or a tool callback that returned an error. It
+			// clears the pending batch: the assistant message keeps its
+			// content/reasoning but loses its tool_calls, and this batch's
+			// already-appended results are dropped, so no orphans remain to
+			// replay.
+			abortBatch := func(cause error) (*Result, error) {
+				transcript = transcript[:aIdx+1]
+				cleared := transcript[aIdx]
+				cleared.ToolCalls = nil
+				transcript[aIdx] = cleared
+				res.Messages = transcript
+				res.Final = cleared
+				return res, cause
+			}
 			for _, call := range calls {
-				if cfg.Events.OnToolCall != nil {
-					cfg.Events.OnToolCall(call)
+				if cberr := cfg.Events.emitToolCall(call); cberr != nil {
+					return abortBatch(cberr)
 				}
 				result, aerr := resolveCall(ctx, &cfg, call)
 				if aerr != nil {
-					// The approval decision never arrived. Clear the pending
-					// batch: the assistant message keeps its content/reasoning
-					// but loses its tool_calls, and this batch's
-					// already-appended results are dropped, so no orphans
-					// remain to replay.
-					transcript = transcript[:aIdx+1]
-					cleared := transcript[aIdx]
-					cleared.ToolCalls = nil
-					transcript[aIdx] = cleared
-					res.Messages = transcript
-					res.Final = cleared
-					return res, aerr
+					return abortBatch(aerr)
 				}
-				if cfg.Events.OnToolResult != nil {
-					cfg.Events.OnToolResult(call, result)
+				if cberr := cfg.Events.emitToolResult(call, result); cberr != nil {
+					return abortBatch(cberr)
 				}
 				transcript = append(transcript, Message{
 					Role:        RoleTool,
