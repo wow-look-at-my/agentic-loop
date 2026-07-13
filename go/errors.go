@@ -41,7 +41,9 @@ func IsContextOverflow(err error) bool {
 // 408, 429, or any 5xx, or any network/transport error. Context cancellation
 // and deadline expiry are never transient, and neither is any other 4xx —
 // including a context-overflow 400 (retrying the same oversized prompt is
-// futile).
+// futile) — nor an error returned by one of the caller's own stream callbacks
+// (the upstream call did not fail; the caller's sink did, and re-sending the
+// prompt cannot fix that).
 func IsTransient(err error) bool {
 	if err == nil {
 		return false
@@ -55,6 +57,10 @@ func IsTransient(err error) bool {
 	}
 	var re *requestError
 	if errors.As(err, &re) {
+		return false
+	}
+	var ce *callbackError
+	if errors.As(err, &ce) {
 		return false
 	}
 	return true
@@ -71,3 +77,31 @@ func (e *requestError) Error() string { return e.msg }
 // badRequestErr wraps a deterministic request-construction failure so
 // IsTransient classifies it as permanent.
 func badRequestErr(msg string) error { return &requestError{msg: msg} }
+
+// callbackError marks an error that originated in one of the caller's own
+// callbacks (StreamEvents.On*, Events.OnToolCall/OnToolResult) rather than in
+// the upstream call. It is transparent — Error() is the callback error's own
+// text and Unwrap preserves errors.Is/errors.As against the caller's sentinel
+// — and exists only so IsTransient classifies a failed sink as permanent: it
+// is never an *APIError and never retried.
+type callbackError struct{ err error }
+
+// Error returns the wrapped callback error's text unchanged.
+func (e *callbackError) Error() string { return e.err.Error() }
+
+// Unwrap exposes the caller's original error to errors.Is / errors.As.
+func (e *callbackError) Unwrap() error { return e.err }
+
+// wrapCallbackErr marks err as callback-originated, idempotently: nil stays
+// nil, and an error already carrying the marker is returned unchanged (the
+// emit helpers can nest through probeEvents wrappers).
+func wrapCallbackErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ce *callbackError
+	if errors.As(err, &ce) {
+		return err
+	}
+	return &callbackError{err: err}
+}

@@ -14,59 +14,97 @@ type PromptProgress struct {
 	TimeMS    int64 `json:"time_ms"`
 }
 
+// Timings is the llama.cpp-style per-call timing snapshot some
+// OpenAI-compatible upstreams (llama.cpp, ollama) attach to streamed chunks:
+// PromptN prompt tokens processed in PromptMS milliseconds (prefill), and
+// PredictedN tokens generated in PredictedMS milliseconds. The field names and
+// types are wire-faithful to the upstream timings object. The library only
+// surfaces what the provider reported — it never synthesizes timings from
+// wall-clock time; that remains the caller's choice. The Anthropic dialect
+// has no equivalent and never reports timings.
+type Timings struct {
+	PromptN     int     `json:"prompt_n,omitempty"`
+	PromptMS    float64 `json:"prompt_ms,omitempty"`
+	PredictedN  int     `json:"predicted_n,omitempty"`
+	PredictedMS float64 `json:"predicted_ms,omitempty"`
+}
+
 // StreamEvents are optional streaming callbacks for one model call. All
 // fields are optional and a nil *StreamEvents is valid: providers guard every
 // emit. OnText receives content deltas, OnReasoning thinking/reasoning
-// deltas, OnUsage each merged usage snapshot as it arrives, and OnProgress
-// prefill progress updates.
+// deltas, OnUsage each merged usage snapshot as it arrives, OnProgress
+// prefill progress updates, and OnTimings each provider-reported timings
+// snapshot (OpenAI dialect only — Anthropic never fires it).
+//
+// A non-nil error returned by any callback ABORTS the stream read
+// immediately: Complete stops consuming the upstream response and returns the
+// partial *Completion (content, reasoning, tool calls, and usage accumulated
+// so far) together with that error. The error is returned unwrapped or
+// %w-wrapped, so errors.Is against a sentinel the callback returned holds; it
+// is never converted into an *APIError and never classified transient, so
+// neither the retry policy nor the param-strip middleware will re-send a call
+// whose sink failed.
 type StreamEvents struct {
-	OnText      func(string)
-	OnReasoning func(string)
-	OnUsage     func(Usage)
-	OnProgress  func(PromptProgress)
+	OnText      func(string) error
+	OnReasoning func(string) error
+	OnUsage     func(Usage) error
+	OnProgress  func(PromptProgress) error
+	OnTimings   func(Timings) error
 }
 
 // emitText forwards a non-empty content delta, tolerating nil receivers.
-func (ev *StreamEvents) emitText(s string) {
+func (ev *StreamEvents) emitText(s string) error {
 	if ev == nil || ev.OnText == nil || s == "" {
-		return
+		return nil
 	}
-	ev.OnText(s)
+	return wrapCallbackErr(ev.OnText(s))
 }
 
 // emitReasoning forwards a non-empty reasoning delta, tolerating nil receivers.
-func (ev *StreamEvents) emitReasoning(s string) {
+func (ev *StreamEvents) emitReasoning(s string) error {
 	if ev == nil || ev.OnReasoning == nil || s == "" {
-		return
+		return nil
 	}
-	ev.OnReasoning(s)
+	return wrapCallbackErr(ev.OnReasoning(s))
 }
 
 // emitUsage forwards a usage snapshot, tolerating nil receivers.
-func (ev *StreamEvents) emitUsage(u Usage) {
+func (ev *StreamEvents) emitUsage(u Usage) error {
 	if ev == nil || ev.OnUsage == nil {
-		return
+		return nil
 	}
-	ev.OnUsage(u)
+	return wrapCallbackErr(ev.OnUsage(u))
 }
 
 // emitProgress forwards a prefill-progress update, tolerating nil receivers.
-func (ev *StreamEvents) emitProgress(p PromptProgress) {
+func (ev *StreamEvents) emitProgress(p PromptProgress) error {
 	if ev == nil || ev.OnProgress == nil {
-		return
+		return nil
 	}
-	ev.OnProgress(p)
+	return wrapCallbackErr(ev.OnProgress(p))
+}
+
+// emitTimings forwards a timings snapshot, tolerating nil receivers.
+func (ev *StreamEvents) emitTimings(t Timings) error {
+	if ev == nil || ev.OnTimings == nil {
+		return nil
+	}
+	return wrapCallbackErr(ev.OnTimings(t))
 }
 
 // probeEvents wraps ev so the caller can observe whether the provider
 // delivered any stream event. Retry layers use it to detect a "clean" failure
-// (nothing streamed) that is safe to re-attempt.
+// (nothing streamed) that is safe to re-attempt. Delivery is marked BEFORE
+// the underlying callback runs, so a callback that fails on the very first
+// delta still counts as "streamed something" — the failed call is never
+// re-sent.
 func probeEvents(ev *StreamEvents, delivered *bool) *StreamEvents {
 	return &StreamEvents{
-		OnText:      func(s string) { *delivered = true; ev.emitText(s) },
-		OnReasoning: func(s string) { *delivered = true; ev.emitReasoning(s) },
-		OnUsage:     func(u Usage) { *delivered = true; ev.emitUsage(u) },
-		OnProgress:  func(p PromptProgress) { *delivered = true; ev.emitProgress(p) },
+		OnText:      func(s string) error { *delivered = true; return ev.emitText(s) },
+		OnReasoning: func(s string) error { *delivered = true; return ev.emitReasoning(s) },
+		OnUsage:     func(u Usage) error { *delivered = true; return ev.emitUsage(u) },
+		OnProgress:  func(p PromptProgress) error { *delivered = true; return ev.emitProgress(p) },
+		OnTimings:   func(t Timings) error { *delivered = true; return ev.emitTimings(t) },
 	}
 }
 
@@ -110,20 +148,37 @@ const (
 // Completion is the outcome of one model call: the assembled assistant
 // message, the call's final (merged, total-floored) usage, and the normalized
 // stop reason.
+//
+// UsageReported is true iff the provider reported at least one usage snapshot
+// during the call. Usage is a value type, so a caller reading only the
+// returned Completion could not otherwise distinguish an upstream that
+// reported all-zero usage from one that reported none at all (common on local
+// OpenAI-compatible servers) — check UsageReported before persisting or
+// displaying Usage.
+//
+// Timings is the last provider-reported timings snapshot (llama.cpp-style
+// upstreams attach one per chunk; the last one wins), or nil when the
+// provider never reported timings — a tri-state like the Usage cache fields.
+// The Anthropic dialect never sets it.
 type Completion struct {
-	Message    Message
-	Usage      Usage
-	StopReason string
+	Message       Message
+	Usage         Usage
+	UsageReported bool
+	Timings       *Timings
+	StopReason    string
 }
 
 // Provider executes one streaming model call. Implementations stream under
-// the hood and deliver deltas through ev (which may be nil).
+// the hood and deliver deltas through ev (which may be nil). Build one with
+// NewProvider, which selects the wire dialect; everything else in the library
+// (Run, OneShot, Compact, NewParamStripper, the built-in tool executors)
+// works against this interface.
 //
-// On a mid-stream failure or cancellation AFTER data has arrived, Complete
-// returns the PARTIAL *Completion alongside the error — both non-nil — so the
-// caller can keep the partial content, reasoning, and the last usage
-// snapshot. Before any data (connection errors, non-2xx responses), the
-// completion is nil.
+// On a mid-stream failure or cancellation AFTER data has arrived — including
+// a stream callback returning an error — Complete returns the PARTIAL
+// *Completion alongside the error, both non-nil, so the caller can keep the
+// partial content, reasoning, and the last usage snapshot. Before any data
+// (connection errors, non-2xx responses), the completion is nil.
 //
 // Providers must be safe for concurrent use by multiple goroutines.
 type Provider interface {

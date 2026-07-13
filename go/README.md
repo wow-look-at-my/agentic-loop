@@ -2,9 +2,10 @@
 
 A reusable agentic loop for chat-model APIs, with two provider dialects —
 OpenAI-compatible chat completions and the Anthropic Messages API — plus the
-machinery a production tool loop needs: streaming callbacks, tool execution
-with approval gating, transient-failure retry, rejected-parameter recovery,
-prompt caching on both dialects, and conversation compaction.
+machinery a production tool loop needs: streaming callbacks that can abort
+the call, tool execution with approval gating, transient-failure retry,
+rejected-parameter recovery, prompt caching on both dialects, conversation
+compaction, and two optional built-in tools (a sub-agent and a web fetcher).
 
 The runtime is **standard library only**. All I/O goes through an injectable
 `*http.Client`, and the package reads **no environment variables** — every
@@ -23,17 +24,19 @@ import agentic "github.com/wow-look-at-my/agentic-loop/go"
 ## Quick start — OpenAI-compatible
 
 ```go
-provider := &agentic.OpenAI{
+provider, err := agentic.NewProvider(agentic.ProviderConfig{
+	Dialect: agentic.DialectOpenAI,
 	BaseURL: "https://api.openai.com/v1", // any OpenAI-compatible endpoint
 	APIKey:  "YOUR_API_KEY",
-}
+})
+if err != nil { /* misconfiguration */ }
 
 res, err := agentic.Run(ctx, agentic.Config{
 	Provider: agentic.NewParamStripper(provider),
 	Tools:    myExecutor, // a ToolExecutor, or nil for tool-less
 	Events: agentic.Events{
 		StreamEvents: agentic.StreamEvents{
-			OnText: func(s string) { fmt.Print(s) },
+			OnText: func(s string) error { fmt.Print(s); return nil },
 		},
 	},
 }, agentic.Request{
@@ -51,11 +54,13 @@ fmt.Println(res.Final.Content)
 ## Quick start — Anthropic
 
 ```go
-provider := &agentic.Anthropic{
+provider, err := agentic.NewProvider(agentic.ProviderConfig{
+	Dialect: agentic.DialectAnthropic,
 	BaseURL: "https://api.anthropic.com",
 	APIKey:  "YOUR_API_KEY",
-	// Version defaults to "2023-06-01".
-}
+	// AnthropicVersion defaults to "2023-06-01".
+})
+if err != nil { /* misconfiguration */ }
 
 res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myExecutor},
 	agentic.Request{
@@ -74,18 +79,57 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myExecuto
 type Provider interface {
 	Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error)
 }
+
+func NewProvider(cfg ProviderConfig) (Provider, error)
 ```
 
-One streaming model call. `StreamEvents` carries optional callbacks (`OnText`,
-`OnReasoning`, `OnUsage`, `OnProgress`); all are nil-safe. On a mid-stream
-failure or cancellation **after data arrived**, `Complete` returns the partial
-`*Completion` **alongside** the error (both non-nil) so nothing streamed is
-lost. Both built-in providers are safe for concurrent use.
+`NewProvider` is the only way to build the two dialect providers — the
+implementations are unexported, so consumers hold nothing but the `Provider`
+interface. `ProviderConfig` selects the dialect (`DialectOpenAI` /
+`DialectAnthropic`; the string values `"openai"`/`"anthropic"` match the
+source applications' config convention) and requires `BaseURL`; `APIKey`,
+`HTTPClient`, `UserAgent`, and `Headers` are shared, while `SelfHosted`
+(OpenAI: `cache_prompt` opt-in), `AnthropicVersion`, and `DisableCaching`
+(Anthropic) are dialect-specific and ignored by the other dialect. A
+missing/unknown dialect or empty BaseURL fails fast with a permanent error.
+
+One streaming model call. `StreamEvents` carries optional callbacks —
+`OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings` — all nil-safe,
+and **every callback returns an error**: a non-nil return aborts the stream
+read immediately, and `Complete` returns the partial `*Completion` (content,
+reasoning, tool calls, usage so far) together with that error. The error
+surfaces unwrapped or `%w`-wrapped, so `errors.Is` against your sentinel
+holds; it is never converted into an `*APIError` and never classified
+transient, so neither the retry policy nor the param stripper re-sends a call
+whose sink failed. On any other mid-stream failure or cancellation **after
+data arrived**, `Complete` likewise returns the partial `*Completion`
+alongside the error. Both dialects are safe for concurrent use.
 
 `Request.Extra` is a verbatim top-level passthrough (`temperature`,
 `reasoning_effort`, `num_ctx`, `thinking`, ...). It is merged first, so the
 typed core fields always win; the library never interprets, gates, or filters
 what you put there.
+
+### Timings
+
+llama.cpp-style upstreams (llama.cpp, ollama) attach a `timings` object to
+streamed chunks. The OpenAI dialect decodes it wire-faithfully into
+
+```go
+type Timings struct {
+	PromptN     int     `json:"prompt_n,omitempty"`
+	PromptMS    float64 `json:"prompt_ms,omitempty"`
+	PredictedN  int     `json:"predicted_n,omitempty"`
+	PredictedMS float64 `json:"predicted_ms,omitempty"`
+}
+```
+
+Each reported snapshot fires `StreamEvents.OnTimings`, and the **last** one
+lands on `Completion.Timings` — a pointer that stays nil when the provider
+never reported timings (tri-state, like the usage cache fields). The library
+only surfaces what the provider said: it never synthesizes timings from
+wall-clock time (tok/s fallbacks stay the caller's concern). The Anthropic
+dialect has no equivalent and never fires it.
 
 ### Tools and approval
 
@@ -109,6 +153,74 @@ Combinators mirror the source application's semantics:
   refused. The toolset to hand a sub-agent.
 - `SubsetView(e, names)` — only the explicitly named tools.
 
+### Built-in tools (the plugin pattern)
+
+The `ToolExecutor` seam **is** the plugin interface: a "plugin" is nothing
+more than a value implementing it, composed into your toolset with
+`NewComposite`. The library ships two optional executors ported from the
+source application; callers who don't compose them are unaffected.
+
+```go
+tools := agentic.NewComposite(
+	myExecutor,
+	agentic.NewWebFetchExecutor(agentic.WebFetchConfig{Provider: provider, Model: model}),
+)
+tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.SubagentConfig{
+	Provider: provider, Model: model,
+	Tools: tools,                 // the FULL parent toolset — grants select from it
+	Gate:  agentic.NewGate(1),    // serialize sub-agents (the source app's choice)
+	OnActivity: func(a agentic.SubagentActivity) { /* live telemetry */ },
+}))
+```
+
+- **`NewSubagentExecutor(SubagentConfig)`** — the `run_subagent` tool: the
+  model offloads a focused task to a sub-agent running its own in-memory
+  loop (this package's `Run`) and gets back only the distilled final report.
+  By default the sub-agent sees only the read-only subset
+  (`ReadonlyView(cfg.Tools)`); the orchestrator can pin it to — and thereby
+  explicitly grant, including non-read-only tools — an exact set via the
+  `allowed_tools` argument (exact advertised names, with an unambiguous
+  bare-name fallback for `server__tool` prefixes; `run_subagent` itself is
+  never grantable, so no recursion). The advertised schema embeds the
+  grantable names as an enum, flagging non-read-only ones
+  `(modifies state)`. `share_context` optionally shares parent history —
+  `none` (default) / `full` / `last_n` / `messages` / `summary` (one bounded
+  briefing call) / `custom` — rendered as plain text
+  (`RenderTranscript`/`SelectLastN`/`SelectByEndIndices`) and folded into
+  one delimited task message. Misuse (a bad mode, an unknown grant) is a
+  recoverable teaching error listing the valid options. A shared `*Gate`
+  (`NewGate(n)`, a context-cancellable cap-n semaphore; nil = unlimited)
+  bounds concurrency, and `OnActivity` streams live
+  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, IsError}` steps
+  (kinds `turn`/`tool_call`/`tool_result`, previews whitespace-flattened and
+  capped at 160 runes). The sub-run's streaming never leaks into the
+  parent's `StreamEvents` — the parent sees only the final report and the
+  activity feed.
+- **`NewWebFetchExecutor(WebFetchConfig)`** — the `web_fetch` tool: one
+  unauthenticated, plain HTTP GET (http/https only, userinfo rejected, 5 MiB
+  body cap, 45 s default client timeout), cleaned to readable text (built-in
+  HTML cleanup, or an optional Apache Tika server via `TikaURL` with silent
+  fallback) and rune-capped at 200 000 with an explicit truncation note. An
+  optional `summary_prompt` argument runs one bounded, tool-less call to the
+  configured `Provider`/`Model` to summarize the cleaned content
+  (`OneShot`, 2 min timeout). `BlockURL func(url string) string` is the
+  injectable refusal seam: return a non-empty teaching message to refuse a
+  fetch (the source application used it to redirect fetches of its
+  workspace repository); the library ships the hook, not the policy. The
+  tool is `Readonly`, so a sub-agent's default toolset includes it.
+
+Neither executor is approval-gated (`NeedsApproval` is always false) —
+approval wiring stays the caller's concern; wrap the executor if launching
+sub-agents or fetching should be gated.
+
+Both built-ins use the `Provider` you hand them exactly as given — the
+library never wraps it. In the source application every one of these model
+calls (the sub-agent's nested loop, the context-summary briefing, and the
+web summary) went through its rejected-parameter recovery; to reproduce
+that, pass a `NewParamStripper`-wrapped provider in
+`SubagentConfig`/`WebFetchConfig` — the same wrapped value you give
+`Config.Provider`.
+
 ### The loop
 
 `Run(ctx, cfg, req)` drives the turn loop: call the model, execute the
@@ -122,12 +234,17 @@ requested tools, feed the results back, repeat. Key behaviors:
   exactly `DeniedMessage` ("The user denied permission to run this tool.");
   a hallucinated call with no executor gets `unknown tool: ...`. In every
   case the loop continues so the model can react.
+- **Callbacks can abort.** `Events.OnToolCall`/`OnToolResult` (like the
+  stream callbacks) return an error; a non-nil return ends the run the way a
+  cancellation does — the pending batch is cleared (the assistant message
+  keeps its content and reasoning but loses its tool calls, and the batch's
+  already-appended results are dropped) so the transcript stays replayable
+  with no orphan tool calls, and the partial `Result` is returned together
+  with your error.
 - **Approval**: a tool whose `NeedsApproval(name)` is true pauses for
   `Approver.Ask`. A nil `Approver` fails closed (denies). If `Ask` returns an
   error (the decision never arrived), the run ends with the pending batch
-  cleared — the assistant message keeps its content and reasoning but loses
-  its tool calls, and that batch's already-appended results are dropped — so
-  the returned transcript is replayable with no orphan tool calls.
+  cleared exactly as above.
 - **Stall fallback**: if the loop ends with no written answer (a
   thinking-only turn, or the cap hit mid-research) and tools were in play,
   one extra tool-less wrap-up turn forces the model to synthesize its answer
@@ -141,24 +258,26 @@ requested tools, feed the results back, repeat. Key behaviors:
 
 `RetryPolicy` (default `DefaultRetry`: 4 attempts, 500ms base, delay =
 base × 2^(n−1), no jitter) retries only what `IsTransient` allows: HTTP 408,
-429, any 5xx, and network/transport errors. Context cancellation and other
-4xx are permanent. A 400 whose body says the prompt exceeded the context
-window is flagged — check with `IsContextOverflow(err)` — and never retried.
-Anthropic in-stream `error` events (an HTTP 200 whose stream carries the
-error — how `overloaded_error` typically arrives) are mapped onto the same
-`APIError` using Anthropic's documented error-type → status table, so an
-in-stream overload (529) or rate limit (429) retries exactly like its
-non-2xx counterpart.
+429, any 5xx, and network/transport errors. Context cancellation, other
+4xx, and **errors your own callbacks returned** are permanent. A 400 whose
+body says the prompt exceeded the context window is flagged — check with
+`IsContextOverflow(err)` — and never retried. Anthropic in-stream `error`
+events (an HTTP 200 whose stream carries the error — how `overloaded_error`
+typically arrives) are mapped onto the same `APIError` using Anthropic's
+documented error-type → status table, so an in-stream overload (529) or rate
+limit (429) retries exactly like its non-2xx counterpart.
 
 Inside `Run`, a model call is re-attempted **only when the failed attempt
 streamed nothing**; once data arrived, the partial assistant message is
 finalized into the transcript and the partial `Result` is returned with the
-error.
+error. Delivery is marked **before** each callback runs, so a callback that
+fails on the very first delta still counts as "streamed something" — the
+call is never re-sent into a dead sink.
 
 ### Rejected-parameter recovery
 
 ```go
-provider := agentic.NewParamStripper(&agentic.OpenAI{...})
+provider := agentic.NewParamStripper(inner)
 ```
 
 Some upstreams 400 on a parameter others accept. The stripper parses the
@@ -196,6 +315,12 @@ newest-wins (xAI attaches a cumulative snapshot to every chunk; they are
 never summed), and the finalized total is floored at prompt+completion while
 preserving a genuine surplus (reasoning tokens).
 
+`Completion.UsageReported` is true iff at least one usage snapshot was
+merged during the call: `Usage` is a value type, so this is how a caller
+reading only the returned `Completion` distinguishes an upstream that
+reported all-zero usage from one that reported none at all (common on local
+servers) — check it before persisting or displaying `Usage`.
+
 ### Compaction and one-off calls
 
 ```go
@@ -217,11 +342,11 @@ the parent request ending.
 
 ## Concurrency
 
-`OpenAI` and `Anthropic` values are read-only during `Complete` and safe to
+Providers built by `NewProvider` are read-only during `Complete` and safe to
 share across goroutines. The `NewParamStripper` wrapper is also safe for
 concurrent use (its strip memory is mutex-guarded). One `Run` drives one
 conversation; run concurrent conversations by calling `Run` concurrently,
-sharing the provider.
+sharing the provider. A shared `Gate` bounds concurrent sub-agents.
 
 ## Testing
 

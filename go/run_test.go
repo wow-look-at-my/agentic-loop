@@ -67,8 +67,8 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 		Tools:    exec,
 		Retry:    &noSleep,
 		Events: Events{
-			OnToolCall:   func(c ToolCall) { calls = append(calls, c) },
-			OnToolResult: func(_ ToolCall, r ToolResult) { results = append(results, r) },
+			OnToolCall:   func(c ToolCall) error { calls = append(calls, c); return nil },
+			OnToolResult: func(_ ToolCall, r ToolResult) error { results = append(results, r); return nil },
 		},
 	}
 	req := Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "go"}},
@@ -337,7 +337,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 		Usage: Usage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4}}
 	netErr := errors.New("connection reset mid-stream")
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: partial, err: netErr, emit: func(ev *StreamEvents) { ev.emitText("part") }},
+		{comp: partial, err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("part") }},
 	}}
 	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
@@ -356,7 +356,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 func TestRunNoRetryWhenEventsDeliveredWithoutCompletion(t *testing.T) {
 	netErr := errors.New("reset")
 	provider := &scriptProvider{steps: []scriptStep{
-		{err: netErr, emit: func(ev *StreamEvents) { ev.emitText("leaked") }},
+		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("leaked") }},
 	}}
 	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep}, Request{Model: "m"})
 	require.Error(t, err)
@@ -386,19 +386,21 @@ func TestRunRequiresProvider(t *testing.T) {
 func TestRunStreamEventsForwarded(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("hi"), emit: func(ev *StreamEvents) {
-			ev.emitText("hi")
-			ev.emitReasoning("hmm")
-			ev.emitUsage(Usage{PromptTokens: 1})
-			ev.emitProgress(PromptProgress{Processed: 1, Total: 2})
+			_ = ev.emitText("hi")
+			_ = ev.emitReasoning("hmm")
+			_ = ev.emitUsage(Usage{PromptTokens: 1})
+			_ = ev.emitProgress(PromptProgress{Processed: 1, Total: 2})
+			_ = ev.emitTimings(Timings{PredictedN: 3, PredictedMS: 40})
 		}},
 	}}
 	var text, reasoning string
-	var gotUsage, gotProgress bool
+	var gotUsage, gotProgress, gotTimings bool
 	cfg := Config{Provider: provider, Retry: &noSleep, Events: Events{StreamEvents: StreamEvents{
-		OnText:      func(s string) { text += s },
-		OnReasoning: func(s string) { reasoning += s },
-		OnUsage:     func(Usage) { gotUsage = true },
-		OnProgress:  func(PromptProgress) { gotProgress = true },
+		OnText:      func(s string) error { text += s; return nil },
+		OnReasoning: func(s string) error { reasoning += s; return nil },
+		OnUsage:     func(Usage) error { gotUsage = true; return nil },
+		OnProgress:  func(PromptProgress) error { gotProgress = true; return nil },
+		OnTimings:   func(Timings) error { gotTimings = true; return nil },
 	}}}
 	_, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
@@ -406,4 +408,5 @@ func TestRunStreamEventsForwarded(t *testing.T) {
 	assert.Equal(t, "hmm", reasoning)
 	assert.True(t, gotUsage)
 	assert.True(t, gotProgress)
+	assert.True(t, gotTimings)
 }

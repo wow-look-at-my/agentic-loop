@@ -25,14 +25,51 @@ distilled, dependency-free extraction.
 | `ToolResult` | `content`, `isError` | Text-only by design (see cuts). |
 | `Usage` | `promptTokens`, `completionTokens`, `totalTokens`, `cacheReadTokens?`, `cacheWriteTokens?` | The two cache fields are **tri-state**: absent/undefined = provider reported no cache info; a number (including 0) = a real report. Never zero-fill, never estimate. |
 | `PromptProgress` | `processed`, `total`, `cache`, `timeMS` | Wire-faithful to the upstream `prompt_progress` object (`{total, cache, processed, time_ms}`). |
+| `Timings` | `promptN`, `promptMS`, `predictedN`, `predictedMS` | Wire-faithful to the llama.cpp-style chunk `timings` object (`{prompt_n, prompt_ms, predicted_n, predicted_ms}`; the `_ms` fields are floats). Decode only — the library NEVER synthesizes timings from wall-clock time. |
 | `Request` | `model`, `system`, `messages`, `tools`, `maxTokens`, `extra`, `cacheKey` | See §3/§4 for per-dialect handling. |
-| `Completion` | `message`, `usage`, `stopReason` | |
+| `Completion` | `message`, `usage`, `usageReported`, `timings?`, `stopReason` | `usageReported` = at least one usage snapshot was merged (usage is a value, so this is the "reported vs absent" tri-state for the whole struct). `timings` = the LAST reported snapshot, absent when the provider never reported one; the Anthropic dialect never sets it. |
 | `Result` | `messages`, `final`, `usages[]`, `turns` | `usages` = one entry per model call IN ORDER, never summed (successive prompts overlap; summing double-counts the shared prefix). |
 
 Seams (interfaces): `Provider.complete(req, events) -> Completion`
 (streaming under the hood), `ToolExecutor {tools(), execute(call),
 needsApproval(name)}`, `Approver {ask(call) -> boolean}` (throw = decision
 never arrived).
+
+**Provider construction is a factory.** The dialect implementations are
+NOT exported: consumers call `NewProvider(config)` and hold only the
+`Provider` interface. The config carries `dialect` (`"openai"` /
+`"anthropic"` — these exact strings), the required `baseURL`, the shared
+`apiKey`/`httpClient`/`userAgent`/`headers`, and the dialect-specific knobs
+`selfHosted` (OpenAI), `anthropicVersion`, `disableCaching` (Anthropic) —
+each ignored by the other dialect. A missing/unknown dialect or empty
+baseURL fails fast with a permanent (never-retried) error. There are no
+per-dialect base-URL defaults: baseURL is always explicit.
+
+**Callback error contract** (every callback below): `StreamEvents.onText /
+onReasoning / onUsage / onProgress / onTimings` and `Events.onToolCall /
+onToolResult` all return/throw an error to signal failure. Semantics to
+reproduce exactly:
+
+- A stream-callback error ABORTS the upstream read immediately; `complete`
+  returns the partial Completion (content/reasoning/tool-calls/usage
+  accumulated so far — state is accumulated BEFORE each emit, so the failing
+  delta is included) together with that error. The caller's error object
+  stays reachable (`errors.Is` in Go; identity/`cause` chain in TS) — it is
+  never converted into an `APIError` and NEVER classified transient, so
+  neither retry nor the param stripper re-sends a call whose sink failed.
+- Delivery is marked BEFORE the callback is invoked, so a callback that
+  fails on the very FIRST delta still counts as "streamed something" — the
+  nothing-streamed retry guard (§8) and the param stripper's delivery guard
+  (§7) both see a delivered call and do not re-attempt. Pin: exactly one
+  upstream request.
+- A tool-callback error (`onToolCall`/`onToolResult`) ends the run via the
+  same batch-clearing finalization as an approval interruption (§8): the
+  assistant message keeps content/thinking, loses its toolCalls, the batch's
+  already-appended results are dropped, and the partial Result returns with
+  the error. Note `onToolResult` fires after execution — the tool DID run;
+  only its delivery failed.
+- Nil/absent callbacks never fire; the empty-delta guards (`onText`/
+  `onReasoning` skip empty strings) are unchanged.
 
 Normalized stop reasons: `end_turn`, `tool_use`, `max_tokens`. OpenAI
 mapping: `stop → end_turn`, `tool_calls → tool_use`, `length → max_tokens`,
@@ -117,6 +154,10 @@ then caller headers (which may override).
   else is read from that chunk.
 - `usage` may arrive once on a final chunk (OpenAI) or as a cumulative
   snapshot on EVERY chunk (xAI). See §5 for the merge.
+- `timings` (llama.cpp/ollama) may ride any chunk: each occurrence fires
+  OnTimings and REPLACES the held snapshot (last wins — never merged, never
+  summed); the last one becomes `completion.timings`. No timings ⇒ the
+  field stays absent. Anthropic has no equivalent (§4 never fires it).
 
 ## 4. Anthropic dialect
 
@@ -310,7 +351,8 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
     the model must answer. Port the library's (subagent) behavior.
 - Continue looping while the executor is non-nil… actually: while the turn
   produced tool calls AND !lastTurn. Per call, in order:
-  1. fire OnToolCall;
+  1. fire OnToolCall — a thrown/returned error ⇒ the batch-clearing
+     finalization below, partial Result + that error;
   2. approval gate: only if `needsApproval(name)` — nil Approver ⇒ deny
      with `DeniedMessage`; `ask` false ⇒ deny with `DeniedMessage` (exact
      string: `The user denied permission to run this tool.`), tool NOT
@@ -323,8 +365,16 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   3. execute; an executor throw/error becomes
      `tool execution failed: <message>` with isError (the loop NEVER
      aborts on tool failure);
-  4. fire OnToolResult; append
+  4. fire OnToolResult — a thrown/returned error ⇒ the same batch-clearing
+     finalization (the tool ran; its executed result is dropped from the
+     transcript); else append
      `{role:"tool", content, toolCallID, toolIsError}`.
+- Internal turn hook: the loop exposes a package-internal per-turn hook
+  (1-based turn number, fired as each NUMBERED turn begins; the stall
+  wrap-up call is not a numbered turn). It is not public API — it exists
+  solely so the built-in subagent executor (§10) can emit its `turn`
+  activity at exactly the source's emission points. The port needs an
+  equivalent internal seam.
 - With a nil executor, a hallucinated call gets the teaching result
   `unknown tool: <name>` and the loop continues (deviation from the source
   subagent, which ended the loop; the teaching behavior is deliberate).
@@ -377,15 +427,182 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   attempt (never retried), return the trimmed final text + usage. Callers
   compose with a detached context for fire-and-forget.
 
-## 10. Deliberate cuts (do NOT implement in ts/ either)
+## 10. Built-in tool executors (plugins)
+
+The `ToolExecutor` seam IS the plugin interface: the built-ins are ordinary
+executors composed via the Composite; callers who don't use them see zero
+behavior change. Both are ports from the source application; the strings
+below are contract.
+
+Both executors use `config.provider` exactly as given — never wrapped
+implicitly. The source application routed every one of these model calls
+(the sub-agent's nested loop, the context-summary briefing, and the web
+summary) through its param-strip recovery layer (§7), so a caller/port
+reproduces the source exactly by handing the built-ins a
+param-stripper-wrapped Provider — the same wrapped value given to the
+loop's own config.
+
+### 10a. run_subagent (`NewSubagentExecutor(SubagentConfig)`)
+
+Config: `provider`, `model`, `maxTokens`, `extra`, `retry` (the nested
+loop's policy), `tools` (the parent's FULL executor), `parentSystem` +
+`parentMessages` (the share_context source), `maxTurns` (<= 0 ⇒ the loop
+default 10), `gate?`, `systemPrompt?` (empty ⇒
+`DefaultSubagentSystemPrompt`), `onActivity?`.
+
+- Tool name exactly `run_subagent`; `readonly` FALSE (so ReadonlyView drops
+  it from any sub-agent's default toolset) and the tool is excluded from
+  its own grantable set — a sub-agent can never spawn another.
+  `needsApproval` is always false (approval wiring is the caller's).
+- **Default sub toolset** = `ReadonlyView(tools)`. **`allowed_tools`**
+  selects from the FULL grantable set (every parent tool except
+  run_subagent, empty names skipped), so naming a non-read-only tool
+  explicitly GRANTS it (`SubsetView` over the full executor). Matching:
+  exact advertised name, else unambiguous bare-name fallback — request `x`
+  matches a single tool ending in `__x`. Blank entries are skipped.
+- **Advertised schema**: the static schema (the Go literal is the source of
+  truth) with, when grantable tools exist, `allowed_tools.description`
+  rewritten to list them — each non-read-only name suffixed
+  ` (modifies state)` — and `allowed_tools.items` = `{type:"string",
+  enum:[exact names]}`. No grantable tools ⇒ the static schema verbatim.
+- **Execution**: unknown name ⇒ `unknown tool: <name>`; no provider/model ⇒
+  `run_subagent is unavailable: no model is configured for the sub-agent`;
+  bad JSON ⇒ `invalid run_subagent arguments: <err>`; blank prompt ⇒
+  `run_subagent requires a non-empty prompt describing the task`; gate
+  acquisition failure ⇒ `run_subagent was cancelled before it could start:
+  <err>`. The nested run is this library's §8 loop — one user message (the
+  composed task), the subagent system prompt, the config's
+  model/maxTokens/extra/retry, and an approve-everything Approver (the
+  source loop never consulted the approval flow: the explicit grant IS the
+  authorization). A nested-run error ⇒ `sub-agent failed: <err>`; success ⇒
+  the TRIMMED final content as the tool result (the nested loop's stall
+  wrap-up and `(subagent produced no output)` placeholder apply).
+- **allowed_tools teaching errors** (exact):
+  - `run_subagent: the sub-agent has no tools available, so allowed_tools cannot be applied -- omit it.`
+  - `run_subagent: allowed_tools names no available tool: <unknown, list>. Available tools: <available, list>. Use these exact names, or omit allowed_tools to allow every read-only tool.`
+  - `run_subagent: allowed_tools contained no usable tool names. Available tools: <available, list>.`
+- **share_context** (case-insensitive, trimmed): `none`/empty ⇒ prompt
+  alone; `custom` ⇒ the trimmed `custom_context` (blank ⇒
+  `share_context=custom requires custom_context text`); `full` ⇒
+  `RenderTranscript` of the parent context (parentSystem prepended as a
+  system message, then parentMessages — selection indices count over that
+  combined list); `last_n` ⇒ the last `context_message_count` (missing ⇒
+  `share_context=last_n requires context_message_count (a positive
+  integer)`); `messages` ⇒ `context_message_indices`, 1-based from the most
+  recent, de-duplicated, chronological (missing ⇒ `share_context=messages
+  requires context_message_indices (1 = the most recent message)`);
+  `summary` ⇒ one bounded (2 min) tool-less OneShot briefing call — empty
+  parent context shares nothing with NO model call; a failure ⇒ `failed to
+  summarize the parent conversation: <err>`; anything else ⇒ `unknown
+  share_context mode "<mode>" (want none, full, last_n, messages, summary,
+  or custom)` (mode quoted).
+- **Task composition**: a non-blank block is folded as
+  `Context shared from the parent conversation (background only):\n\n` +
+  block + `\n\n----------------------------------------\n\nYour task:\n\n`
+  + prompt; a blank block leaves the prompt untouched.
+- **Transcript rendering** (`RenderTranscript`): per message, `<Label>:\n`
+  (System/User/Assistant/`Tool result`/`Message` for empty role, else the
+  role with its first letter upper-cased), the trimmed content on its own
+  line when non-empty, then one `[requested tool <name> with <args>]` line
+  per tool call (` with <args>` omitted for blank args), a blank line
+  between messages; the whole render is trimmed and TAIL-capped at 200 000
+  runes behind `[... earlier shared context truncated ...]\n\n`.
+  `SelectLastN`: n <= 0 ⇒ empty; n >= len ⇒ all. `SelectByEndIndices`:
+  out-of-range ignored, duplicates collapse, chronological output.
+- **Summary prompts** (verbatim): system = `You condense a conversation
+  into a briefing for a sub-agent that will carry out a related task.
+  Capture the salient facts, decisions, constraints, and any specific
+  identifiers, names, or values the sub-agent will need to act correctly.
+  Be faithful and concise; omit pleasantries and meta-commentary. Output
+  only the briefing.`; user = `Conversation to brief the sub-agent on:\n\n`
+  + transcript.
+- **DefaultSubagentSystemPrompt** (verbatim): `You are a sub-agent launched
+  by another assistant to carry out one focused, read-only task. You cannot
+  modify anything; you have only read-only tools (web and repository
+  access) to gather information. Work autonomously — you cannot ask
+  follow-up questions, and you do not see the parent conversation, only the
+  task below. Use the available tools as needed, then return a single,
+  self-contained final report that directly answers the task: give the
+  concrete findings the calling assistant needs, not a narration of your
+  process. Be concise and factual.`
+- **Tool description**: ported verbatim from the source EXCEPT one
+  deliberate adaptation — the source's CAPABILITIES sentence enumerated its
+  own app's tools ("fetch a web page (web_fetch), read GitHub repositories
+  (repo_read: ...), and any read-only MCP tools that are enabled"); the
+  library drops that enumeration ("By DEFAULT it may use only read-only
+  tools and causes no side effect."). The Go literal is the contract.
+- **Gate**: `NewGate(n)` = capacity-n semaphore (n < 1 clamps to 1); `nil`
+  gate = unlimited; `acquire(ctx)` blocks until a slot or ctx-done and
+  returns a release func. The source app used capacity 1 process-wide;
+  the capacity is the caller's choice here.
+- **Activity telemetry** (`onActivity`): steps
+  `{callID, kind, turn, tool, detail, isError}` with kinds `turn` (1-based,
+  at each numbered nested-turn start), `tool_call` (before execution,
+  detail = argument preview), `tool_result` (after, detail = result-text
+  preview, isError from the recorded result). `callID` = the parent
+  run_subagent call's id. Previews are whitespace-flattened
+  (`fields`-join) and capped at 160 runes (`157 + "..."`). Telemetry only —
+  never fed back to any model, and the nested run's stream events NEVER
+  reach the parent's StreamEvents.
+
+### 10b. web_fetch (`NewWebFetchExecutor(WebFetchConfig)`)
+
+Config: `httpClient?` (nil ⇒ a 45 s-timeout client), `userAgent?` (sent on
+the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
+`extra` (the summary path), `blockURL?: (url) => string`.
+
+- Tool name exactly `web_fetch`; `readonly` TRUE; `needsApproval` false.
+  Description (verbatim): `Fetches one http/https URL with an
+  unauthenticated, plain HTTP GET and returns cleaned page content.
+  Optionally provide summary_prompt to have the same model summarize the
+  cleaned content before it is returned.` Schema: the Go literal
+  (`url` required, `summary_prompt` optional).
+- **Validation** (exact error texts): blank ⇒ `url is required`; parse
+  failure ⇒ `invalid url: <err>`; non-http(s) ⇒ `web_fetch only supports
+  http and https URLs`; hostless ⇒ `web_fetch URL must include a host`;
+  userinfo ⇒ `web_fetch rejects URLs containing userinfo credentials`.
+  Unknown tool name ⇒ `unknown tool: <name>`; bad JSON ⇒
+  `invalid web_fetch arguments: <err>`.
+- **Block seam**: `blockURL(validatedURL)` returning non-empty text refuses
+  the fetch with exactly that text as a recoverable error result (the
+  source used this slot for its workspace-repository redirect; the hook is
+  the contract, the policy is not).
+- **Fetch**: plain GET; non-2xx ⇒ `web_fetch GET failed: status <status>`;
+  transport error ⇒ `web_fetch GET failed: <err>`; body cap 5 MiB
+  (5242880) ⇒ `web_fetch response exceeds <n> bytes`.
+- **Cleaning**: when `tikaURL` is set, PUT the raw bytes to
+  `<tika>/tika` (`Accept: text/plain`, fetched Content-Type forwarded,
+  extracted cap 800 000 bytes); success with non-empty text ⇒ normalized
+  Tika text; ANY failure or empty output falls back SILENTLY to the
+  built-in HTML cleanup (strip comments; drop
+  script/style/noscript/template/svg/canvas/head subtrees; `<br>` and
+  closing block tags ⇒ newlines; strip remaining tags; unescape entities;
+  collapse intra-line whitespace and blank-line runs). Result rune-capped
+  at 200 000 ⇒ prefix note `Note: cleaned content was truncated to 200000
+  runes.\n`; blank result ⇒ `(no extractable content)`.
+- **Result shapes**: `URL: <url>\n` (+ optional truncation note) + `\n` +
+  cleaned; with `summary_prompt`: same prefix + `\nSummary:\n` + summary.
+- **Summary path**: no provider/model ⇒ `web_fetch summary requested, but
+  no model is available for summarization`; one bounded (2 min) tool-less
+  OneShot with system (verbatim) `You summarize cleaned web content for
+  another assistant in the same conversation. Follow the provided summary
+  instructions. If the content is thin, blocked, or unrelated, say so
+  plainly.` and user = `Fetched URL:\n<url>\n\nSummary instructions:\n` +
+  (trimmed instructions, else `Produce a concise, faithful summary of the
+  fetched content.`) + `\n\nCleaned fetched content:\n` + cleaned. A call
+  failure ⇒ `web_fetch summary failed: <err>`; empty output ⇒
+  `web_fetch summary returned empty output`.
+
+## 11. Deliberate cuts (do NOT implement in ts/ either)
 
 - DB/persistence (message trees, leaf advancement, statuses) — the library
   works on a flat in-memory transcript.
 - Server-side SSE fan-out (the source's meta/token/done/error event
-  protocol and sinks).
-- Subagent registry/gating/telemetry (`run_subagent` tool, the process-wide
-  gate, `subagent_activity` progress events, shared-context selection/
-  rendering).
+  protocol and sinks). The subagent activity feed is a plain callback, not
+  an event protocol.
+- The source's per-user tool settings (`disabled_tools` / `ask_tools`
+  lists, tool-name namespacing `<Server>__<tool>`): the built-in executors
+  are composed or not composed; gating them is caller-side wrapping.
 - Title sanitization (`sanitizeTitle`, `<think>`-stripping, length caps) —
   `OneShot` returns raw trimmed text.
 - Structured tool-result content parts (multimodal blocks); `ToolResult` is
@@ -396,11 +613,14 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
 - Steering (mid-turn user-message injection).
 - Model-id namespacing (`<upstream>/<model>` stripping) — callers pass the
   bare model id.
-- llama.cpp `timings` decode and tok/s synthesis (PromptProgress IS kept).
+- Timings tok/s wall-clock synthesis (the DECODE is implemented — §3; the
+  fallback synthesis stays the consumer's).
 - The `isHostedOpenAI` URL heuristic — replaced by the explicit
   `SelfHosted` flag.
+- Web-fetch failure logging (the source warned on Tika failures via its
+  logger; the library falls back silently — no logger dependency).
 
-## 11. Test pins the ts/ suite must replicate
+## 12. Test pins the ts/ suite must replicate
 
 - The tool message JSON pin: `{"role":"tool","content":"","tool_call_id":"call_1"}`.
 - Merge table incl. equal-evidence-later-wins and regression-discard;
@@ -425,3 +645,34 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   error, no-retry-after-partial, retried-call-is-one-turn.
 - Param stripper: all four phrasings, camelCase↔snake_case normalization,
   retry-once, memory across calls, never on cancel/after delivery.
+- Provider factory: dialect selection, required baseURL, unknown-dialect
+  failure (permanent).
+- Callback errors: per-callback abort (text/reasoning/usage/progress/
+  timings), the caller's sentinel reachable from the returned error, never
+  transient/never APIError, partial completion carries the state so far
+  (failing delta included), first-delta failure still means exactly ONE
+  upstream request end-to-end through Run, onToolCall/onToolResult abort
+  with the batch-clearing finalization (executed result dropped).
+- Timings: wire decode of all four fields, last-snapshot-wins, per-snapshot
+  OnTimings, absent ⇒ `completion.timings` absent and no synthesis;
+  Anthropic never fires it. `usageReported` true for a reported all-zero
+  snapshot, false when no usage arrived.
+- run_subagent: default toolset = read-only subset; allowed_tools exact +
+  unambiguous bare-name + ambiguous/unknown teaching errors (exact texts,
+  listing the available tools); non-read-only grant executes (no approval
+  prompt inside the nested run); run_subagent absent from schema enum and
+  never grantable; every share_context mode's composed task message (exact
+  delimiters) + its misuse errors; summary-mode briefing request shape
+  (system prompt, tool-less, `Conversation to brief the sub-agent on:`
+  prefix) and no-call-on-empty-context; gate serialization + cancelled
+  acquire text; activity sequence turn/tool_call/tool_result with stamped
+  callID and 160-rune flattened previews; nested-run failure ⇒
+  `sub-agent failed: ...`; placeholder pass-through.
+- web_fetch: advertisement (readonly, exact description), HTML cleanup
+  pipeline output, truncation note, 5 MiB body cap text, non-2xx/transport
+  error texts, all URL-validation texts, block-hook refusal (hook text IS
+  the result; hook sees the validated URL), Tika request shape
+  (PUT /tika, Accept text/plain, forwarded Content-Type) + silent
+  fallback on failure/empty, summary request shape (system prompt, user
+  input layout, tool-less) + `no model available` / `failed` / `empty
+  output` texts, `(no extractable content)` placeholder.

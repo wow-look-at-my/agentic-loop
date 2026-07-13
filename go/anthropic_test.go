@@ -49,12 +49,13 @@ func TestAnthropicRequestBody(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := &Anthropic{
+	p := mustProvider(t, ProviderConfig{
+		Dialect:   DialectAnthropic,
 		BaseURL:   srv.URL,
 		APIKey:    "sk-test",
 		UserAgent: "agentic-test/1.0",
 		Headers:   map[string]string{"X-Custom": "yes"},
-	}
+	})
 	messages := []Message{
 		{Role: RoleUser, Content: "look this up"},
 		{
@@ -161,7 +162,7 @@ func TestAnthropicCallerTranscriptUnchanged(t *testing.T) {
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 
 	messages := []Message{
 		{Role: RoleUser, Content: "hello"},
@@ -193,7 +194,7 @@ func TestAnthropicDisableCaching(t *testing.T) {
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL, DisableCaching: true, Version: "2024-01-01"}
+	p := mustProvider(t, ProviderConfig{Dialect: DialectAnthropic, BaseURL: srv.URL, DisableCaching: true, AnthropicVersion: "2024-01-01"})
 
 	req := Request{
 		Model:     "m",
@@ -209,7 +210,7 @@ func TestAnthropicDisableCaching(t *testing.T) {
 }
 
 func TestAnthropicMaxTokensRequired(t *testing.T) {
-	p := &Anthropic{BaseURL: "http://placeholder.invalid"}
+	p := anProvider(t, "http://placeholder.invalid")
 	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 	assert.Nil(t, comp)
 	require.Error(t, err)
@@ -245,11 +246,11 @@ func TestAnthropicStreamDecode(t *testing.T) {
 	var texts, reasonings []string
 	var usages []Usage
 	ev := &StreamEvents{
-		OnText:      func(s string) { texts = append(texts, s) },
-		OnReasoning: func(s string) { reasonings = append(reasonings, s) },
-		OnUsage:     func(u Usage) { usages = append(usages, u) },
+		OnText:      func(s string) error { texts = append(texts, s); return nil },
+		OnReasoning: func(s string) error { reasonings = append(reasonings, s); return nil },
+		OnUsage:     func(u Usage) error { usages = append(usages, u); return nil },
 	}
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	comp, err := p.Complete(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}, MaxTokens: 128}, ev)
 	require.NoError(t, err)
 
@@ -284,7 +285,7 @@ func TestAnthropicTriStateCacheFields(t *testing.T) {
 	h := &anSSEHandler{events: minimalAnEvents("hi")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	comp, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
 	require.NoError(t, err)
 	assert.Nil(t, comp.Usage.CacheReadTokens, "absent cache fields stay nil, never zero-filled")
@@ -316,7 +317,7 @@ func TestAnthropicErrorEventMapsToAPIError(t *testing.T) {
 			h := &anSSEHandler{events: [][2]string{{"error", payload}}}
 			srv := httptest.NewServer(h)
 			defer srv.Close()
-			p := &Anthropic{BaseURL: srv.URL}
+			p := anProvider(t, srv.URL)
 			comp, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
 			assert.Nil(t, comp, "nothing streamed before the error event, so the call stays retryable")
 			require.Error(t, err)
@@ -338,7 +339,7 @@ func TestAnthropicErrorEventOverflowConsistent(t *testing.T) {
 	}}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	_, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
 	require.Error(t, err)
 	assert.True(t, IsContextOverflow(err))
@@ -357,7 +358,7 @@ func TestAnthropicErrorEventAfterDataKeepsPartial(t *testing.T) {
 	}}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	comp, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
 	require.Error(t, err)
 	assert.True(t, IsTransient(err))
@@ -370,7 +371,7 @@ func TestAnthropicNonOKOverflow(t *testing.T) {
 		http.Error(w, `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}`, http.StatusBadRequest)
 	}))
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	_, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
 	require.Error(t, err)
 	assert.True(t, IsContextOverflow(err))
@@ -385,7 +386,7 @@ func TestAnthropicEmptyTailUnmarked(t *testing.T) {
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	req := Request{
 		Model:     "m",
 		Messages:  []Message{{Role: RoleUser, Content: "hi"}, {Role: RoleAssistant, Content: ""}},
@@ -410,7 +411,7 @@ func TestAnthropicAssistantOnlyTextNoToolContinuation(t *testing.T) {
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := &Anthropic{BaseURL: srv.URL}
+	p := anProvider(t, srv.URL)
 	req := Request{
 		Model:     "m",
 		Messages:  []Message{{Role: RoleUser, Content: "q"}, {Role: RoleAssistant, Content: "a"}},

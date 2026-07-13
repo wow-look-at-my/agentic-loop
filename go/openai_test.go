@@ -48,13 +48,14 @@ func TestOpenAIRequestBody(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := &OpenAI{
+	p := mustProvider(t, ProviderConfig{
+		Dialect:    DialectOpenAI,
 		BaseURL:    srv.URL + "/", // trailing slash must not double up
 		APIKey:     "test-key",
 		UserAgent:  "agentic-test/1.0",
 		SelfHosted: true,
 		Headers:    map[string]string{"X-Custom": "yes"},
-	}
+	})
 	req := Request{
 		Model:  "test-model",
 		System: "be helpful",
@@ -143,7 +144,7 @@ func TestOpenAIRequestBodyDefaults(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := &OpenAI{BaseURL: srv.URL}
+	p := oaProvider(t, srv.URL)
 	req := Request{
 		Model:    "m",
 		Messages: []Message{{Role: RoleUser, Content: "q"}},
@@ -188,12 +189,12 @@ func TestOpenAIStreamDecode(t *testing.T) {
 	var usages []Usage
 	var progresses []PromptProgress
 	ev := &StreamEvents{
-		OnText:      func(s string) { texts = append(texts, s) },
-		OnReasoning: func(s string) { reasonings = append(reasonings, s) },
-		OnUsage:     func(u Usage) { usages = append(usages, u) },
-		OnProgress:  func(p PromptProgress) { progresses = append(progresses, p) },
+		OnText:      func(s string) error { texts = append(texts, s); return nil },
+		OnReasoning: func(s string) error { reasonings = append(reasonings, s); return nil },
+		OnUsage:     func(u Usage) error { usages = append(usages, u); return nil },
+		OnProgress:  func(p PromptProgress) error { progresses = append(progresses, p); return nil },
 	}
-	p := &OpenAI{BaseURL: srv.URL}
+	p := oaProvider(t, srv.URL)
 	comp, err := p.Complete(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}}, ev)
 	require.NoError(t, err)
 
@@ -244,7 +245,7 @@ func TestOpenAIStopReasonMapping(t *testing.T) {
 			}}
 			srv := httptest.NewServer(h)
 			defer srv.Close()
-			p := &OpenAI{BaseURL: srv.URL}
+			p := oaProvider(t, srv.URL)
 			comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, comp.StopReason)
@@ -258,7 +259,7 @@ func TestOpenAINonOK(t *testing.T) {
 			http.Error(w, `{"error":{"message":"This model's maximum context length is 8192 tokens"}}`, http.StatusBadRequest)
 		}))
 		defer srv.Close()
-		p := &OpenAI{BaseURL: srv.URL}
+		p := oaProvider(t, srv.URL)
 		comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 		assert.Nil(t, comp)
 		require.Error(t, err)
@@ -276,7 +277,7 @@ func TestOpenAINonOK(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}))
 		defer srv.Close()
-		p := &OpenAI{BaseURL: srv.URL}
+		p := oaProvider(t, srv.URL)
 		_, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.True(t, IsTransient(err))
@@ -296,7 +297,7 @@ func TestOpenAIPartialOnMidStreamDeath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &OpenAI{BaseURL: srv.URL}
+	p := oaProvider(t, srv.URL)
 	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 	require.Error(t, err)
 	require.NotNil(t, comp, "partial completion returned alongside the error")
@@ -321,9 +322,9 @@ func TestOpenAIPartialOnCancel(t *testing.T) {
 	// before the client has read anything).
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ev := &StreamEvents{OnText: func(string) { cancel() }}
+	ev := &StreamEvents{OnText: func(string) error { cancel(); return nil }}
 
-	p := &OpenAI{BaseURL: srv.URL}
+	p := oaProvider(t, srv.URL)
 	comp, err := p.Complete(ctx, Request{Model: "m"}, ev)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
@@ -339,7 +340,7 @@ func TestOpenAICleanEOFWithoutDone(t *testing.T) {
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}` + "\n\n"))
 	}))
 	defer srv.Close()
-	p := &OpenAI{BaseURL: srv.URL}
+	p := oaProvider(t, srv.URL)
 	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "done", comp.Message.Content)
@@ -349,7 +350,7 @@ func TestOpenAINetworkError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	url := srv.URL
 	srv.Close() // connection refused from now on
-	p := &OpenAI{BaseURL: url}
+	p := oaProvider(t, url)
 	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 	assert.Nil(t, comp)
 	require.Error(t, err)

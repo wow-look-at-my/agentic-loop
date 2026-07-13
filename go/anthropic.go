@@ -9,13 +9,13 @@ import (
 	"strings"
 )
 
-// Anthropic is a Provider for the Anthropic Messages API. BaseURL is the API
-// root (empty defaults to "https://api.anthropic.com"); requests POST to
-// BaseURL + "/v1/messages" with x-api-key and anthropic-version headers
-// (Version empty defaults to "2023-06-01"). Headers are applied after the
+// anthropicProvider is the Provider for the Anthropic Messages API, built by
+// NewProvider with DialectAnthropic. baseURL is the API root; requests POST
+// to baseURL + "/v1/messages" with x-api-key and anthropic-version headers
+// (version empty defaults to "2023-06-01"). headers are applied after the
 // defaults so a caller-supplied header can override them.
 //
-// Unless DisableCaching is set, every request carries exactly two ephemeral
+// Unless disableCaching is set, every request carries exactly two ephemeral
 // prompt-cache breakpoints: a static one on the system block (the cache
 // hierarchy is tools → system → messages, so it covers the tools array too)
 // and a moving one on the last content block of the last message, so each
@@ -23,22 +23,19 @@ import (
 // are applied to the per-request wire structures only — the caller's Messages
 // are never mutated, so the stored transcript stays marker-free.
 //
-// The exported fields are read-only during Complete, so an Anthropic value is
-// safe for concurrent use.
-type Anthropic struct {
-	BaseURL        string
-	APIKey         string
-	Version        string
-	HTTPClient     *http.Client
-	UserAgent      string
-	DisableCaching bool
-	Headers        map[string]string
+// The fields are read-only during Complete, so a value is safe for concurrent
+// use.
+type anthropicProvider struct {
+	baseURL        string
+	apiKey         string
+	version        string
+	httpClient     *http.Client
+	userAgent      string
+	disableCaching bool
+	headers        map[string]string
 }
 
-const (
-	defaultAnthropicBaseURL = "https://api.anthropic.com"
-	defaultAnthropicVersion = "2023-06-01"
-)
+const defaultAnthropicVersion = "2023-06-01"
 
 // anReserved are the Extra keys the typed core always overrides.
 var anReserved = map[string]bool{
@@ -53,7 +50,7 @@ var cacheEphemeral = map[string]string{"type": "ephemeral"}
 // Complete implements Provider over a streaming Messages API call. The
 // Messages API requires max_tokens on every request, so a Request without a
 // positive MaxTokens fails fast before any I/O.
-func (a *Anthropic) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	if req.MaxTokens <= 0 {
 		return nil, badRequestErr("anthropic: Request.MaxTokens must be positive (the Messages API requires max_tokens)")
 	}
@@ -61,32 +58,28 @@ func (a *Anthropic) Complete(ctx context.Context, req Request, ev *StreamEvents)
 	if err != nil {
 		return nil, err
 	}
-	base := a.BaseURL
-	if base == "" {
-		base = defaultAnthropicBaseURL
-	}
-	url := strings.TrimRight(base, "/") + "/v1/messages"
+	url := strings.TrimRight(a.baseURL, "/") + "/v1/messages"
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, badRequestErr("anthropic: build request: " + err.Error())
 	}
-	version := a.Version
+	version := a.version
 	if version == "" {
 		version = defaultAnthropicVersion
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Accept", "text/event-stream")
 	hreq.Header.Set("anthropic-version", version)
-	if a.APIKey != "" {
-		hreq.Header.Set("x-api-key", a.APIKey)
+	if a.apiKey != "" {
+		hreq.Header.Set("x-api-key", a.apiKey)
 	}
-	if a.UserAgent != "" {
-		hreq.Header.Set("User-Agent", a.UserAgent)
+	if a.userAgent != "" {
+		hreq.Header.Set("User-Agent", a.userAgent)
 	}
-	for k, v := range a.Headers {
+	for k, v := range a.headers {
 		hreq.Header.Set(k, v)
 	}
-	client := a.HTTPClient
+	client := a.httpClient
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -115,7 +108,7 @@ func (a *Anthropic) Complete(ctx context.Context, req Request, ev *StreamEvents)
 // (model, max_tokens, stream, system, messages, tools) are silently ignored.
 // The library does not gate thinking/temperature by model — deciding what to
 // send is the caller's job via Extra.
-func (a *Anthropic) buildBody(req Request) ([]byte, error) {
+func (a *anthropicProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.Extra {
 		if anReserved[k] {
@@ -133,13 +126,13 @@ func (a *Anthropic) buildBody(req Request) ([]byte, error) {
 		// system prompt → no system field and no static breakpoint (the
 		// moving one still covers the whole prefix).
 		sys := map[string]any{"type": "text", "text": req.System}
-		if !a.DisableCaching {
+		if !a.disableCaching {
 			sys["cache_control"] = cacheEphemeral
 		}
 		body["system"] = []map[string]any{sys}
 	}
 	msgs := anWireMessages(req.Messages)
-	if !a.DisableCaching {
+	if !a.disableCaching {
 		markTranscriptTail(msgs)
 	}
 	body["messages"] = msgs
@@ -408,7 +401,7 @@ func (st *anStream) onData(data []byte) error {
 			if u.OutputTokens != nil {
 				st.outputTokens = *u.OutputTokens
 			}
-			st.ev.emitUsage(st.currentUsage())
+			return st.ev.emitUsage(st.currentUsage())
 		}
 	case "content_block_start":
 		st.sawData = true
@@ -432,12 +425,12 @@ func (st *anStream) onData(data []byte) error {
 		switch msg.Delta.Type {
 		case "text_delta":
 			st.content.WriteString(msg.Delta.Text)
-			st.ev.emitText(msg.Delta.Text)
+			return st.ev.emitText(msg.Delta.Text)
 		case "thinking_delta":
 			if b := st.blocks[msg.Index]; b != nil {
 				b.thinking.WriteString(msg.Delta.Thinking)
 			}
-			st.ev.emitReasoning(msg.Delta.Thinking)
+			return st.ev.emitReasoning(msg.Delta.Thinking)
 		case "signature_delta":
 			if b := st.blocks[msg.Index]; b != nil {
 				b.signature.WriteString(msg.Delta.Signature)
@@ -470,7 +463,7 @@ func (st *anStream) onData(data []byte) error {
 			// Cumulative snapshot: overwrite, never sum.
 			st.haveUsage = true
 			st.outputTokens = *msg.Usage.OutputTokens
-			st.ev.emitUsage(st.currentUsage())
+			return st.ev.emitUsage(st.currentUsage())
 		}
 	case "message_stop":
 		st.sawData = true
@@ -523,7 +516,8 @@ func (st *anStream) currentUsage() Usage {
 // completion assembles the final (or partial) result. Blocks that never saw
 // content_block_stop (a turn cut off mid-block) are dropped; accumulated text
 // is kept. A missing stop_reason falls back to tool_use when calls were
-// assembled, else end_turn.
+// assembled, else end_turn. Completion.Timings stays nil on this dialect —
+// the Messages API has no timings equivalent.
 func (st *anStream) completion() *Completion {
 	stop := st.stop
 	if stop == "" {
@@ -543,5 +537,5 @@ func (st *anStream) completion() *Completion {
 	if st.haveUsage {
 		u = floorTotal(st.currentUsage())
 	}
-	return &Completion{Message: msg, Usage: u, StopReason: stop}
+	return &Completion{Message: msg, Usage: u, UsageReported: st.haveUsage, StopReason: stop}
 }
