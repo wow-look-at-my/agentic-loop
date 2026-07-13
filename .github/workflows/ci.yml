@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+
+# actions: read is required beyond the minimal pair: go-toolchain@v1's
+# autorelease step (default on) verifies it and fails the build without it.
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+jobs:
+  all-builds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          working-directory: go
