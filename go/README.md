@@ -37,7 +37,7 @@ res, err := agentic.Run(ctx, agentic.Config{
 		},
 	},
 }, agentic.Request{
-	Model:  "gpt-4o",
+	Model:  "your-model-id",
 	System: "You are a helpful assistant.",
 	Messages: []agentic.Message{
 		{Role: agentic.RoleUser, Content: "What changed in the last release?"},
@@ -59,7 +59,7 @@ provider := &agentic.Anthropic{
 
 res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myExecutor},
 	agentic.Request{
-		Model:     "claude-sonnet-4-5",
+		Model:     "your-model-id",
 		System:    "You are a helpful assistant.",
 		Messages:  []agentic.Message{{Role: agentic.RoleUser, Content: "Hi!"}},
 		MaxTokens: 4096, // REQUIRED on this dialect — the call fails fast without it
@@ -195,7 +195,7 @@ preserving a genuine surplus (reasoning tokens).
 
 ```go
 cr, err := agentic.Compact(ctx, provider, agentic.Request{
-	Model:    "gpt-4o",
+	Model:    "your-model-id",
 	System:   "You are compacting a conversation ...", // your summarizer brief
 	Messages: history,
 })
