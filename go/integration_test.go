@@ -117,7 +117,7 @@ func (rt *countingFailRT) RoundTrip(*http.Request) (*http.Response, error) {
 
 func TestRunOpenAINetworkErrorRetried(t *testing.T) {
 	rt := &countingFailRT{}
-	p := mustProvider(t, ProviderConfig{Dialect: DialectOpenAI, BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}})
+	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}}})
 	_, err := Run(context.Background(), Config{Provider: p, Retry: retryTestPolicy(3)}, Request{Model: "m"})
 	require.Error(t, err)
 	assert.Equal(t, int32(3), rt.calls.Load(), "network errors are retried up to the attempt cap")

@@ -24,10 +24,11 @@ import agentic "github.com/wow-look-at-my/agentic-loop/go"
 ## Quick start — OpenAI-compatible
 
 ```go
-provider, err := agentic.NewProvider(agentic.ProviderConfig{
-	Dialect: agentic.DialectOpenAI,
-	BaseURL: "https://api.openai.com/v1", // any OpenAI-compatible endpoint
-	APIKey:  "YOUR_API_KEY",
+provider, err := agentic.NewOpenAIProvider(agentic.OpenAIConfig{
+	ProviderConfig: agentic.ProviderConfig{
+		BaseURL: "https://api.openai.com/v1", // any OpenAI-compatible endpoint
+		APIKey:  "YOUR_API_KEY",
+	},
 })
 if err != nil { /* misconfiguration */ }
 
@@ -54,11 +55,12 @@ fmt.Println(res.Final.Content)
 ## Quick start — Anthropic
 
 ```go
-provider, err := agentic.NewProvider(agentic.ProviderConfig{
-	Dialect: agentic.DialectAnthropic,
-	BaseURL: "https://api.anthropic.com",
-	APIKey:  "YOUR_API_KEY",
-	// AnthropicVersion defaults to "2023-06-01".
+provider, err := agentic.NewAnthropicProvider(agentic.AnthropicConfig{
+	ProviderConfig: agentic.ProviderConfig{
+		BaseURL: "https://api.anthropic.com",
+		APIKey:  "YOUR_API_KEY",
+	},
+	// Version (the anthropic-version header) defaults to "2023-06-01".
 })
 if err != nil { /* misconfiguration */ }
 
@@ -80,18 +82,18 @@ type Provider interface {
 	Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error)
 }
 
-func NewProvider(cfg ProviderConfig) (Provider, error)
+func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error)
+func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error)
 ```
 
-`NewProvider` is the only way to build the two dialect providers — the
-implementations are unexported, so consumers hold nothing but the `Provider`
-interface. `ProviderConfig` selects the dialect (`DialectOpenAI` /
-`DialectAnthropic`; the string values `"openai"`/`"anthropic"` match the
-source applications' config convention) and requires `BaseURL`; `APIKey`,
-`HTTPClient`, `UserAgent`, and `Headers` are shared, while `SelfHosted`
-(OpenAI: `cache_prompt` opt-in), `AnthropicVersion`, and `DisableCaching`
-(Anthropic) are dialect-specific and ignored by the other dialect. A
-missing/unknown dialect or empty BaseURL fails fast with a permanent error.
+The per-dialect constructors are the only way to build the two dialect
+providers — the implementations are unexported, so consumers hold nothing
+but the `Provider` interface. `ProviderConfig` is the shared connection
+base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`,
+`Headers` — embedded in each dialect's config: `OpenAIConfig` adds
+`SelfHosted` (the `cache_prompt` opt-in for llama.cpp-style servers), and
+`AnthropicConfig` adds `Version` (the `anthropic-version` header) and
+`DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
 
 One streaming model call. `StreamEvents` carries optional callbacks —
 `OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings` — all nil-safe,
@@ -342,8 +344,8 @@ the parent request ending.
 
 ## Concurrency
 
-Providers built by `NewProvider` are read-only during `Complete` and safe to
-share across goroutines. The `NewParamStripper` wrapper is also safe for
+Providers built by the dialect constructors are read-only during `Complete`
+and safe to share across goroutines. The `NewParamStripper` wrapper is also safe for
 concurrent use (its strip memory is mutex-guarded). One `Run` drives one
 conversation; run concurrent conversations by calling `Run` concurrently,
 sharing the provider. A shared `Gate` bounds concurrent sub-agents.

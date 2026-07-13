@@ -10,7 +10,7 @@ import (
 )
 
 // openaiProvider is the Provider for OpenAI-compatible chat-completions APIs,
-// built by NewProvider with DialectOpenAI. baseURL is the API root including
+// built by NewOpenAIProvider. baseURL is the API root including
 // the version segment (e.g. "https://api.openai.com/v1"); requests POST to
 // baseURL + "/chat/completions". apiKey, when non-empty, is sent as a Bearer
 // token, and headers are applied after the defaults so a caller-supplied

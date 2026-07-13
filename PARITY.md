@@ -35,15 +35,17 @@ Seams (interfaces): `Provider.complete(req, events) -> Completion`
 needsApproval(name)}`, `Approver {ask(call) -> boolean}` (throw = decision
 never arrived).
 
-**Provider construction is a factory.** The dialect implementations are
-NOT exported: consumers call `NewProvider(config)` and hold only the
-`Provider` interface. The config carries `dialect` (`"openai"` /
-`"anthropic"` — these exact strings), the required `baseURL`, the shared
-`apiKey`/`httpClient`/`userAgent`/`headers`, and the dialect-specific knobs
-`selfHosted` (OpenAI), `anthropicVersion`, `disableCaching` (Anthropic) —
-each ignored by the other dialect. A missing/unknown dialect or empty
-baseURL fails fast with a permanent (never-retried) error. There are no
-per-dialect base-URL defaults: baseURL is always explicit.
+**Provider construction is one factory function per dialect over a shared
+config base.** The dialect implementations are internal — NOT exported, no
+exported dialect classes, and no dialect string enum: consumers call the
+dialect's factory (Go: `NewOpenAIProvider(config)` /
+`NewAnthropicProvider(config)`) and hold only the `Provider` interface. The
+shared connection-config shape — the required `baseURL` plus
+`apiKey`/`httpClient`/`userAgent`/`headers` — is embedded/extended by the
+per-dialect configs: the OpenAI config adds `selfHosted`, the Anthropic
+config adds `version` (the anthropic-version header) and `disableCaching`.
+An empty baseURL fails fast with a permanent (never-retried) error. There
+are no per-dialect base-URL defaults: baseURL is always explicit.
 
 **Callback error contract** (every callback below): `StreamEvents.onText /
 onReasoning / onUsage / onProgress / onTimings` and `Events.onToolCall /
@@ -645,8 +647,8 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   error, no-retry-after-partial, retried-call-is-one-turn.
 - Param stripper: all four phrasings, camelCase↔snake_case normalization,
   retry-once, memory across calls, never on cancel/after delivery.
-- Provider factory: dialect selection, required baseURL, unknown-dialect
-  failure (permanent).
+- Provider factories: one per dialect building that dialect's
+  implementation, required baseURL failure (permanent) on both.
 - Callback errors: per-callback abort (text/reasoning/usage/progress/
   timings), the caller's sentinel reachable from the returned error, never
   transient/never APIError, partial completion carries the state so far

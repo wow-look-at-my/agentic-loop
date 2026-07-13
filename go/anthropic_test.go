@@ -49,13 +49,12 @@ func TestAnthropicRequestBody(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := mustProvider(t, ProviderConfig{
-		Dialect:   DialectAnthropic,
+	p := mustAnthropic(t, AnthropicConfig{ProviderConfig: ProviderConfig{
 		BaseURL:   srv.URL,
 		APIKey:    "sk-test",
 		UserAgent: "agentic-test/1.0",
 		Headers:   map[string]string{"X-Custom": "yes"},
-	})
+	}})
 	messages := []Message{
 		{Role: RoleUser, Content: "look this up"},
 		{
@@ -194,7 +193,11 @@ func TestAnthropicDisableCaching(t *testing.T) {
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	p := mustProvider(t, ProviderConfig{Dialect: DialectAnthropic, BaseURL: srv.URL, DisableCaching: true, AnthropicVersion: "2024-01-01"})
+	p := mustAnthropic(t, AnthropicConfig{
+		ProviderConfig: ProviderConfig{BaseURL: srv.URL},
+		Version:        "2024-01-01",
+		DisableCaching: true,
+	})
 
 	req := Request{
 		Model:     "m",
