@@ -15,10 +15,16 @@ redesign — check these when a behavior question comes up):
 
 - `simple-llm-ui` `internal/chat` + `internal/upstream` + `internal/tools`:
   the OpenAI dialect (wire shapes, the Message content presence rule, the
-  tool-call accumulator, usage merging, param-strip retry, the SSE scanner
-  and its buffer sizes), the loop semantics (RunSubagent's final-turn
-  tools-withheld + wrap-up fallback; Run's approval flow and
-  cancel/approval finalization), and the executor combinators.
+  tool-call accumulator, usage merging, the llama.cpp `timings` decode,
+  param-strip retry, the SSE scanner and its buffer sizes), the loop
+  semantics (RunSubagent's final-turn tools-withheld + wrap-up fallback;
+  Run's approval flow and cancel/approval finalization), the executor
+  combinators, and the two built-in tool executors — `run_subagent`
+  (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
+  `context.go`/`summary.go`: schema, share_context modes, allowed_tools
+  grants, Gate, activity telemetry) and `web_fetch`
+  (`internal/tools/webfetch.go`: caps, URL validation, HTML cleanup, Tika,
+  the model-backed summary).
 - `ai-shadertoy` `src/ai` (`providers.ts`, `compact.ts`): the Anthropic
   dialect reference (message/thinking/tool_result mapping, cache
   breakpoints, stream events) and compaction.
@@ -46,17 +52,29 @@ cd go && go-toolchain
 ## Hard rules
 
 - **Runtime is standard library only.** testify is test-only. No new
-  runtime dependencies.
+  runtime dependencies (the web-fetch HTML cleanup and the subagent
+  machinery are deliberately hand-rolled stdlib, like the source).
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
 - **No secrets or org-internal URLs** in code, tests, examples, or docs —
   placeholder endpoints (`https://api.openai.com/v1`,
   `https://api.anthropic.com`) and placeholder keys only.
+- **Providers are built ONLY via `NewProvider(ProviderConfig)`.** The
+  dialect implementations (`openaiProvider`, `anthropicProvider`) stay
+  unexported; do not re-export them or add construction side doors.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the compaction
-  request text, the param-strip regexes, and the overflow regex are pinned
-  by tests and by PARITY.md. Do not "improve" them.
+  request text, the param-strip regexes, the overflow regex, and the two
+  built-in tools' prompts/schemas/teaching errors (the subagent
+  description + schema, `DefaultSubagentSystemPrompt`, the share_context
+  and allowed_tools error texts, the context-summary and web-summary
+  prompts, the web_fetch validation/cap/result texts) are pinned by tests
+  and by PARITY.md. Do not "improve" them.
+- Callback errors (`StreamEvents.On*`, `Events.OnToolCall/OnToolResult`
+  returning non-nil) must keep their contract: abort + partial
+  result/completion, `errors.Is`-reachable, never `*APIError`, never
+  transient, delivery marked before the callback fires.
 
 ## CI
 

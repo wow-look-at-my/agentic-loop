@@ -1,11 +1,13 @@
 # agentic-loop
 
 Reusable agentic-loop libraries for OpenAI-compatible and Anthropic APIs:
-streaming, the tool-calling loop with approval gating, transient-failure
-retry with context-overflow classification, rejected-parameter recovery,
-prompt caching on both dialects, and conversation compaction — extracted
-from an internal chat application so the same loop can be embedded in other
-hosts.
+streaming (with abortable callbacks and provider-reported timings), the
+tool-calling loop with approval gating, transient-failure retry with
+context-overflow classification, rejected-parameter recovery, prompt
+caching on both dialects, conversation compaction, and optional built-in
+tools (`run_subagent`, `web_fetch`) that compose like any other tool
+executor — extracted from an internal chat application so the same loop can
+be embedded in other hosts.
 
 ## Layout
 
