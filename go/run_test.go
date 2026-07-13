@@ -179,8 +179,8 @@ func TestRunNilApproverDeniesGatedCalls(t *testing.T) {
 func TestRunApprovalAskError(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: &Completion{Message: Message{
-			Role:    RoleAssistant,
-			Content: "let me check",
+			Role:     RoleAssistant,
+			Content:  "let me check",
 			Thinking: []ThinkingBlock{{Text: "hmm"}},
 			ToolCalls: []ToolCall{
 				{ID: "c1", Name: "safe", Arguments: "{}"},

@@ -305,27 +305,26 @@ func TestOpenAIPartialOnMidStreamDeath(t *testing.T) {
 }
 
 func TestOpenAIPartialOnCancel(t *testing.T) {
-	firstDelta := make(chan struct{})
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fl := w.(http.Flusher)
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"partial "}}]}` + "\n\n"))
 		fl.Flush()
-		close(firstDelta)
 		<-release
 	}))
 	defer srv.Close()
 	defer close(release)
 
+	// Cancel from the client side, the moment the first delta is delivered —
+	// deterministic, unlike signaling from the handler (the server may flush
+	// before the client has read anything).
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-firstDelta
-		cancel()
-	}()
+	defer cancel()
+	ev := &StreamEvents{OnText: func(string) { cancel() }}
 
 	p := &OpenAI{BaseURL: srv.URL}
-	comp, err := p.Complete(ctx, Request{Model: "m"}, nil)
+	comp, err := p.Complete(ctx, Request{Model: "m"}, ev)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 	require.NotNil(t, comp)
