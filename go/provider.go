@@ -170,9 +170,9 @@ type Completion struct {
 
 // Provider executes one streaming model call. Implementations stream under
 // the hood and deliver deltas through ev (which may be nil). Build one with
-// NewProvider, which selects the wire dialect; everything else in the library
-// (Run, OneShot, Compact, NewParamStripper, the built-in tool executors)
-// works against this interface.
+// the wire dialect's constructor — NewOpenAIProvider or NewAnthropicProvider;
+// everything else in the library (Run, OneShot, Compact, NewParamStripper,
+// the built-in tool executors) works against this interface.
 //
 // On a mid-stream failure or cancellation AFTER data has arrived — including
 // a stream callback returning an error — Complete returns the PARTIAL

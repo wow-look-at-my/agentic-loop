@@ -10,7 +10,7 @@ import (
 )
 
 // anthropicProvider is the Provider for the Anthropic Messages API, built by
-// NewProvider with DialectAnthropic. baseURL is the API root; requests POST
+// NewAnthropicProvider. baseURL is the API root; requests POST
 // to baseURL + "/v1/messages" with x-api-key and anthropic-version headers
 // (version empty defaults to "2023-06-01"). headers are applied after the
 // defaults so a caller-supplied header can override them.

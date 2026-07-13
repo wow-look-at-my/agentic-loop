@@ -60,9 +60,11 @@ cd go && go-toolchain
 - **No secrets or org-internal URLs** in code, tests, examples, or docs —
   placeholder endpoints (`https://api.openai.com/v1`,
   `https://api.anthropic.com`) and placeholder keys only.
-- **Providers are built ONLY via `NewProvider(ProviderConfig)`.** The
-  dialect implementations (`openaiProvider`, `anthropicProvider`) stay
-  unexported; do not re-export them or add construction side doors.
+- **Providers are built ONLY via the per-dialect constructors**
+  (`NewOpenAIProvider(OpenAIConfig)` / `NewAnthropicProvider(AnthropicConfig)`,
+  each embedding the shared `ProviderConfig` connection base). The dialect
+  implementations (`openaiProvider`, `anthropicProvider`) stay unexported;
+  do not re-export them or add construction side doors.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the compaction
   request text, the param-strip regexes, the overflow regex, and the two

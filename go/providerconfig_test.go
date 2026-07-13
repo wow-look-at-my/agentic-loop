@@ -7,10 +7,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mustProvider builds a Provider via NewProvider, failing the test on error.
-func mustProvider(t *testing.T, cfg ProviderConfig) Provider {
+// mustOpenAI builds a Provider via NewOpenAIProvider, failing the test on error.
+func mustOpenAI(t *testing.T, cfg OpenAIConfig) Provider {
 	t.Helper()
-	p, err := NewProvider(cfg)
+	p, err := NewOpenAIProvider(cfg)
+	require.NoError(t, err)
+	return p
+}
+
+// mustAnthropic builds a Provider via NewAnthropicProvider, failing the test on error.
+func mustAnthropic(t *testing.T, cfg AnthropicConfig) Provider {
+	t.Helper()
+	p, err := NewAnthropicProvider(cfg)
 	require.NoError(t, err)
 	return p
 }
@@ -18,44 +26,37 @@ func mustProvider(t *testing.T, cfg ProviderConfig) Provider {
 // oaProvider is shorthand for an OpenAI-dialect test provider.
 func oaProvider(t *testing.T, baseURL string) Provider {
 	t.Helper()
-	return mustProvider(t, ProviderConfig{Dialect: DialectOpenAI, BaseURL: baseURL})
+	return mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: baseURL}})
 }
 
 // anProvider is shorthand for an Anthropic-dialect test provider.
 func anProvider(t *testing.T, baseURL string) Provider {
 	t.Helper()
-	return mustProvider(t, ProviderConfig{Dialect: DialectAnthropic, BaseURL: baseURL})
+	return mustAnthropic(t, AnthropicConfig{ProviderConfig: ProviderConfig{BaseURL: baseURL}})
 }
 
-func TestNewProviderSelectsDialect(t *testing.T) {
-	p, err := NewProvider(ProviderConfig{Dialect: DialectOpenAI, BaseURL: "https://api.openai.com/v1"})
+func TestConstructorsSelectDialect(t *testing.T) {
+	p, err := NewOpenAIProvider(OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: "https://api.openai.com/v1"}})
 	require.NoError(t, err)
 	_, ok := p.(*openaiProvider)
-	assert.True(t, ok, "openai dialect builds the OpenAI-compatible provider")
+	assert.True(t, ok, "NewOpenAIProvider builds the OpenAI-compatible provider")
 
-	p, err = NewProvider(ProviderConfig{Dialect: DialectAnthropic, BaseURL: "https://api.anthropic.com"})
+	p, err = NewAnthropicProvider(AnthropicConfig{ProviderConfig: ProviderConfig{BaseURL: "https://api.anthropic.com"}})
 	require.NoError(t, err)
 	_, ok = p.(*anthropicProvider)
-	assert.True(t, ok, "anthropic dialect builds the Messages API provider")
+	assert.True(t, ok, "NewAnthropicProvider builds the Messages API provider")
 }
 
-func TestNewProviderRequiresBaseURL(t *testing.T) {
-	p, err := NewProvider(ProviderConfig{Dialect: DialectOpenAI})
+func TestConstructorsRequireBaseURL(t *testing.T) {
+	p, err := NewOpenAIProvider(OpenAIConfig{})
 	assert.Nil(t, p)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "BaseURL")
+	assert.Contains(t, err.Error(), "OpenAIConfig.BaseURL")
 	assert.False(t, IsTransient(err), "misconfiguration is permanent")
-}
 
-func TestNewProviderRejectsUnknownDialect(t *testing.T) {
-	p, err := NewProvider(ProviderConfig{BaseURL: "https://api.openai.com/v1"})
+	p, err = NewAnthropicProvider(AnthropicConfig{})
 	assert.Nil(t, p)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Dialect is required")
-
-	p, err = NewProvider(ProviderConfig{Dialect: "cohere", BaseURL: "https://example.invalid"})
-	assert.Nil(t, p)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown ProviderConfig.Dialect "cohere"`)
-	assert.False(t, IsTransient(err))
+	assert.Contains(t, err.Error(), "AnthropicConfig.BaseURL")
+	assert.False(t, IsTransient(err), "misconfiguration is permanent")
 }

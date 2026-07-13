@@ -1,8 +1,9 @@
 // Package agentic provides a reusable agentic loop for chat-model APIs:
 // provider adapters for OpenAI-compatible and Anthropic Messages endpoints
-// (built with NewProvider, which selects the dialect behind the Provider
-// interface), a tool-calling loop (Run) with approval seams (ToolExecutor,
-// Approver), transient-failure retry (RetryPolicy), rejected-parameter
+// (built with NewOpenAIProvider / NewAnthropicProvider, both hidden behind
+// the Provider interface), a tool-calling loop (Run) with approval seams
+// (ToolExecutor, Approver), transient-failure retry (RetryPolicy),
+// rejected-parameter
 // recovery (NewParamStripper), prompt caching on both dialects, streaming
 // callbacks that can abort the call by returning an error (StreamEvents,
 // Events), provider-reported timings passthrough (Timings), conversation

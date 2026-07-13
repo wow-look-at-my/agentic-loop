@@ -48,13 +48,14 @@ func TestOpenAIRequestBody(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := mustProvider(t, ProviderConfig{
-		Dialect:    DialectOpenAI,
-		BaseURL:    srv.URL + "/", // trailing slash must not double up
-		APIKey:     "test-key",
-		UserAgent:  "agentic-test/1.0",
+	p := mustOpenAI(t, OpenAIConfig{
+		ProviderConfig: ProviderConfig{
+			BaseURL:   srv.URL + "/", // trailing slash must not double up
+			APIKey:    "test-key",
+			UserAgent: "agentic-test/1.0",
+			Headers:   map[string]string{"X-Custom": "yes"},
+		},
 		SelfHosted: true,
-		Headers:    map[string]string{"X-Custom": "yes"},
 	})
 	req := Request{
 		Model:  "test-model",
