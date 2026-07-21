@@ -7,8 +7,9 @@ on:
 # autorelease step (default on) verifies it and fails the build without it.
 permissions:
   id-token: write
-  contents: read
+  contents: write
   actions: read
+  checks: read
 
 jobs:
   build:
