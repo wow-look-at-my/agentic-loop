@@ -7,11 +7,12 @@ on:
 # autorelease step (default on) verifies it and fails the build without it.
 permissions:
   id-token: write
-  contents: read
+  contents: write
   actions: read
+  checks: read
 
 jobs:
-  all-builds:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
