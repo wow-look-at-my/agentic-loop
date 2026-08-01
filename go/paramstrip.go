@@ -80,7 +80,7 @@ type paramStripper struct {
 // same stripper drop the key up front — mirroring the persistent in-place
 // strip of the source loop, without mutating the caller's Extra map. A
 // context cancellation is never treated as a parameter problem, and a call
-// that already delivered stream events is never retried.
+// that already streamed (a non-nil completion) is never retried.
 func NewParamStripper(p Provider) Provider {
 	return &paramStripper{inner: p, stripped: map[string]bool{}}
 }
@@ -88,9 +88,10 @@ func NewParamStripper(p Provider) Provider {
 // Complete implements Provider.
 func (s *paramStripper) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	req.Extra = s.withoutStripped(req.Extra)
-	delivered := false
-	comp, err := s.inner.Complete(ctx, req, probeEvents(ev, &delivered))
-	if err == nil || errors.Is(err, context.Canceled) || delivered || comp != nil {
+	comp, err := s.inner.Complete(ctx, req, ev)
+	// A non-nil completion means the call already streamed (see Provider), so
+	// it is too late to strip anything and re-send.
+	if err == nil || errors.Is(err, context.Canceled) || comp != nil {
 		return comp, err
 	}
 	key, ok := matchRejectedKey(req.Extra, err.Error())

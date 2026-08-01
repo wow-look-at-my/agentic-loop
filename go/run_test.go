@@ -355,16 +355,23 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 	assert.Equal(t, 4, res.Usages[0].TotalTokens)
 }
 
-func TestRunNoRetryWhenEventsDeliveredWithoutCompletion(t *testing.T) {
+func TestRetryTrustsTheProviderContract(t *testing.T) {
+	// "Did this call stream?" is answered by the Provider contract — a partial
+	// completion accompanies the error once data has arrived — and nothing
+	// watches the callbacks to second-guess it. The cost of that simplicity,
+	// pinned here so it is a known trade and not a surprise: a Provider that
+	// emits deltas and then returns a NIL completion has lied about streaming,
+	// and its call is re-sent.
 	netErr := errors.New("reset")
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("leaked") }},
+		{comp: assistantComp("re-sent")},
 	}}
 	res, err := Run(context.Background(),
 		Config{Provider: newProvider(provider, &noSleep)}, Request{Model: "m"})
-	require.Error(t, err)
-	require.NotNil(t, res)
-	assert.Len(t, provider.reqs, 1, "delivered events block the retry even without a partial completion")
+	require.NoError(t, err)
+	assert.Equal(t, "re-sent", res.Final.Content)
+	assert.Len(t, provider.reqs, 2, "a contract-violating provider is re-sent")
 }
 
 func TestRunPermanentFailureSurfaces(t *testing.T) {

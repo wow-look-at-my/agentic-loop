@@ -94,7 +94,7 @@ func (e *callbackError) Unwrap() error { return e.err }
 
 // wrapCallbackErr marks err as callback-originated, idempotently: nil stays
 // nil, and an error already carrying the marker is returned unchanged (the
-// emit helpers can nest through probeEvents wrappers).
+// emit helpers can nest).
 func wrapCallbackErr(err error) error {
 	if err == nil {
 		return nil

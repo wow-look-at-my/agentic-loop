@@ -281,12 +281,14 @@ func TestRetryingProvider(t *testing.T) {
 		assert.Len(t, inner.reqs, 1)
 	})
 
-	t.Run("a delivered event blocks the retry", func(t *testing.T) {
+	t.Run("a streamed delta blocks the retry", func(t *testing.T) {
 		// Once a delta reached the sink, re-sending would duplicate it — even
-		// though the failure itself is transient and no completion came back.
+		// though the failure itself is transient. A provider that streamed
+		// says so by returning its partial completion alongside the error.
 		var got []string
+		partial := &Completion{Message: Message{Role: RoleAssistant, Content: "tok"}}
 		inner := &scriptProvider{steps: []scriptStep{
-			{emit: func(ev *StreamEvents) { _ = ev.emitText("tok") }, err: &APIError{Status: 503}},
+			{emit: func(ev *StreamEvents) { _ = ev.emitText("tok") }, comp: partial, err: &APIError{Status: 503}},
 			{comp: assistantComp("never reached")},
 		}}
 		ev := &StreamEvents{OnText: func(s string) error { got = append(got, s); return nil }}
@@ -295,7 +297,7 @@ func TestRetryingProvider(t *testing.T) {
 			Complete(context.Background(), Request{Model: "m"}, ev)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, 1)
-		assert.Equal(t, []string{"tok"}, got, "the caller's callbacks still fire through the probe")
+		assert.Equal(t, []string{"tok"}, got, "the caller's callbacks reach it unwrapped")
 	})
 
 	t.Run("attempts exhausted returns the last error", func(t *testing.T) {

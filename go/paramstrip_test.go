@@ -64,6 +64,33 @@ func TestParamStripperStripsAndRetries(t *testing.T) {
 	assert.Contains(t, req.Extra, "reasoning_effort")
 }
 
+func TestParamStripperForwardsRetryEvents(t *testing.T) {
+	// The stripper is composed ABOVE the provider, so its delivery probe sits
+	// between the caller's events and the retry layer. Rebuilding the events
+	// without OnRetry silently swallowed every retry notification — the caller
+	// saw a stream that hung for the whole backoff with no explanation.
+	inner := &scriptProvider{steps: []scriptStep{
+		{err: &APIError{Status: 503, Body: "unavailable"}},
+		{comp: assistantComp("recovered")},
+	}}
+	var seen []RetryAttempt
+	ev := &StreamEvents{OnRetry: func(a RetryAttempt) error {
+		seen = append(seen, a)
+		return nil
+	}}
+
+	p := NewParamStripper(newProvider(inner, &noSleep))
+	comp, err := p.Complete(context.Background(), Request{Model: "m"}, ev)
+	require.NoError(t, err)
+	assert.Equal(t, "recovered", comp.Message.Content)
+	require.Len(t, seen, 1, "the retry reaches the caller through the stripper's probe")
+	assert.Equal(t, 1, seen[0].Attempt)
+
+	// And it still does not count as delivery: the call was re-sent, which a
+	// "streamed something" verdict would have prevented.
+	assert.Len(t, inner.reqs, 2)
+}
+
 func TestParamStripperNoMatchNoRetry(t *testing.T) {
 	apiErr := &APIError{Status: 400, Body: "unsupported parameter: something_else"}
 	inner := &scriptProvider{steps: []scriptStep{{err: apiErr}}}
@@ -93,8 +120,11 @@ func TestParamStripperNeverOnCancel(t *testing.T) {
 
 func TestParamStripperNeverAfterDelivery(t *testing.T) {
 	apiErr := &APIError{Status: 400, Body: "unsupported parameter: reasoning_effort"}
+	// A provider that streamed returns its partial completion with the error
+	// (Provider contract) — that is what marks the call unsafe to re-send.
+	partial := &Completion{Message: Message{Role: RoleAssistant, Content: "half a token"}}
 	inner := &scriptProvider{steps: []scriptStep{
-		{err: apiErr, emit: func(ev *StreamEvents) { _ = ev.emitText("half a token") }},
+		{comp: partial, err: apiErr, emit: func(ev *StreamEvents) { _ = ev.emitText("half a token") }},
 	}}
 	s := NewParamStripper(inner)
 	_, err := s.Complete(context.Background(), Request{Model: "m", Extra: map[string]any{"reasoning_effort": "high"}}, nil)

@@ -60,7 +60,9 @@ type RetryAttempt struct {
 // %w-wrapped, so errors.Is against a sentinel the callback returned holds; it
 // is never converted into an *APIError and never classified transient, so
 // neither the retry policy nor the param-strip middleware will re-send a call
-// whose sink failed.
+// whose sink failed. A provider marks data as seen BEFORE each emit, so even a
+// callback that fails on the very first delta yields a partial completion —
+// which is what tells the layers above the call is no longer safe to re-send.
 type StreamEvents struct {
 	OnText      func(string) error
 	OnReasoning func(string) error
@@ -121,22 +123,6 @@ func (ev *StreamEvents) emitRetry(a RetryAttempt) error {
 		return nil
 	}
 	return wrapCallbackErr(ev.OnRetry(a))
-}
-
-// probeEvents wraps ev so the caller can observe whether the provider
-// delivered any stream event. Retry layers use it to detect a "clean" failure
-// (nothing streamed) that is safe to re-attempt. Delivery is marked BEFORE
-// the underlying callback runs, so a callback that fails on the very first
-// delta still counts as "streamed something" — the failed call is never
-// re-sent.
-func probeEvents(ev *StreamEvents, delivered *bool) *StreamEvents {
-	return &StreamEvents{
-		OnText:      func(s string) error { *delivered = true; return ev.emitText(s) },
-		OnReasoning: func(s string) error { *delivered = true; return ev.emitReasoning(s) },
-		OnUsage:     func(u Usage) error { *delivered = true; return ev.emitUsage(u) },
-		OnProgress:  func(p PromptProgress) error { *delivered = true; return ev.emitProgress(p) },
-		OnTimings:   func(t Timings) error { *delivered = true; return ev.emitTimings(t) },
-	}
 }
 
 // Request is one model call. Messages is the transcript; System is the system
@@ -206,10 +192,17 @@ type Completion struct {
 // the built-in tool executors) works against this interface.
 //
 // On a mid-stream failure or cancellation AFTER data has arrived — including
-// a stream callback returning an error — Complete returns the PARTIAL
+// a stream callback returning an error — Complete MUST return the PARTIAL
 // *Completion alongside the error, both non-nil, so the caller can keep the
 // partial content, reasoning, and the last usage snapshot. Before any data
-// (connection errors, non-2xx responses), the completion is nil.
+// (connection errors, non-2xx responses), the completion MUST be nil.
+//
+// That rule is load-bearing, not just convenient: a non-nil completion is how
+// the layers above tell that a failed call already streamed, and therefore
+// that re-sending it would duplicate output the caller has seen. Retry and
+// NewParamStripper both read it, and neither watches the callbacks to
+// second-guess it. An implementation that emits deltas and then returns a nil
+// completion will be re-sent.
 //
 // Providers must be safe for concurrent use by multiple goroutines.
 type Provider interface {
