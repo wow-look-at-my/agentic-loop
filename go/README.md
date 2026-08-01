@@ -334,9 +334,11 @@ The provider is the right home because it is the layer that knows whether a
 call streamed anything — the condition that decides whether re-sending is
 safe. A call is re-attempted **only when the failed attempt streamed
 nothing**; once data arrived the error surfaces with the partial completion
-attached. Delivery is marked **before** each callback runs, so a callback
-that fails on the very first delta still counts as "streamed something" —
-the call is never re-sent into a dead sink.
+attached. A provider marks data as seen **before** each emit, so even a
+callback that fails on the very first delta yields a partial completion —
+the call is never re-sent into a dead sink. That single signal, the non-nil
+completion, is the whole mechanism: nothing watches the callbacks to
+second-guess it.
 
 **Retrying is not silent.** Ten attempts of uncapped backoff is minutes of
 wall-clock, so every retry fires `StreamEvents.OnRetry` *before* its

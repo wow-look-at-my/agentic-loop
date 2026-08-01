@@ -83,9 +83,9 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 }
 
 // retryComplete runs one model call with retry. A retry happens ONLY when the
-// failed attempt streamed nothing — no partial completion, no delivered stream
-// event — and the error is transient: once a delta reached the caller's sink,
-// re-sending would duplicate it.
+// failed attempt streamed nothing — signalled by a nil completion, per the
+// Provider contract — and the error is transient: once a delta reached the
+// caller's sink, re-sending would duplicate it.
 //
 // Every retry is announced through StreamEvents.OnRetry BEFORE the backoff, so
 // a waiting caller can show what failed and what is being waited on rather
@@ -95,9 +95,11 @@ func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Requ
 	var comp *Completion
 	var err error
 	for attempt := 1; ; attempt++ {
-		delivered := false
-		comp, err = p.Complete(ctx, req, probeEvents(ev, &delivered))
-		if err == nil || comp != nil || delivered || !IsTransient(err) || attempt >= attempts {
+		comp, err = p.Complete(ctx, req, ev)
+		// comp != nil IS "this attempt streamed something": a Provider must
+		// return the partial completion once data has arrived, so re-sending
+		// would duplicate what the caller already saw.
+		if err == nil || comp != nil || !IsTransient(err) || attempt >= attempts {
 			break
 		}
 		delay := policy.delay(attempt)
@@ -130,7 +132,7 @@ type retryingProvider struct {
 // surface immediately.
 //
 // A nil policy means DefaultRetry. A policy capped at one attempt returns the
-// dialect provider unwrapped: retry is off, and the probe wrapper would be
+// dialect provider unwrapped: retry is off, and the wrapper would be
 // pure overhead.
 //
 // Both dialect constructors end here, so retry is not something a caller opts

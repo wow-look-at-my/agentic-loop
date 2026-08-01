@@ -120,8 +120,11 @@ func TestParamStripperNeverOnCancel(t *testing.T) {
 
 func TestParamStripperNeverAfterDelivery(t *testing.T) {
 	apiErr := &APIError{Status: 400, Body: "unsupported parameter: reasoning_effort"}
+	// A provider that streamed returns its partial completion with the error
+	// (Provider contract) — that is what marks the call unsafe to re-send.
+	partial := &Completion{Message: Message{Role: RoleAssistant, Content: "half a token"}}
 	inner := &scriptProvider{steps: []scriptStep{
-		{err: apiErr, emit: func(ev *StreamEvents) { _ = ev.emitText("half a token") }},
+		{comp: partial, err: apiErr, emit: func(ev *StreamEvents) { _ = ev.emitText("half a token") }},
 	}}
 	s := NewParamStripper(inner)
 	_, err := s.Complete(context.Background(), Request{Model: "m", Extra: map[string]any{"reasoning_effort": "high"}}, nil)

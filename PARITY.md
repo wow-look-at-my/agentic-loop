@@ -60,10 +60,10 @@ reproduce exactly:
   stays reachable (`errors.Is` in Go; identity/`cause` chain in TS) — it is
   never converted into an `APIError` and NEVER classified transient, so
   neither retry nor the param stripper re-sends a call whose sink failed.
-- Delivery is marked BEFORE the callback is invoked, so a callback that
-  fails on the very FIRST delta still counts as "streamed something" — the
-  nothing-streamed retry guard (§8) and the param stripper's delivery guard
-  (§7) both see a delivered call and do not re-attempt. Pin: exactly one
+- A provider marks data as seen BEFORE invoking the callback, so a callback
+  that fails on the very FIRST delta still yields a partial completion. That
+  completion IS the "streamed something" signal the retry guard (§8) and the
+  param stripper (§7) read; neither watches the callbacks. Pin: exactly one
   upstream request.
 - A tool-callback error (`onToolCall`/`onToolResult`) ends the run via the
   same batch-clearing finalization as an approval interruption (§8): the
@@ -342,7 +342,7 @@ reported.
   constructors MUST apply it to every Provider they build, configured by
   `ProviderConfig.retry` (absent ⇒ the defaults above; a policy capped at
   one attempt ⇒ retry off, and the port SHOULD return the dialect provider
-  unwrapped rather than pay for a probe that can never fire). Retry is
+  unwrapped rather than pay for a wrapper that can never fire). Retry is
   deliberately NOT something a caller opts into: an opt-in retry is one a
   caller forgets to enable. The provider is also the only layer that knows
   whether a call streamed anything.
@@ -355,7 +355,7 @@ reported.
   acceptable user experience; the host has to be able to show the failure
   and the wait. It fires from the retry layer, NOT from a dialect provider;
   it must NOT mark the call as having "streamed something" (i.e. it is
-  emitted outside the delivery probe), and a non-nil return stops the
+  not a stream event and never a reason to withhold a retry), and a non-nil return stops the
   retrying and surfaces THAT error in place of the upstream's. No event
   fires for an attempt that succeeds, or for a failure that is not retried.
 - **The loop has NO retry knob.** `Run`'s config MUST NOT carry a retry
@@ -367,7 +367,7 @@ reported.
 ## 7. Rejected-parameter strip middleware
 
 Wraps a Provider. On a failure that (a) is not a context cancellation,
-(b) delivered NO stream events and no partial completion, and (c) whose
+(b) returned NO partial completion (the §1 streamed-something signal), and (c) whose
 error text matches one of four phrasings, the named parameter — matched
 against `extra` keys by normalized form — is removed and the call retried
 ONCE. The strip is REMEMBERED: subsequent calls through the same wrapper

@@ -100,8 +100,8 @@ side of that line it falls on — do not put it on both.
   safe.
 - **Retrying must stay observable.** 10 attempts of uncapped backoff is
   ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
-  the failure and the wait. It is emitted OUTSIDE the delivery probe — a
-  retry notification must never mark the call as having streamed.
+  the failure and the wait. A retry notification is not a stream event and
+  never withholds a retry.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the compaction
   request text, the param-strip regexes, the overflow regex, and the two
