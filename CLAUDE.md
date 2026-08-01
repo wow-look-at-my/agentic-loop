@@ -84,10 +84,11 @@ cd go && go-toolchain
 `working-directory: go`. Org constraints:
 
 - The workflow trigger stays `on: push:` only.
-- The required status check is **`all-builds`**, posted by the org's
-  required-builds aggregator — NOT a job. Never name a job that: the
-  toolchain action has a "Refuse jobs named all-builds" guard and will fail
-  the build outright.
+- The required status check is named exactly **`all-builds`**, but it is
+  posted by the org's required-builds-manager app (which aggregates this
+  repo's builds) — never by a job. Never name a workflow job `all-builds`:
+  the guard step inside go-toolchain@v1 hard-fails any run whose workflow
+  defines a job by that name. The CI job here is `build`.
 - The `permissions` block (`id-token: write`, `contents: write`,
   `actions: read`, `checks: read`, `deployments: write`,
   `artifact-metadata: write`) is required by the toolchain action; don't trim
