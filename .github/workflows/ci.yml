@@ -14,6 +14,7 @@ permissions:
   actions: read
   checks: read
   deployments: write
+  artifact-metadata: write
 
 jobs:
   build:

@@ -84,14 +84,19 @@ cd go && go-toolchain
 `working-directory: go`. Org constraints:
 
 - The workflow trigger stays `on: push:` only.
-- The required status check is named exactly **`all-builds`** — that is the
-  job name; keep it if the workflow is ever restructured.
+- The required status check is **`all-builds`**, posted by the org's
+  required-builds aggregator — NOT a job. Never name a job that: the
+  toolchain action has a "Refuse jobs named all-builds" guard and will fail
+  the build outright.
 - The `permissions` block (`id-token: write`, `contents: write`,
-  `actions: read`, `checks: read`, `deployments: write`) is required by the
-  toolchain action; don't trim it. Each entry past the first backs a step of
-  the default-on autorelease, and a missing one fails the build *after* tests
-  and vet have passed — so a red run whose test output looks clean is usually
-  this, not the code.
+  `actions: read`, `checks: read`, `deployments: write`,
+  `artifact-metadata: write`) is required by the toolchain action; don't trim
+  it. Everything past `id-token` backs a step of the default-on autorelease —
+  dependency-graph submission, the GitHub Deployment, the artifact storage
+  record — none of which can be opted out of, so a missing grant fails the
+  build *after* tests and vet have passed. A red run whose test output looks
+  clean is usually this, not the code; `action.yml`'s `autorelease` input
+  description is the authoritative list.
 
 ## Git workflow
 
