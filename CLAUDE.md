@@ -86,8 +86,12 @@ cd go && go-toolchain
 - The workflow trigger stays `on: push:` only.
 - The required status check is named exactly **`all-builds`** — that is the
   job name; keep it if the workflow is ever restructured.
-- The `permissions` block (`id-token: write`, `contents: read`,
-  `actions: read`) is required by the toolchain action; don't trim it.
+- The `permissions` block (`id-token: write`, `contents: write`,
+  `actions: read`, `checks: read`, `deployments: write`) is required by the
+  toolchain action; don't trim it. Each entry past the first backs a step of
+  the default-on autorelease, and a missing one fails the build *after* tests
+  and vet have passed — so a red run whose test output looks clean is usually
+  this, not the code.
 
 ## Git workflow
 

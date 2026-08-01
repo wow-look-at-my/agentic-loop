@@ -3,13 +3,17 @@ name: CI
 on:
   push:
 
-# actions: read is required beyond the minimal pair: go-toolchain@v1's
-# autorelease step (default on) verifies it and fails the build without it.
+# Everything past the minimal pair is required by go-toolchain@v1's autorelease
+# step (default on): actions: read is verified up front, contents: write backs
+# the dependency-graph submission, and deployments: write registers the
+# buildhost publish as a GitHub Deployment -- a step that cannot be turned off,
+# so without it a fully-passing build still fails.
 permissions:
   id-token: write
   contents: write
   actions: read
   checks: read
+  deployments: write
 
 jobs:
   build:
