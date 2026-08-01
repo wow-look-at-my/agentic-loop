@@ -317,8 +317,8 @@ func TestRunLastTurnDanglingCallsCleared(t *testing.T) {
 }
 
 func TestRunRetriesTransientModelFailure(t *testing.T) {
-	// Retry is the provider's, so Run sees one call and counts one turn no
-	// matter how many attempts it took underneath.
+	// cfg.Retry is the loop-level pass, for a custom Provider (like this
+	// script stub) that does not retry on its own.
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: &APIError{Status: 503, Body: "unavailable"}},
 		{comp: assistantComp("after retry")},
@@ -326,12 +326,40 @@ func TestRunRetriesTransientModelFailure(t *testing.T) {
 	slept := 0
 	retry := RetryPolicy{MaxAttempts: 3, Sleep: func(context.Context, time.Duration) error { slept++; return nil }}
 	res, err := Run(context.Background(),
-		Config{Provider: newRetryingProvider(provider, &retry)}, Request{Model: "m"})
+		Config{Provider: provider, Retry: &retry}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "after retry", res.Final.Content)
 	assert.Equal(t, 1, slept)
 	assert.Equal(t, 1, res.Turns, "a retried call counts as one turn")
 	assert.Len(t, res.Usages, 1)
+}
+
+func TestRunDoesNotRetryByDefault(t *testing.T) {
+	// With cfg.Retry unset the loop makes exactly one attempt: a provider from
+	// either constructor already retries, and retrying here too would multiply
+	// the attempts (4 x 4 = 16) and their backoff.
+	provider := &scriptProvider{steps: []scriptStep{
+		{err: &APIError{Status: 503, Body: "unavailable"}},
+		{comp: assistantComp("never reached")},
+	}}
+	_, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m"})
+	require.Error(t, err)
+	assert.Len(t, provider.reqs, 1, "no loop-level retry unless cfg.Retry asks for it")
+}
+
+func TestRunRetryStacksOnAProviderThatAlreadyRetries(t *testing.T) {
+	// The multiplication the default exists to avoid, pinned so nobody
+	// "helpfully" restores a non-nil default: 2 loop attempts over a provider
+	// doing 2 of its own is 4 upstream calls.
+	provider := &scriptProvider{steps: []scriptStep{
+		{err: &APIError{Status: 503}}, {err: &APIError{Status: 503}},
+		{err: &APIError{Status: 503}}, {err: &APIError{Status: 503}},
+	}}
+	two := RetryPolicy{MaxAttempts: 2, Sleep: func(context.Context, time.Duration) error { return nil }}
+	_, err := Run(context.Background(),
+		Config{Provider: newProvider(provider, &two), Retry: &two}, Request{Model: "m"})
+	require.Error(t, err)
+	assert.Len(t, provider.reqs, 4, "loop attempts x provider attempts")
 }
 
 func TestRunNoRetryAfterPartialStream(t *testing.T) {
@@ -341,7 +369,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: partial, err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("part") }},
 	}}
-	res, err := Run(context.Background(), Config{Provider: newRetryingProvider(provider, &noSleep)},
+	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, netErr)
@@ -361,7 +389,7 @@ func TestRunNoRetryWhenEventsDeliveredWithoutCompletion(t *testing.T) {
 		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("leaked") }},
 	}}
 	res, err := Run(context.Background(),
-		Config{Provider: newRetryingProvider(provider, &noSleep)}, Request{Model: "m"})
+		Config{Provider: provider, Retry: &noSleep}, Request{Model: "m"})
 	require.Error(t, err)
 	require.NotNil(t, res)
 	assert.Len(t, provider.reqs, 1, "delivered events block the retry even without a partial completion")

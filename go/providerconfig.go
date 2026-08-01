@@ -67,7 +67,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 	if cfg.BaseURL == "" {
 		return nil, badRequestErr("agentic: OpenAIConfig.BaseURL is required")
 	}
-	return newRetryingProvider(&openaiProvider{
+	return newProvider(&openaiProvider{
 		baseURL:    cfg.BaseURL,
 		apiKey:     cfg.APIKey,
 		httpClient: cfg.HTTPClient,
@@ -86,7 +86,7 @@ func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 	if cfg.BaseURL == "" {
 		return nil, badRequestErr("agentic: AnthropicConfig.BaseURL is required")
 	}
-	return newRetryingProvider(&anthropicProvider{
+	return newProvider(&anthropicProvider{
 		baseURL:        cfg.BaseURL,
 		apiKey:         cfg.APIKey,
 		version:        cfg.Version,

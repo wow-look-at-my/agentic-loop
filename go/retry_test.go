@@ -163,7 +163,7 @@ func TestRetryingProvider(t *testing.T) {
 		policy := RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond,
 			Sleep: func(_ context.Context, d time.Duration) error { delays = append(delays, d); return nil }}
 
-		comp, err := newRetryingProvider(inner, &policy).
+		comp, err := newProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "recovered", comp.Message.Content)
@@ -177,7 +177,7 @@ func TestRetryingProvider(t *testing.T) {
 			{err: &APIError{Status: 400, Body: "bad request"}},
 			{comp: assistantComp("never reached")},
 		}}
-		_, err := newRetryingProvider(inner, &noSleep).
+		_, err := newProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, 1)
@@ -187,7 +187,7 @@ func TestRetryingProvider(t *testing.T) {
 		inner := &scriptProvider{steps: []scriptStep{
 			{err: &APIError{Status: 400, Body: "prompt is too long", ContextOverflow: true}},
 		}}
-		_, err := newRetryingProvider(inner, &noSleep).
+		_, err := newProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.True(t, IsContextOverflow(err), "the flag survives the decorator")
@@ -200,7 +200,7 @@ func TestRetryingProvider(t *testing.T) {
 			{comp: partial, err: &APIError{Status: 503}},
 			{comp: assistantComp("never reached")},
 		}}
-		comp, err := newRetryingProvider(inner, &noSleep).
+		comp, err := newProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		require.NotNil(t, comp)
@@ -218,7 +218,7 @@ func TestRetryingProvider(t *testing.T) {
 		}}
 		ev := &StreamEvents{OnText: func(s string) error { got = append(got, s); return nil }}
 
-		_, err := newRetryingProvider(inner, &noSleep).
+		_, err := newProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, ev)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, 1)
@@ -231,7 +231,7 @@ func TestRetryingProvider(t *testing.T) {
 			{err: &APIError{Status: 503, Body: "two"}},
 		}}
 		policy := RetryPolicy{MaxAttempts: 2, Sleep: func(context.Context, time.Duration) error { return nil }}
-		_, err := newRetryingProvider(inner, &policy).
+		_, err := newProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		var ae *APIError
 		require.ErrorAs(t, err, &ae)
@@ -245,7 +245,7 @@ func TestRetryingProvider(t *testing.T) {
 			{comp: assistantComp("never reached")},
 		}}
 		policy := RetryPolicy{Sleep: func(context.Context, time.Duration) error { return context.Canceled }}
-		_, err := newRetryingProvider(inner, &policy).
+		_, err := newProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		var ae *APIError
 		require.ErrorAs(t, err, &ae, "the call's error surfaces, not the sleep error")
@@ -263,7 +263,7 @@ func TestRetryingProvider(t *testing.T) {
 			delays = append(delays, d)
 			return nil
 		}}
-		_, err := newRetryingProvider(inner, &policy).
+		_, err := newProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, DefaultRetry.MaxAttempts)

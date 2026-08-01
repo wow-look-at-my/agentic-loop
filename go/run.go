@@ -58,18 +58,20 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 // Config wires one Run: the Provider to call, the ToolExecutor whose tools
 // are advertised and executed (nil runs tool-less), the Approver consulted
 // for calls the executor flags via NeedsApproval (nil denies gated calls with
-// DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), and the event
-// callbacks.
-//
-// There is no retry knob: retry is the Provider's job (ProviderConfig.Retry),
-// since it is the layer that knows whether a call streamed anything. A
-// provider from either dialect constructor already retries.
+// DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), an optional
+// loop-level retry policy, and the event callbacks.
 type Config struct {
 	Provider Provider
 	Tools    ToolExecutor
 	Approver Approver
 	MaxTurns int
-	Events   Events
+	// Retry adds loop-level retry around each model call. It is OFF by
+	// default (nil), because a Provider from either dialect constructor
+	// already retries — see ProviderConfig.Retry. Set it only for a custom
+	// Provider that does not retry on its own: stacking it on one that does
+	// MULTIPLIES the attempts (4 × 4 = 16) and their backoff.
+	Retry  *RetryPolicy
+	Events Events
 
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
@@ -114,13 +116,14 @@ type Result struct {
 // plus the callback's error — in every case the partial Result rides
 // alongside the error and the transcript carries no orphan tool calls.
 //
-// Model-call retry belongs to the Provider, not to Run: a provider built by
-// either dialect constructor re-attempts transient failures itself, and a
-// retried call is one turn here because Run only ever sees the outcome. When
-// a call fails after data arrived, the partial assistant message is finalized
-// into the transcript (tool calls cleared) and the partial Result is returned
-// alongside the error. Whenever Run returns an error together with a non-nil
-// Result, the Result carries the transcript accumulated so far.
+// Model-call retry normally belongs to the Provider (a provider from either
+// dialect constructor re-attempts transient failures itself); cfg.Retry adds
+// a loop-level pass on top, for a custom Provider that does not. Either way a
+// retried call is ONE turn. When a call fails after data arrived, the partial
+// assistant message is finalized into the transcript (tool calls cleared) and
+// the partial Result is returned alongside the error. Whenever Run returns an
+// error together with a non-nil Result, the Result carries the transcript
+// accumulated so far.
 //
 // If the loop ends with the model having produced no content (a
 // thinking-only turn, or the cap hit mid-research), one extra tool-less
@@ -134,6 +137,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = DefaultMaxTurns
+	}
+	// No loop-level retry unless asked for: the Provider already retries, and
+	// doing it here too would multiply the attempts.
+	retry := RetryPolicy{MaxAttempts: 1}
+	if cfg.Retry != nil {
+		retry = *cfg.Retry
 	}
 
 	var advertised []Tool
@@ -164,7 +173,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			turnTools = advertised
 		}
 
-		comp, err := runModelCall(ctx, &cfg, req, transcript, turnTools, res)
+		comp, err := runModelCall(ctx, &cfg, retry, req, transcript, turnTools, res)
 		if err != nil {
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
@@ -248,7 +257,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
 			wrapMsgs = append(wrapMsgs, wrapMsg)
-			comp2, err2 := runModelCall(ctx, &cfg, req, wrapMsgs, nil, res)
+			comp2, err2 := runModelCall(ctx, &cfg, retry, req, wrapMsgs, nil, res)
 			if err2 == nil {
 				if s := strings.TrimSpace(comp2.Message.Content); s != "" {
 					final := comp2.Message
@@ -274,19 +283,19 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 }
 
-// runModelCall executes one model call and counts it as one turn — including
-// when the provider re-attempted it internally, which Run neither sees nor
-// needs to. Every call that produced a completion — success or partial —
+// runModelCall executes one model call and counts it as ONE turn, however
+// many attempts it took — the provider's own retries plus any loop-level pass
+// from cfg.Retry. Every call that produced a completion — success or partial —
 // appends its usage to the result.
 func runModelCall(
-	ctx context.Context, cfg *Config,
+	ctx context.Context, cfg *Config, retry RetryPolicy,
 	req Request, msgs []Message, tools []Tool, res *Result,
 ) (*Completion, error) {
 	r := req
 	r.Messages = msgs
 	r.Tools = tools
 
-	comp, err := cfg.Provider.Complete(ctx, r, &cfg.Events.StreamEvents)
+	comp, err := retryComplete(ctx, cfg.Provider, retry, r, &cfg.Events.StreamEvents)
 	res.Turns++
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)

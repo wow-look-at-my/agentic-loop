@@ -296,9 +296,11 @@ attached. Delivery is marked **before** each callback runs, so a callback
 that fails on the very first delta still counts as "streamed something" —
 the call is never re-sent into a dead sink.
 
-`Run` therefore has no retry knob, and a retried call is one turn: `Run`
-only ever sees the outcome. A custom `Provider` implementation is
-responsible for its own retry.
+`Config.Retry` adds a **loop-level** pass on top, for a custom `Provider`
+that does not retry on its own. It is off by default, and deliberately so:
+stacking it on a constructor-built provider MULTIPLIES the attempts
+(4 × 4 = 16) and their backoff. Either way a retried call counts as one
+turn.
 
 ### Rejected-parameter recovery
 

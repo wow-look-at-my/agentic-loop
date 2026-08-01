@@ -83,6 +83,11 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 // re-sending would duplicate it.
 func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Request, ev *StreamEvents) (*Completion, error) {
 	attempts := policy.attempts()
+	if attempts <= 1 {
+		// Retry is off: skip the probe wrapper, which would allocate a closure
+		// per callback to answer a question nothing asks.
+		return p.Complete(ctx, req, ev)
+	}
 	var comp *Completion
 	var err error
 	for attempt := 1; ; attempt++ {
@@ -104,29 +109,30 @@ type retryingProvider struct {
 	policy RetryPolicy
 }
 
-// newRetryingProvider gives p the library's standard retry behavior: a
-// transient failure (408, 429, 5xx, transport errors) is re-attempted per the
-// policy, but ONLY when the attempt streamed nothing, so a caller's sink never
-// sees the same delta twice. Permanent failures — other 4xx, context overflow,
+// newProvider finishes a dialect implementation into the Provider callers
+// hold: it gives it the library's standard retry behavior, so a transient
+// failure (408, 429, 5xx, transport errors) is re-attempted per the policy —
+// but ONLY when the attempt streamed nothing, so a caller's sink never sees
+// the same delta twice. Permanent failures — other 4xx, context overflow,
 // cancellation, and errors the caller's own stream callbacks returned —
 // surface immediately.
 //
-// A nil policy means DefaultRetry. A policy capped at one attempt returns p
-// unwrapped: retry is off, and the probe wrapper would be pure overhead.
+// A nil policy means DefaultRetry, because retry is not something a caller
+// opts into: a retry you have to remember to enable is one that silently
+// isn't there. A policy capped at one attempt turns it off and returns the
+// dialect provider unwrapped.
 //
-// This is internal machinery. Retry is not something a caller opts into — the
-// dialect constructors apply it to every Provider they build (see
-// ProviderConfig.Retry), because a retry you have to remember to enable is one
-// that silently isn't there.
-func newRetryingProvider(p Provider, policy *RetryPolicy) Provider {
+// Both dialect constructors end here, so every Provider the library builds
+// retries. See ProviderConfig.Retry.
+func newProvider(dialect Provider, policy *RetryPolicy) Provider {
 	resolved := DefaultRetry
 	if policy != nil {
 		resolved = *policy
 	}
 	if resolved.attempts() <= 1 {
-		return p
+		return dialect
 	}
-	return &retryingProvider{inner: p, policy: resolved}
+	return &retryingProvider{inner: dialect, policy: resolved}
 }
 
 // Complete implements Provider.
