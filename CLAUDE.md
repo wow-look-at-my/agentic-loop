@@ -49,6 +49,30 @@ cd go && go-toolchain
 - Test against `httptest` fake servers and the in-process `scriptProvider`
   stub (`run_test.go`) — no network, no credentials.
 
+## Layering — read this before moving anything between layers
+
+Two layers, and most design arguments in this repo are really this question
+asked sideways. `go/README.md` has the full statement; the short form:
+
+- **The loop (`Run`) is high-level.** It asks the model, runs the tools it
+  asks for, feeds results back, repeats. It knows nothing about HTTP,
+  status codes, or backoff. Its whole contract with the layer below is
+  "complete this request".
+- **An error reaching the loop is REAL and PERMANENT, so the loop stops.**
+  It is entitled to assume that: the layer whose job was to make the call
+  happen has already given up. The loop never retries and has no retry knob.
+- **The provider carries the loop's instructions out.** When the loop says
+  "complete this request", making that true — across a 429, a 502, a dropped
+  connection, a rejected parameter — is the provider's job. Those are
+  implementation details of doing the thing, not outcomes to propagate. It
+  errors only when the operation genuinely cannot be completed.
+
+Provider owns HOW a call gets made and everything transient in the attempt;
+loop owns WHAT calls to make and what to do with results. That is why
+retry and `NewParamStripper` are provider-side, and why `Config` /
+`SubagentConfig` carry no retry policy. When adding something new, ask which
+side of that line it falls on — do not put it on both.
+
 ## Hard rules
 
 - **Runtime is standard library only.** testify is test-only. No new
@@ -65,6 +89,19 @@ cd go && go-toolchain
   each embedding the shared `ProviderConfig` connection base). The dialect
   implementations (`openaiProvider`, `anthropicProvider`) stay unexported;
   do not re-export them or add construction side doors.
+- **Retry belongs to the Provider and is ON by default.** Both constructors
+  end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
+  nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
+  returns the dialect provider unwrapped). `ProviderConfig.Retry` is the
+  library's ONE retry knob — do NOT add another to `Config` or
+  `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
+  one callers forget to enable. The provider is also the only layer that
+  knows whether a call streamed anything, which is what makes re-sending
+  safe.
+- **Retrying must stay observable.** 10 attempts of uncapped backoff is
+  ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
+  the failure and the wait. It is emitted OUTSIDE the delivery probe — a
+  retry notification must never mark the call as having streamed.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the compaction
   request text, the param-strip regexes, the overflow regex, and the two

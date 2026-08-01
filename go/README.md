@@ -73,6 +73,46 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myExecuto
 	})
 ```
 
+## Layering — which layer owns what
+
+Two layers, and the split decides where anything new belongs. Get this
+backwards and you end up with the same concern implemented twice, fighting
+each other.
+
+**The loop (`Run`) is a high-level construct.** It asks the model something,
+runs the tools the model asks for, feeds the results back, and repeats until
+there is an answer. It knows nothing about HTTP, connections, status codes,
+or backoff — those words do not appear in it. Its contract with the layer
+below is simply *"complete this request."*
+
+Consequently **an error that reaches the loop is treated as real and
+permanent, and the loop stops.** It is entitled to that assumption: by the
+time a failure has surfaced this far, the layer whose job was to make the
+call happen has already given up. The loop does not second-guess it, does
+not retry, and has no retry knob to configure — deliberately.
+
+**The provider is where the loop's instructions are actually carried out.**
+When the loop says "complete this request", making that true is the
+provider's responsibility, including everything that can go transiently
+wrong in the attempt: a 429, a 502, a dropped connection, a rejected
+parameter. Those are implementation details of *doing the thing*, not
+outcomes worth propagating. The provider surfaces an error only when the
+operation genuinely cannot be completed — at which point it is, by
+construction, permanent.
+
+So: the provider owns **how** a model call gets made and everything that
+can transiently go wrong doing it; the loop owns **what** calls to make and
+what to do with the results.
+
+That is why `ProviderConfig.Retry` is the library's one retry knob, why
+`NewParamStripper` is a provider decorator rather than a loop feature, and
+why `Config`/`SubagentConfig` carry no retry policy. It is also why retry
+lives where it can see whether a call streamed anything — the condition
+that decides whether re-sending is even safe — which the loop cannot see.
+
+The one thing the provider must NOT do is hide the wait: see
+`StreamEvents.OnRetry` under [Retry](#retry-and-error-classification).
+
 ## The pieces
 
 ### Provider
@@ -96,7 +136,8 @@ base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`,
 `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
 
 One streaming model call. `StreamEvents` carries optional callbacks —
-`OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings` — all nil-safe,
+`OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings`, `OnRetry` —
+all nil-safe,
 and **every callback returns an error**: a non-nil return aborts the stream
 read immediately, and `Complete` returns the partial `*Completion` (content,
 reasoning, tool calls, usage so far) together with that error. The error
@@ -258,8 +299,9 @@ requested tools, feed the results back, repeat. Key behaviors:
 
 ### Retry and error classification
 
-`RetryPolicy` (default `DefaultRetry`: 4 attempts, 500ms base, delay =
-base × 2^(n−1), no jitter) retries only what `IsTransient` allows: HTTP 408,
+`RetryPolicy` (default `DefaultRetry`: **10 attempts**, 500ms base, delay =
+base × 2^(n−1), no jitter, no cap) retries only what `IsTransient`
+allows: HTTP 408,
 429, any 5xx, and network/transport errors. Context cancellation, other
 4xx, and **errors your own callbacks returned** are permanent. A 400 whose
 body says the prompt exceeded the context window is flagged — check with
@@ -269,25 +311,54 @@ typically arrives) are mapped onto the same `APIError` using Anthropic's
 documented error-type → status table, so an in-stream overload (529) or rate
 limit (429) retries exactly like its non-2xx counterpart.
 
-Inside `Run`, a model call is re-attempted **only when the failed attempt
-streamed nothing**; once data arrived, the partial assistant message is
-finalized into the transcript and the partial `Result` is returned with the
-error. Delivery is marked **before** each callback runs, so a callback that
-fails on the very first delta still counts as "streamed something" — the
-call is never re-sent into a dead sink.
-
-If you drive your own loop instead of using `Run`, wrap the provider to get
-the same behavior:
+**Retry is on by default and belongs to the Provider**, not to `Run`: every
+provider a dialect constructor builds already retries, so there is nothing
+to opt into and nothing to remember. Tune or disable it per provider:
 
 ```go
-provider := agentic.NewRetryingProvider(inner, agentic.DefaultRetry)
+// The default — retries transient failures.
+p, _ := agentic.NewOpenAIProvider(agentic.OpenAIConfig{
+    ProviderConfig: agentic.ProviderConfig{BaseURL: url},
+})
+
+// Explicitly off.
+p, _ = agentic.NewOpenAIProvider(agentic.OpenAIConfig{
+    ProviderConfig: agentic.ProviderConfig{
+        BaseURL: url,
+        Retry:   &agentic.RetryPolicy{MaxAttempts: 1},
+    },
+})
 ```
 
-It shares one implementation with `Run`'s per-turn call, so the two can't
-drift. A zero-value `RetryPolicy` uses the defaults. Composition order
-matters: with `NewParamStripper` innermost each retry re-sends the
-already-stripped request, whereas retrying outside the stripper re-runs
-parameter recovery on every attempt.
+The provider is the right home because it is the layer that knows whether a
+call streamed anything — the condition that decides whether re-sending is
+safe. A call is re-attempted **only when the failed attempt streamed
+nothing**; once data arrived the error surfaces with the partial completion
+attached. Delivery is marked **before** each callback runs, so a callback
+that fails on the very first delta still counts as "streamed something" —
+the call is never re-sent into a dead sink.
+
+**Retrying is not silent.** Ten attempts of uncapped backoff is minutes of
+wall-clock, so every retry fires `StreamEvents.OnRetry` *before* its
+backoff, carrying which attempt failed, of how many, the delay about to be
+waited, and the error — show it, don't leave the user staring at nothing:
+
+```go
+ev := &agentic.StreamEvents{
+    OnRetry: func(a agentic.RetryAttempt) error {
+        log.Printf("attempt %d/%d failed (%v), retrying in %s", a.Attempt, a.Of, a.Err, a.Delay)
+        return nil // returning an error stops the retrying
+    },
+}
+```
+
+`OnRetry` fires from the retry layer, not from a dialect provider, and does
+**not** count as "streamed something" — a notification about a failed
+attempt cannot make the next one unsafe.
+
+`Run` therefore has no retry knob, and a retried call is one turn: `Run`
+only ever sees the outcome. A custom `Provider` implementation is
+responsible for its own retry.
 
 ### Rejected-parameter recovery
 

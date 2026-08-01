@@ -65,7 +65,6 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec,
-		Retry:    &noSleep,
 		Events: Events{
 			OnToolCall:   func(c ToolCall) error { calls = append(calls, c); return nil },
 			OnToolResult: func(_ ToolCall, r ToolResult) error { results = append(results, r); return nil },
@@ -121,7 +120,7 @@ func TestRunExecuteErrorBecomesTeachingResult(t *testing.T) {
 		tools:   []Tool{{Name: "explode"}},
 		execute: func(context.Context, ToolCall) (ToolResult, error) { return ToolResult{}, errors.New("boom") },
 	}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err, "the loop never aborts on tool failure")
 	toolMsg := res.Messages[1]
 	assert.Equal(t, RoleTool, toolMsg.Role)
@@ -138,7 +137,7 @@ func TestRunApprovalDeny(t *testing.T) {
 	exec := &fakeExec{tools: []Tool{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
 	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return false, nil })
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Approver: approver, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Approver: approver}, Request{Model: "m"})
 	require.NoError(t, err)
 	toolMsg := res.Messages[1]
 	assert.Equal(t, DeniedMessage, toolMsg.Content, "exact denial text recorded as the tool result")
@@ -158,7 +157,7 @@ func TestRunApprovalAllow(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
 	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return true, nil })
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Approver: approver, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Approver: approver}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Len(t, exec.executed, 1)
 	assert.Equal(t, "ran danger", res.Messages[1].Content)
@@ -170,7 +169,7 @@ func TestRunNilApproverDeniesGatedCalls(t *testing.T) {
 		{comp: assistantComp("ok")},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, DeniedMessage, res.Messages[1].Content, "no approver means gated calls fail closed")
 	assert.Empty(t, exec.executed)
@@ -192,7 +191,7 @@ func TestRunApprovalAskError(t *testing.T) {
 	interrupted := errors.New("stream closed")
 	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return false, interrupted })
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Approver: approver, Retry: &noSleep},
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Approver: approver},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, interrupted)
@@ -218,7 +217,7 @@ func TestRunFinalTurnWithholdsTools(t *testing.T) {
 		{comp: assistantComp("forced answer")},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 2, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 2}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 2)
 	assert.NotEmpty(t, provider.reqs[0].Tools)
@@ -233,7 +232,7 @@ func TestRunStallFallbackSynthesizes(t *testing.T) {
 		{comp: assistantComp("synthesized report")},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Retry: &noSleep},
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}}})
 	require.NoError(t, err)
 
@@ -258,7 +257,7 @@ func TestRunStallFallbackToReasoning(t *testing.T) {
 	emptyAgain := &Completion{Message: Message{Role: RoleAssistant}, StopReason: StopEndTurn}
 	provider := &scriptProvider{steps: []scriptStep{{comp: stalled}, {comp: emptyAgain}}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "the reasoning", res.Final.Content, "reasoning is the fallback answer")
 }
@@ -267,7 +266,7 @@ func TestRunStallPlaceholderWithoutTools(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: &Completion{Message: Message{Role: RoleAssistant}, StopReason: StopEndTurn}},
 	}}
-	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 1, "no wrap-up turn without an executor")
 	assert.Equal(t, noOutputPlaceholder, res.Final.Content)
@@ -278,7 +277,7 @@ func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "ghost", Arguments: "{}"})},
 		{comp: assistantComp("sorry")},
 	}}
-	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 2)
 	assert.Empty(t, provider.reqs[0].Tools, "nil Tools advertises nothing")
@@ -298,7 +297,7 @@ func TestRunMaxTurnsDefault(t *testing.T) {
 	steps = append(steps, scriptStep{comp: assistantComp("capped")})
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, DefaultMaxTurns, res.Turns)
 	assert.Empty(t, provider.reqs[DefaultMaxTurns-1].Tools)
@@ -311,20 +310,23 @@ func TestRunLastTurnDanglingCallsCleared(t *testing.T) {
 		{comp: assistantComp("answer with dangling call", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 1, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 1}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Nil(t, res.Final.ToolCalls, "never-executed calls do not survive into the final transcript")
 	assert.Empty(t, exec.executed)
 }
 
 func TestRunRetriesTransientModelFailure(t *testing.T) {
+	// Retry is the provider's, so Run sees one call and counts one turn no
+	// matter how many attempts it took underneath.
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: &APIError{Status: 503, Body: "unavailable"}},
 		{comp: assistantComp("after retry")},
 	}}
 	slept := 0
 	retry := RetryPolicy{MaxAttempts: 3, Sleep: func(context.Context, time.Duration) error { slept++; return nil }}
-	res, err := Run(context.Background(), Config{Provider: provider, Retry: &retry}, Request{Model: "m"})
+	res, err := Run(context.Background(),
+		Config{Provider: newProvider(provider, &retry)}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "after retry", res.Final.Content)
 	assert.Equal(t, 1, slept)
@@ -339,7 +341,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: partial, err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("part") }},
 	}}
-	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep},
+	res, err := Run(context.Background(), Config{Provider: newProvider(provider, &noSleep)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, netErr)
@@ -358,7 +360,8 @@ func TestRunNoRetryWhenEventsDeliveredWithoutCompletion(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("leaked") }},
 	}}
-	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep}, Request{Model: "m"})
+	res, err := Run(context.Background(),
+		Config{Provider: newProvider(provider, &noSleep)}, Request{Model: "m"})
 	require.Error(t, err)
 	require.NotNil(t, res)
 	assert.Len(t, provider.reqs, 1, "delivered events block the retry even without a partial completion")
@@ -368,7 +371,7 @@ func TestRunPermanentFailureSurfaces(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: &APIError{Status: 400, Body: "prompt is too long", ContextOverflow: true}},
 	}}
-	res, err := Run(context.Background(), Config{Provider: provider, Retry: &noSleep},
+	res, err := Run(context.Background(), Config{Provider: provider},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.True(t, IsContextOverflow(err))
@@ -395,7 +398,7 @@ func TestRunStreamEventsForwarded(t *testing.T) {
 	}}
 	var text, reasoning string
 	var gotUsage, gotProgress, gotTimings bool
-	cfg := Config{Provider: provider, Retry: &noSleep, Events: Events{StreamEvents: StreamEvents{
+	cfg := Config{Provider: provider, Events: Events{StreamEvents: StreamEvents{
 		OnText:      func(s string) error { text += s; return nil },
 		OnReasoning: func(s string) error { reasoning += s; return nil },
 		OnUsage:     func(Usage) error { gotUsage = true; return nil },

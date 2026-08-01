@@ -6,25 +6,30 @@ import (
 )
 
 // RetryPolicy is exponential-backoff retry for transient failures. The
-// zero-value fields default at use time to 4 attempts (1 try + 3 retries) and
-// a 500ms base delay; the delay before retry n is BaseDelay × 2^(n−1) with no
-// jitter and no cap. Sleep, when nil, uses a context-aware timer; inject it in
-// tests to skip real waiting.
+// zero-value fields default at use time to 10 attempts (1 try + 9 retries)
+// and a 500ms base delay; the delay before retry n is BaseDelay × 2^(n−1)
+// with no jitter and no cap. Sleep, when nil, uses a context-aware timer;
+// inject it in tests to skip real waiting.
 type RetryPolicy struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
 	Sleep       func(context.Context, time.Duration) error
 }
 
-// DefaultRetry is the default policy: 4 attempts, 500ms base delay.
-var DefaultRetry = RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond}
+// defaultAttempts is the attempt cap applied when a policy does not set one.
+// Ten, matching Claude Code: a transient upstream should be ridden out, not
+// surfaced to the user as a failed turn after three tries.
+const defaultAttempts = 10
+
+// DefaultRetry is the default policy: 10 attempts, 500ms base delay.
+var DefaultRetry = RetryPolicy{MaxAttempts: defaultAttempts, BaseDelay: 500 * time.Millisecond}
 
 // attempts returns the effective attempt cap.
 func (p RetryPolicy) attempts() int {
 	if p.MaxAttempts > 0 {
 		return p.MaxAttempts
 	}
-	return 4
+	return defaultAttempts
 }
 
 // base returns the effective base delay.
@@ -80,9 +85,11 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 // retryComplete runs one model call with retry. A retry happens ONLY when the
 // failed attempt streamed nothing — no partial completion, no delivered stream
 // event — and the error is transient: once a delta reached the caller's sink,
-// re-sending would duplicate it. This is the single implementation of the
-// library's model-call retry semantics, shared by Run's per-turn call and by
-// NewRetryingProvider, so the two can never drift.
+// re-sending would duplicate it.
+//
+// Every retry is announced through StreamEvents.OnRetry BEFORE the backoff, so
+// a waiting caller can show what failed and what is being waited on rather
+// than sitting silent through minutes of backoff.
 func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Request, ev *StreamEvents) (*Completion, error) {
 	attempts := policy.attempts()
 	var comp *Completion
@@ -93,7 +100,15 @@ func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Requ
 		if err == nil || comp != nil || delivered || !IsTransient(err) || attempt >= attempts {
 			break
 		}
-		if serr := policy.sleep(ctx, policy.delay(attempt)); serr != nil {
+		delay := policy.delay(attempt)
+		if cberr := ev.emitRetry(RetryAttempt{
+			Attempt: attempt, Of: attempts, Delay: delay, Err: err,
+		}); cberr != nil {
+			// The caller pulled the plug on retrying (a dead sink, a UI that
+			// gave up). Surface their error, not the upstream's.
+			return comp, cberr
+		}
+		if serr := policy.sleep(ctx, delay); serr != nil {
 			break
 		}
 	}
@@ -106,20 +121,30 @@ type retryingProvider struct {
 	policy RetryPolicy
 }
 
-// NewRetryingProvider wraps a Provider with the retry behavior Run applies to
-// its own model calls: a transient failure (408, 429, 5xx, transport errors)
-// is re-attempted per the policy, but ONLY when the attempt streamed nothing,
-// so a caller's sink never sees the same delta twice. Permanent failures —
-// other 4xx, context overflow, cancellation, and errors the caller's own
-// stream callbacks returned — surface immediately. A zero-value policy uses
-// the DefaultRetry values.
+// newProvider finishes a dialect implementation into the Provider callers
+// hold: it gives it the library's retry behavior, so a transient failure
+// (408, 429, 5xx, transport errors) is re-attempted per the policy — but ONLY
+// when the attempt streamed nothing, so a caller's sink never sees the same
+// delta twice. Permanent failures — other 4xx, context overflow,
+// cancellation, and errors the caller's own stream callbacks returned —
+// surface immediately.
 //
-// It exists for callers driving their own loop instead of using Run, and
-// composes like NewParamStripper. Order matters: with the stripper innermost
-// each retry re-sends the already-stripped request, whereas retrying outside
-// the stripper re-runs parameter recovery on every attempt.
-func NewRetryingProvider(p Provider, policy RetryPolicy) Provider {
-	return &retryingProvider{inner: p, policy: policy}
+// A nil policy means DefaultRetry. A policy capped at one attempt returns the
+// dialect provider unwrapped: retry is off, and the probe wrapper would be
+// pure overhead.
+//
+// Both dialect constructors end here, so retry is not something a caller opts
+// into: a retry you have to remember to enable is one that silently isn't
+// there. ProviderConfig.Retry is the library's ONE retry knob.
+func newProvider(dialect Provider, policy *RetryPolicy) Provider {
+	resolved := DefaultRetry
+	if policy != nil {
+		resolved = *policy
+	}
+	if resolved.attempts() <= 1 {
+		return dialect
+	}
+	return &retryingProvider{inner: dialect, policy: resolved}
 }
 
 // Complete implements Provider.

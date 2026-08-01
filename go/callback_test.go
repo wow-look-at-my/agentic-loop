@@ -128,7 +128,6 @@ func TestRunCallbackErrorSingleRequestAndPartialResult(t *testing.T) {
 
 	cfg := Config{
 		Provider: oaProvider(t, srv.URL),
-		Retry:    retryTestPolicy(4),
 		Events: Events{StreamEvents: StreamEvents{
 			OnText: func(string) error { return errSink },
 		}},
@@ -158,7 +157,7 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}, {Name: "beta"}}}
 	fails := 0
-	cfg := Config{Provider: provider, Tools: exec, Retry: &noSleep, Events: Events{
+	cfg := Config{Provider: provider, Tools: exec, Events: Events{
 		OnToolCall: func(c ToolCall) error {
 			if c.Name == "beta" {
 				fails++
@@ -191,7 +190,7 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	cfg := Config{Provider: provider, Tools: exec, Retry: &noSleep, Events: Events{
+	cfg := Config{Provider: provider, Tools: exec, Events: Events{
 		OnToolResult: func(ToolCall, ToolResult) error { return errSink },
 	}}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})

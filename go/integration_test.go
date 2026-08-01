@@ -36,12 +36,33 @@ func TestRunOpenAI429ThenSuccess(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "recovered", res.Final.Content)
 	assert.Equal(t, int32(2), hits.Load())
 	assert.Equal(t, 1, res.Turns, "the retried call is one turn")
+}
+
+func TestProviderRetriesWithNoPolicyConfigured(t *testing.T) {
+	// End to end over HTTP with NOTHING configured — no Retry field, no
+	// wrapper, no Run. This is the guarantee: you cannot forget to enable it.
+	// Deliberately runs the real DefaultRetry, so it pays one 500ms backoff.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) == 1 {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		okSSE(w, "recovered")
+	}))
+	defer srv.Close()
+
+	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}})
+	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "recovered", comp.Message.Content)
+	assert.Equal(t, int32(2), hits.Load())
 }
 
 func TestRunOpenAI524Retried(t *testing.T) {
@@ -56,7 +77,7 @@ func TestRunOpenAI524Retried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "after 524", res.Final.Content)
@@ -72,7 +93,7 @@ func TestRunOpenAIOverflowNotRetried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.True(t, IsContextOverflow(err))
@@ -100,7 +121,7 @@ func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: anProvider(t, srv.URL), Retry: retryTestPolicy(4)},
+		Config{Provider: anProvider(t, srv.URL)},
 		Request{Model: "m", MaxTokens: 64, Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "recovered", res.Final.Content)
@@ -117,8 +138,8 @@ func (rt *countingFailRT) RoundTrip(*http.Request) (*http.Response, error) {
 
 func TestRunOpenAINetworkErrorRetried(t *testing.T) {
 	rt := &countingFailRT{}
-	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}}})
-	_, err := Run(context.Background(), Config{Provider: p, Retry: retryTestPolicy(3)}, Request{Model: "m"})
+	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}, Retry: retryTestPolicy(3)}})
+	_, err := Run(context.Background(), Config{Provider: p}, Request{Model: "m"})
 	require.Error(t, err)
 	assert.Equal(t, int32(3), rt.calls.Load(), "network errors are retried up to the attempt cap")
 }
@@ -136,7 +157,7 @@ func TestRunOpenAIPartialStreamNotRetried(t *testing.T) {
 	defer srv.Close()
 
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Retry: retryTestPolicy(4)},
+		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.Equal(t, int32(1), hits.Load(), "no re-attempt after a partial stream")
@@ -159,7 +180,7 @@ func TestRunEndToEndToolRoundTripOverOpenAI(t *testing.T) {
 
 	exec := &fakeExec{tools: []Tool{{Name: "echo"}}}
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Tools: exec, Retry: retryTestPolicy(2)},
+		Config{Provider: oaProvider(t, srv.URL), Tools: exec},
 		Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "start"}}})
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load())
