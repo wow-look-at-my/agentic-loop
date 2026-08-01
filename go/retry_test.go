@@ -151,3 +151,122 @@ func TestDefaultRetryValues(t *testing.T) {
 	assert.Equal(t, 4, DefaultRetry.MaxAttempts)
 	assert.Equal(t, 500*time.Millisecond, DefaultRetry.BaseDelay)
 }
+
+func TestNewRetryingProvider(t *testing.T) {
+	t.Run("transient nothing-streamed failure retries", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 503, Body: "unavailable"}},
+			{err: &APIError{Status: 429, Body: "slow down"}},
+			{comp: assistantComp("recovered")},
+		}}
+		var delays []time.Duration
+		policy := RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond,
+			Sleep: func(_ context.Context, d time.Duration) error { delays = append(delays, d); return nil }}
+
+		comp, err := NewRetryingProvider(inner, policy).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "recovered", comp.Message.Content)
+		assert.Len(t, inner.reqs, 3)
+		assert.Equal(t, []time.Duration{500 * time.Millisecond, 1 * time.Second}, delays,
+			"same exponential backoff as Run's own model calls")
+	})
+
+	t.Run("permanent error surfaces immediately", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 400, Body: "bad request"}},
+			{comp: assistantComp("never reached")},
+		}}
+		_, err := NewRetryingProvider(inner, noSleep).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		require.Error(t, err)
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("context overflow is never retried", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 400, Body: "prompt is too long", ContextOverflow: true}},
+		}}
+		_, err := NewRetryingProvider(inner, noSleep).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		require.Error(t, err)
+		assert.True(t, IsContextOverflow(err), "the flag survives the decorator")
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("partial completion is not retried", func(t *testing.T) {
+		partial := &Completion{Message: Message{Role: RoleAssistant, Content: "half"}}
+		inner := &scriptProvider{steps: []scriptStep{
+			{comp: partial, err: &APIError{Status: 503}},
+			{comp: assistantComp("never reached")},
+		}}
+		comp, err := NewRetryingProvider(inner, noSleep).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		require.Error(t, err)
+		require.NotNil(t, comp)
+		assert.Equal(t, "half", comp.Message.Content, "the partial rides alongside the error")
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("a delivered event blocks the retry", func(t *testing.T) {
+		// Once a delta reached the sink, re-sending would duplicate it — even
+		// though the failure itself is transient and no completion came back.
+		var got []string
+		inner := &scriptProvider{steps: []scriptStep{
+			{emit: func(ev *StreamEvents) { _ = ev.emitText("tok") }, err: &APIError{Status: 503}},
+			{comp: assistantComp("never reached")},
+		}}
+		ev := &StreamEvents{OnText: func(s string) error { got = append(got, s); return nil }}
+
+		_, err := NewRetryingProvider(inner, noSleep).
+			Complete(context.Background(), Request{Model: "m"}, ev)
+		require.Error(t, err)
+		assert.Len(t, inner.reqs, 1)
+		assert.Equal(t, []string{"tok"}, got, "the caller's callbacks still fire through the probe")
+	})
+
+	t.Run("attempts exhausted returns the last error", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 503, Body: "one"}},
+			{err: &APIError{Status: 503, Body: "two"}},
+		}}
+		policy := RetryPolicy{MaxAttempts: 2, Sleep: func(context.Context, time.Duration) error { return nil }}
+		_, err := NewRetryingProvider(inner, policy).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		var ae *APIError
+		require.ErrorAs(t, err, &ae)
+		assert.Equal(t, "two", ae.Body)
+		assert.Len(t, inner.reqs, 2)
+	})
+
+	t.Run("cancelled sleep stops retrying", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 503, Body: "unavailable"}},
+			{comp: assistantComp("never reached")},
+		}}
+		policy := RetryPolicy{Sleep: func(context.Context, time.Duration) error { return context.Canceled }}
+		_, err := NewRetryingProvider(inner, policy).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		var ae *APIError
+		require.ErrorAs(t, err, &ae, "the call's error surfaces, not the sleep error")
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("zero-value policy uses the DefaultRetry values", func(t *testing.T) {
+		steps := make([]scriptStep, 8)
+		for i := range steps {
+			steps[i] = scriptStep{err: &APIError{Status: 503}}
+		}
+		inner := &scriptProvider{steps: steps}
+		var delays []time.Duration
+		policy := RetryPolicy{Sleep: func(_ context.Context, d time.Duration) error {
+			delays = append(delays, d)
+			return nil
+		}}
+		_, err := NewRetryingProvider(inner, policy).
+			Complete(context.Background(), Request{Model: "m"}, nil)
+		require.Error(t, err)
+		assert.Len(t, inner.reqs, DefaultRetry.MaxAttempts)
+		assert.Equal(t, []time.Duration{500 * time.Millisecond, 1 * time.Second, 2 * time.Second}, delays)
+	})
+}
