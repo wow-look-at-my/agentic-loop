@@ -276,6 +276,19 @@ error. Delivery is marked **before** each callback runs, so a callback that
 fails on the very first delta still counts as "streamed something" — the
 call is never re-sent into a dead sink.
 
+If you drive your own loop instead of using `Run`, wrap the provider to get
+the same behavior:
+
+```go
+provider := agentic.NewRetryingProvider(inner, agentic.DefaultRetry)
+```
+
+It shares one implementation with `Run`'s per-turn call, so the two can't
+drift. A zero-value `RetryPolicy` uses the defaults. Composition order
+matters: with `NewParamStripper` innermost each retry re-sends the
+already-stripped request, whereas retrying outside the stripper re-runs
+parameter recovery on every attempt.
+
 ### Rejected-parameter recovery
 
 ```go

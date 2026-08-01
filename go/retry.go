@@ -76,3 +76,53 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 		}
 	}
 }
+
+// retryComplete runs one model call with retry. A retry happens ONLY when the
+// failed attempt streamed nothing — no partial completion, no delivered stream
+// event — and the error is transient: once a delta reached the caller's sink,
+// re-sending would duplicate it. This is the single implementation of the
+// library's model-call retry semantics, shared by Run's per-turn call and by
+// NewRetryingProvider, so the two can never drift.
+func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Request, ev *StreamEvents) (*Completion, error) {
+	attempts := policy.attempts()
+	var comp *Completion
+	var err error
+	for attempt := 1; ; attempt++ {
+		delivered := false
+		comp, err = p.Complete(ctx, req, probeEvents(ev, &delivered))
+		if err == nil || comp != nil || delivered || !IsTransient(err) || attempt >= attempts {
+			break
+		}
+		if serr := policy.sleep(ctx, policy.delay(attempt)); serr != nil {
+			break
+		}
+	}
+	return comp, err
+}
+
+// retryingProvider is the Provider-decorator form of retryComplete.
+type retryingProvider struct {
+	inner  Provider
+	policy RetryPolicy
+}
+
+// NewRetryingProvider wraps a Provider with the retry behavior Run applies to
+// its own model calls: a transient failure (408, 429, 5xx, transport errors)
+// is re-attempted per the policy, but ONLY when the attempt streamed nothing,
+// so a caller's sink never sees the same delta twice. Permanent failures —
+// other 4xx, context overflow, cancellation, and errors the caller's own
+// stream callbacks returned — surface immediately. A zero-value policy uses
+// the DefaultRetry values.
+//
+// It exists for callers driving their own loop instead of using Run, and
+// composes like NewParamStripper. Order matters: with the stripper innermost
+// each retry re-sends the already-stripped request, whereas retrying outside
+// the stripper re-runs parameter recovery on every attempt.
+func NewRetryingProvider(p Provider, policy RetryPolicy) Provider {
+	return &retryingProvider{inner: p, policy: policy}
+}
+
+// Complete implements Provider.
+func (r *retryingProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return retryComplete(ctx, r.inner, r.policy, req, ev)
+}
