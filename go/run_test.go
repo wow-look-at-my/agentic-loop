@@ -3,6 +3,7 @@ package agentic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -292,7 +293,10 @@ func TestRunMaxTurnsDefault(t *testing.T) {
 	// last turn withholds tools, and the scripted final text ends it.
 	steps := make([]scriptStep, 0, DefaultMaxTurns)
 	for i := 0; i < DefaultMaxTurns-1; i++ {
-		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: "{}"})})
+		// Distinct arguments per turn: identical batches are the stuck
+		// detector's business (TestRunStuckFailsAfterNudge), and this test is
+		// about the turn cap.
+		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: fmt.Sprintf(`{"i":%d}`, i)})})
 	}
 	steps = append(steps, scriptStep{comp: assistantComp("capped")})
 	provider := &scriptProvider{steps: steps}
@@ -391,6 +395,93 @@ func TestRunRequiresProvider(t *testing.T) {
 	res, err := Run(context.Background(), Config{}, Request{Model: "m"})
 	assert.Nil(t, res)
 	require.Error(t, err)
+}
+
+// repeatedCall is the batch a stuck model keeps asking for. The ID varies per
+// turn exactly as a provider would mint it — the fingerprint must ignore it.
+func repeatedCall(turn int) ToolCall {
+	return ToolCall{ID: fmt.Sprintf("c%d", turn), Name: "alpha", Arguments: `{"q":"same"}`}
+}
+
+func TestRunStuckNudgeUnsticksTheLoop(t *testing.T) {
+	steps := make([]scriptStep, 0, StuckNudgeAt+1)
+	for i := 0; i < StuckNudgeAt; i++ {
+		steps = append(steps, scriptStep{comp: assistantComp("", repeatedCall(i))})
+	}
+	steps = append(steps, scriptStep{comp: assistantComp("unstuck")})
+	provider := &scriptProvider{steps: steps}
+	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 20}, Request{Model: "m"})
+	require.NoError(t, err)
+	assert.Equal(t, "unstuck", res.Final.Content)
+	assert.Len(t, exec.executed, StuckNudgeAt, "every nudged batch still ran")
+
+	// The nudge is ONE user turn, after the repeated batch's tool results.
+	last := provider.reqs[len(provider.reqs)-1].Messages
+	nudges := 0
+	for i, m := range last {
+		if m.Role == RoleUser && m.Content == stuckNudgeInstruction {
+			nudges++
+			assert.Equal(t, RoleTool, last[i-1].Role, "the nudge follows the batch's results")
+		}
+	}
+	assert.Equal(t, 1, nudges, "nudged exactly once")
+}
+
+func TestRunStuckFailsAfterNudge(t *testing.T) {
+	steps := make([]scriptStep, 0, StuckFailAt)
+	for i := 0; i < StuckFailAt; i++ {
+		steps = append(steps, scriptStep{comp: assistantComp("", repeatedCall(i))})
+	}
+	provider := &scriptProvider{steps: steps}
+	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 100}, Request{Model: "m"})
+	require.ErrorIs(t, err, ErrStuck)
+	require.NotNil(t, res, "the partial transcript rides alongside the error")
+	assert.Contains(t, err.Error(), fmt.Sprintf("%d identical turns in a row", StuckFailAt))
+	assert.Equal(t, StuckFailAt, res.Turns, "the run ends well short of MaxTurns")
+	assert.Len(t, exec.executed, StuckFailAt-1, "the failing batch is never executed")
+	assert.Nil(t, res.Final.ToolCalls, "no orphan tool call survives into the transcript")
+	assert.Equal(t, RoleAssistant, res.Messages[len(res.Messages)-1].Role)
+}
+
+func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
+	// Twice StuckFailAt tool turns, alternating between two batches: no two
+	// consecutive turns are identical, so the detector never fires.
+	steps := make([]scriptStep, 0, 2*StuckFailAt+1)
+	for i := 0; i < 2*StuckFailAt; i++ {
+		call := repeatedCall(i)
+		if i%2 == 1 {
+			call.Arguments = `{"q":"other"}`
+		}
+		steps = append(steps, scriptStep{comp: assistantComp("", call)})
+	}
+	steps = append(steps, scriptStep{comp: assistantComp("done")})
+	provider := &scriptProvider{steps: steps}
+	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 100}, Request{Model: "m"})
+	require.NoError(t, err)
+	assert.Equal(t, "done", res.Final.Content)
+	assert.Equal(t, 2*StuckFailAt+1, res.Turns)
+}
+
+func TestBatchFingerprintIgnoresIDsAndSeparatesFields(t *testing.T) {
+	a := []ToolCall{{ID: "x1", Name: "alpha", Arguments: `{"a":1}`}}
+	b := []ToolCall{{ID: "x2", Name: "alpha", Arguments: `{"a":1}`}}
+	assert.Equal(t, batchFingerprint(a), batchFingerprint(b), "provider-minted IDs never make a batch look new")
+
+	assert.NotEqual(t,
+		batchFingerprint([]ToolCall{{Name: "alpha", Arguments: "beta"}}),
+		batchFingerprint([]ToolCall{{Name: "alphabeta", Arguments: ""}}),
+		"field boundaries are unambiguous")
+	assert.NotEqual(t,
+		batchFingerprint([]ToolCall{{Name: "alpha"}, {Name: "beta"}}),
+		batchFingerprint([]ToolCall{{Name: "beta"}, {Name: "alpha"}}),
+		"call order is part of the batch")
+	assert.Empty(t, batchFingerprint(nil))
 }
 
 func TestRunStreamEventsForwarded(t *testing.T) {
