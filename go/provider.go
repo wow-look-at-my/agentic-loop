@@ -130,20 +130,21 @@ func (ev *StreamEvents) emitRetry(a RetryAttempt) error {
 // delta still counts as "streamed something" — the failed call is never
 // re-sent.
 func probeEvents(ev *StreamEvents, delivered *bool) *StreamEvents {
-	return &StreamEvents{
-		OnText:      func(s string) error { *delivered = true; return ev.emitText(s) },
-		OnReasoning: func(s string) error { *delivered = true; return ev.emitReasoning(s) },
-		OnUsage:     func(u Usage) error { *delivered = true; return ev.emitUsage(u) },
-		OnProgress:  func(p PromptProgress) error { *delivered = true; return ev.emitProgress(p) },
-		OnTimings:   func(t Timings) error { *delivered = true; return ev.emitTimings(t) },
-		// Forwarded but deliberately NOT marking delivery: a retry
-		// notification is not streamed data, and treating it as such would let
-		// announcing a retry suppress the next one. Forwarding matters because
-		// a probe can sit ABOVE the retry layer — NewParamStripper does —
-		// and rebuilding the events without this field would silently swallow
-		// every retry notification beneath it.
-		OnRetry: func(a RetryAttempt) error { return ev.emitRetry(a) },
+	if ev == nil {
+		ev = &StreamEvents{}
 	}
+	// COPY, then override. Overriding a copy means a callback this function
+	// does not know about is forwarded by construction; rebuilding the struct
+	// field by field would silently drop it instead — which is exactly how
+	// OnRetry got swallowed under NewParamStripper, whose probe sits above the
+	// retry layer.
+	probed := *ev
+	probed.OnText = func(s string) error { *delivered = true; return ev.emitText(s) }
+	probed.OnReasoning = func(s string) error { *delivered = true; return ev.emitReasoning(s) }
+	probed.OnUsage = func(u Usage) error { *delivered = true; return ev.emitUsage(u) }
+	probed.OnProgress = func(p PromptProgress) error { *delivered = true; return ev.emitProgress(p) }
+	probed.OnTimings = func(t Timings) error { *delivered = true; return ev.emitTimings(t) }
+	return &probed
 }
 
 // Request is one model call. Messages is the transcript; System is the system

@@ -211,3 +211,52 @@ func TestWrapCallbackErrIdempotentAndTransparent(t *testing.T) {
 	assert.Same(t, w, wrapCallbackErr(w), "already-marked errors are not re-wrapped")
 	assert.False(t, IsTransient(w))
 }
+
+func TestProbeEventsForwardsEverythingAndMarksOnlyStreamData(t *testing.T) {
+	// The probe answers one question — did this call stream anything — and
+	// must not become a filter. It copies and overrides, so a callback it does
+	// not know about reaches the caller untouched; rebuilding the struct field
+	// by field dropped OnRetry on the floor for exactly that reason.
+	var got []string
+	ev := &StreamEvents{
+		OnText:      func(string) error { got = append(got, "text"); return nil },
+		OnReasoning: func(string) error { got = append(got, "reasoning"); return nil },
+		OnUsage:     func(Usage) error { got = append(got, "usage"); return nil },
+		OnProgress:  func(PromptProgress) error { got = append(got, "progress"); return nil },
+		OnTimings:   func(Timings) error { got = append(got, "timings"); return nil },
+		OnRetry:     func(RetryAttempt) error { got = append(got, "retry"); return nil },
+	}
+
+	// A retry notification alone must leave the call re-sendable.
+	delivered := false
+	p := probeEvents(ev, &delivered)
+	require.NoError(t, p.emitRetry(RetryAttempt{Attempt: 1}))
+	assert.False(t, delivered, "a retry notification is not streamed data")
+
+	// Every stream-data callback marks delivery.
+	for _, tc := range []struct {
+		name string
+		fire func() error
+	}{
+		{"text", func() error { return p.emitText("x") }},
+		{"reasoning", func() error { return p.emitReasoning("x") }},
+		{"usage", func() error { return p.emitUsage(Usage{}) }},
+		{"progress", func() error { return p.emitProgress(PromptProgress{}) }},
+		{"timings", func() error { return p.emitTimings(Timings{}) }},
+	} {
+		delivered = false
+		require.NoError(t, tc.fire())
+		assert.True(t, delivered, "%s marks delivery", tc.name)
+	}
+
+	// All six reached the caller.
+	assert.Equal(t, []string{"retry", "text", "reasoning", "usage", "progress", "timings"}, got)
+}
+
+func TestProbeEventsToleratesNilEvents(t *testing.T) {
+	delivered := false
+	p := probeEvents(nil, &delivered)
+	require.NoError(t, p.emitText("x"))
+	assert.True(t, delivered, "delivery is tracked even with no caller callbacks")
+	require.NoError(t, p.emitRetry(RetryAttempt{}))
+}
