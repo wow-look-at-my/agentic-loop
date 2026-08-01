@@ -152,7 +152,7 @@ func TestDefaultRetryValues(t *testing.T) {
 	assert.Equal(t, 500*time.Millisecond, DefaultRetry.BaseDelay)
 }
 
-func TestNewRetryingProvider(t *testing.T) {
+func TestRetryingProvider(t *testing.T) {
 	t.Run("transient nothing-streamed failure retries", func(t *testing.T) {
 		inner := &scriptProvider{steps: []scriptStep{
 			{err: &APIError{Status: 503, Body: "unavailable"}},
@@ -163,13 +163,13 @@ func TestNewRetryingProvider(t *testing.T) {
 		policy := RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond,
 			Sleep: func(_ context.Context, d time.Duration) error { delays = append(delays, d); return nil }}
 
-		comp, err := NewRetryingProvider(inner, policy).
+		comp, err := newRetryingProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "recovered", comp.Message.Content)
 		assert.Len(t, inner.reqs, 3)
 		assert.Equal(t, []time.Duration{500 * time.Millisecond, 1 * time.Second}, delays,
-			"same exponential backoff as Run's own model calls")
+			"exponential backoff: base * 2^(attempt-1), no jitter")
 	})
 
 	t.Run("permanent error surfaces immediately", func(t *testing.T) {
@@ -177,7 +177,7 @@ func TestNewRetryingProvider(t *testing.T) {
 			{err: &APIError{Status: 400, Body: "bad request"}},
 			{comp: assistantComp("never reached")},
 		}}
-		_, err := NewRetryingProvider(inner, noSleep).
+		_, err := newRetryingProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, 1)
@@ -187,7 +187,7 @@ func TestNewRetryingProvider(t *testing.T) {
 		inner := &scriptProvider{steps: []scriptStep{
 			{err: &APIError{Status: 400, Body: "prompt is too long", ContextOverflow: true}},
 		}}
-		_, err := NewRetryingProvider(inner, noSleep).
+		_, err := newRetryingProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.True(t, IsContextOverflow(err), "the flag survives the decorator")
@@ -200,7 +200,7 @@ func TestNewRetryingProvider(t *testing.T) {
 			{comp: partial, err: &APIError{Status: 503}},
 			{comp: assistantComp("never reached")},
 		}}
-		comp, err := NewRetryingProvider(inner, noSleep).
+		comp, err := newRetryingProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		require.NotNil(t, comp)
@@ -218,7 +218,7 @@ func TestNewRetryingProvider(t *testing.T) {
 		}}
 		ev := &StreamEvents{OnText: func(s string) error { got = append(got, s); return nil }}
 
-		_, err := NewRetryingProvider(inner, noSleep).
+		_, err := newRetryingProvider(inner, &noSleep).
 			Complete(context.Background(), Request{Model: "m"}, ev)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, 1)
@@ -231,7 +231,7 @@ func TestNewRetryingProvider(t *testing.T) {
 			{err: &APIError{Status: 503, Body: "two"}},
 		}}
 		policy := RetryPolicy{MaxAttempts: 2, Sleep: func(context.Context, time.Duration) error { return nil }}
-		_, err := NewRetryingProvider(inner, policy).
+		_, err := newRetryingProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		var ae *APIError
 		require.ErrorAs(t, err, &ae)
@@ -245,7 +245,7 @@ func TestNewRetryingProvider(t *testing.T) {
 			{comp: assistantComp("never reached")},
 		}}
 		policy := RetryPolicy{Sleep: func(context.Context, time.Duration) error { return context.Canceled }}
-		_, err := NewRetryingProvider(inner, policy).
+		_, err := newRetryingProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		var ae *APIError
 		require.ErrorAs(t, err, &ae, "the call's error surfaces, not the sleep error")
@@ -263,7 +263,7 @@ func TestNewRetryingProvider(t *testing.T) {
 			delays = append(delays, d)
 			return nil
 		}}
-		_, err := NewRetryingProvider(inner, policy).
+		_, err := newRetryingProvider(inner, &policy).
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, DefaultRetry.MaxAttempts)

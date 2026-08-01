@@ -269,25 +269,36 @@ typically arrives) are mapped onto the same `APIError` using Anthropic's
 documented error-type → status table, so an in-stream overload (529) or rate
 limit (429) retries exactly like its non-2xx counterpart.
 
-Inside `Run`, a model call is re-attempted **only when the failed attempt
-streamed nothing**; once data arrived, the partial assistant message is
-finalized into the transcript and the partial `Result` is returned with the
-error. Delivery is marked **before** each callback runs, so a callback that
-fails on the very first delta still counts as "streamed something" — the
-call is never re-sent into a dead sink.
-
-If you drive your own loop instead of using `Run`, wrap the provider to get
-the same behavior:
+**Retry is on by default and belongs to the Provider**, not to `Run`: every
+provider a dialect constructor builds already retries, so there is nothing
+to opt into and nothing to remember. Tune or disable it per provider:
 
 ```go
-provider := agentic.NewRetryingProvider(inner, agentic.DefaultRetry)
+// The default — retries transient failures.
+p, _ := agentic.NewOpenAIProvider(agentic.OpenAIConfig{
+    ProviderConfig: agentic.ProviderConfig{BaseURL: url},
+})
+
+// Explicitly off.
+p, _ = agentic.NewOpenAIProvider(agentic.OpenAIConfig{
+    ProviderConfig: agentic.ProviderConfig{
+        BaseURL: url,
+        Retry:   &agentic.RetryPolicy{MaxAttempts: 1},
+    },
+})
 ```
 
-It shares one implementation with `Run`'s per-turn call, so the two can't
-drift. A zero-value `RetryPolicy` uses the defaults. Composition order
-matters: with `NewParamStripper` innermost each retry re-sends the
-already-stripped request, whereas retrying outside the stripper re-runs
-parameter recovery on every attempt.
+The provider is the right home because it is the layer that knows whether a
+call streamed anything — the condition that decides whether re-sending is
+safe. A call is re-attempted **only when the failed attempt streamed
+nothing**; once data arrived the error surfaces with the partial completion
+attached. Delivery is marked **before** each callback runs, so a callback
+that fails on the very first delta still counts as "streamed something" —
+the call is never re-sent into a dead sink.
+
+`Run` therefore has no retry knob, and a retried call is one turn: `Run`
+only ever sees the outcome. A custom `Provider` implementation is
+responsible for its own retry.
 
 ### Rejected-parameter recovery
 

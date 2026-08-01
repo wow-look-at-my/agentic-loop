@@ -80,9 +80,7 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 // retryComplete runs one model call with retry. A retry happens ONLY when the
 // failed attempt streamed nothing — no partial completion, no delivered stream
 // event — and the error is transient: once a delta reached the caller's sink,
-// re-sending would duplicate it. This is the single implementation of the
-// library's model-call retry semantics, shared by Run's per-turn call and by
-// NewRetryingProvider, so the two can never drift.
+// re-sending would duplicate it.
 func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Request, ev *StreamEvents) (*Completion, error) {
 	attempts := policy.attempts()
 	var comp *Completion
@@ -106,20 +104,29 @@ type retryingProvider struct {
 	policy RetryPolicy
 }
 
-// NewRetryingProvider wraps a Provider with the retry behavior Run applies to
-// its own model calls: a transient failure (408, 429, 5xx, transport errors)
-// is re-attempted per the policy, but ONLY when the attempt streamed nothing,
-// so a caller's sink never sees the same delta twice. Permanent failures —
-// other 4xx, context overflow, cancellation, and errors the caller's own
-// stream callbacks returned — surface immediately. A zero-value policy uses
-// the DefaultRetry values.
+// newRetryingProvider gives p the library's standard retry behavior: a
+// transient failure (408, 429, 5xx, transport errors) is re-attempted per the
+// policy, but ONLY when the attempt streamed nothing, so a caller's sink never
+// sees the same delta twice. Permanent failures — other 4xx, context overflow,
+// cancellation, and errors the caller's own stream callbacks returned —
+// surface immediately.
 //
-// It exists for callers driving their own loop instead of using Run, and
-// composes like NewParamStripper. Order matters: with the stripper innermost
-// each retry re-sends the already-stripped request, whereas retrying outside
-// the stripper re-runs parameter recovery on every attempt.
-func NewRetryingProvider(p Provider, policy RetryPolicy) Provider {
-	return &retryingProvider{inner: p, policy: policy}
+// A nil policy means DefaultRetry. A policy capped at one attempt returns p
+// unwrapped: retry is off, and the probe wrapper would be pure overhead.
+//
+// This is internal machinery. Retry is not something a caller opts into — the
+// dialect constructors apply it to every Provider they build (see
+// ProviderConfig.Retry), because a retry you have to remember to enable is one
+// that silently isn't there.
+func newRetryingProvider(p Provider, policy *RetryPolicy) Provider {
+	resolved := DefaultRetry
+	if policy != nil {
+		resolved = *policy
+	}
+	if resolved.attempts() <= 1 {
+		return p
+	}
+	return &retryingProvider{inner: p, policy: resolved}
 }
 
 // Complete implements Provider.

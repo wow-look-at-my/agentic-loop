@@ -311,13 +311,22 @@ reported.
   failures; the final attempt's error surfaces regardless; a sleep
   interrupted by cancellation stops retrying and surfaces the last fn
   error.
-- **Retrying provider decorator**: wraps a Provider with the model-call
-  retry semantics of §8 — re-attempt ONLY when the failed attempt produced
+- **Retry lives in the PROVIDER and is ON BY DEFAULT.** Both dialect
+  constructors MUST apply it to every Provider they build, configured by
+  `ProviderConfig.retry` (absent ⇒ the defaults above; a policy capped at
+  one attempt ⇒ retry off, and the port SHOULD return the dialect provider
+  unwrapped rather than pay for a probe that can never fire). Retry is
+  deliberately NOT something a caller opts into: an opt-in retry is one a
+  caller forgets to enable. The provider is also the only layer that knows
+  whether a call streamed anything.
+- **The retry condition**: re-attempt ONLY when the failed attempt produced
   no partial completion AND delivered no stream event AND the error is
-  transient. It MUST share one implementation with the loop's per-turn
-  call so the two cannot drift, and a zero-value policy MUST resolve to
-  the defaults above. For callers driving their own loop; composes with
-  the §7 stripper in either order.
+  transient.
+- **The loop has NO retry knob.** `Run`'s config MUST NOT carry a retry
+  policy, and neither must the sub-agent executor's config; both inherit
+  whatever the Provider does. A retried call counts as ONE turn, trivially,
+  because the loop only sees the outcome. A custom Provider implementation
+  owns its own retry.
 
 ## 7. Rejected-parameter strip middleware
 
@@ -387,9 +396,9 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
 - With a nil executor, a hallucinated call gets the teaching result
   `unknown tool: <name>` and the loop continues (deviation from the source
   subagent, which ended the loop; the teaching behavior is deliberate).
-- **Retry** wraps each model call (policy from config) but re-attempts ONLY
-  when the failed attempt streamed nothing (no partial completion, no
-  delivered events). A retried call counts as ONE turn.
+- **Retry** is NOT the loop's concern (see §6): the Provider re-attempts
+  internally, so a retried call counts as ONE turn here trivially — the
+  loop only sees the outcome.
 - **Mid-stream break/cancel**: the provider returns a partial completion +
   error; the loop appends the partial assistant message with its
   **toolCalls cleared** (they never executed) and returns the partial
@@ -453,8 +462,8 @@ loop's own config.
 
 ### 10a. run_subagent (`NewSubagentExecutor(SubagentConfig)`)
 
-Config: `provider`, `model`, `maxTokens`, `extra`, `retry` (the nested
-loop's policy), `tools` (the parent's FULL executor), `parentSystem` +
+Config: `provider`, `model`, `maxTokens`, `extra`, `tools` (the parent's
+FULL executor; there is deliberately NO retry field — see §6), `parentSystem` +
 `parentMessages` (the share_context source), `maxTurns` (<= 0 ⇒ the loop
 default 10), `gate?`, `systemPrompt?` (empty ⇒
 `DefaultSubagentSystemPrompt`), `onActivity?`.
@@ -481,7 +490,7 @@ default 10), `gate?`, `systemPrompt?` (empty ⇒
   acquisition failure ⇒ `run_subagent was cancelled before it could start:
   <err>`. The nested run is this library's §8 loop — one user message (the
   composed task), the subagent system prompt, the config's
-  model/maxTokens/extra/retry, and an approve-everything Approver (the
+  model/maxTokens/extra, and an approve-everything Approver (the
   source loop never consulted the approval flow: the explicit grant IS the
   authorization). A nested-run error ⇒ `sub-agent failed: <err>`; success ⇒
   the TRIMMED final content as the tool result (the nested loop's stall
@@ -651,7 +660,8 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
 - Loop: denied string, Ask-error batch clearing, final-turn withheld
   tools, stall wrap-up request shape (tool-less; instruction as the last
   user message; stalled assistant absent), hallucinated-call teaching
-  error, no-retry-after-partial, retried-call-is-one-turn.
+  error, no-retry-after-partial, retried-call-is-one-turn, plus
+  retry-on-by-default straight from a constructor with no policy set.
 - Param stripper: all four phrasings, camelCase↔snake_case normalization,
   retry-once, memory across calls, never on cancel/after delivery.
 - Provider factories: one per dialect building that dialect's

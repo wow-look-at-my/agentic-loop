@@ -22,6 +22,16 @@ type ProviderConfig struct {
 	// Headers are applied after the dialect defaults, so a caller-supplied
 	// header can override them.
 	Headers map[string]string
+	// Retry is the transient-failure retry policy for every call this provider
+	// makes. Nil means DefaultRetry — retry is ON by default, because a call
+	// that fails before streaming anything is always safe to re-send and an
+	// opt-in retry is one a caller forgets to enable. Set
+	// &RetryPolicy{MaxAttempts: 1} to turn it off.
+	//
+	// Retry lives here, not around the loop, because the provider is the layer
+	// that knows whether a call streamed anything — the condition that decides
+	// whether re-sending is safe.
+	Retry *RetryPolicy
 }
 
 // OpenAIConfig configures NewOpenAIProvider: the shared ProviderConfig
@@ -50,31 +60,33 @@ type AnthropicConfig struct {
 
 // NewOpenAIProvider builds the Provider for OpenAI-compatible chat-completions
 // APIs. It fails fast — with a permanent (never-retried) error — on an empty
-// BaseURL. The concrete implementation is unexported; consumers hold only the
-// Provider interface.
+// BaseURL. The returned Provider retries transient failures per
+// ProviderConfig.Retry. The concrete implementation is unexported; consumers
+// hold only the Provider interface.
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 	if cfg.BaseURL == "" {
 		return nil, badRequestErr("agentic: OpenAIConfig.BaseURL is required")
 	}
-	return &openaiProvider{
+	return newRetryingProvider(&openaiProvider{
 		baseURL:    cfg.BaseURL,
 		apiKey:     cfg.APIKey,
 		httpClient: cfg.HTTPClient,
 		userAgent:  cfg.UserAgent,
 		selfHosted: cfg.SelfHosted,
 		headers:    cfg.Headers,
-	}, nil
+	}, cfg.Retry), nil
 }
 
 // NewAnthropicProvider builds the Provider for the Anthropic Messages API. It
 // fails fast — with a permanent (never-retried) error — on an empty BaseURL.
+// The returned Provider retries transient failures per ProviderConfig.Retry.
 // The concrete implementation is unexported; consumers hold only the Provider
 // interface.
 func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 	if cfg.BaseURL == "" {
 		return nil, badRequestErr("agentic: AnthropicConfig.BaseURL is required")
 	}
-	return &anthropicProvider{
+	return newRetryingProvider(&anthropicProvider{
 		baseURL:        cfg.BaseURL,
 		apiKey:         cfg.APIKey,
 		version:        cfg.Version,
@@ -82,5 +94,5 @@ func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 		userAgent:      cfg.UserAgent,
 		disableCaching: cfg.DisableCaching,
 		headers:        cfg.Headers,
-	}, nil
+	}, cfg.Retry), nil
 }

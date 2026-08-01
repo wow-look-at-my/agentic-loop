@@ -65,6 +65,13 @@ cd go && go-toolchain
   each embedding the shared `ProviderConfig` connection base). The dialect
   implementations (`openaiProvider`, `anthropicProvider`) stay unexported;
   do not re-export them or add construction side doors.
+- **Retry belongs to the Provider and is ON by default.** Both constructors
+  wrap what they build (`ProviderConfig.Retry`, nil = `DefaultRetry`; a
+  one-attempt policy disables it and returns the provider unwrapped). Do
+  NOT add a retry knob to `Config` or `SubagentConfig` — two layers would
+  compound into 16 attempts, and an opt-in retry is one callers forget to
+  enable. The provider is also the only layer that knows whether a call
+  streamed anything, which is what makes re-sending safe.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the compaction
   request text, the param-strip regexes, the overflow regex, and the two

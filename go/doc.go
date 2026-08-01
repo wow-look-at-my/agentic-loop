@@ -2,7 +2,8 @@
 // provider adapters for OpenAI-compatible and Anthropic Messages endpoints
 // (built with NewOpenAIProvider / NewAnthropicProvider, both hidden behind
 // the Provider interface), a tool-calling loop (Run) with approval seams
-// (ToolExecutor, Approver), transient-failure retry (RetryPolicy),
+// (ToolExecutor, Approver), transient-failure retry on by default in every
+// provider (ProviderConfig.Retry, RetryPolicy),
 // rejected-parameter
 // recovery (NewParamStripper), prompt caching on both dialects, streaming
 // callbacks that can abort the call by returning an error (StreamEvents,

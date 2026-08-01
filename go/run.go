@@ -58,14 +58,17 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 // Config wires one Run: the Provider to call, the ToolExecutor whose tools
 // are advertised and executed (nil runs tool-less), the Approver consulted
 // for calls the executor flags via NeedsApproval (nil denies gated calls with
-// DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), the retry policy
-// for model calls (nil means DefaultRetry), and the event callbacks.
+// DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), and the event
+// callbacks.
+//
+// There is no retry knob: retry is the Provider's job (ProviderConfig.Retry),
+// since it is the layer that knows whether a call streamed anything. A
+// provider from either dialect constructor already retries.
 type Config struct {
 	Provider Provider
 	Tools    ToolExecutor
 	Approver Approver
 	MaxTurns int
-	Retry    *RetryPolicy
 	Events   Events
 
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
@@ -111,12 +114,13 @@ type Result struct {
 // plus the callback's error — in every case the partial Result rides
 // alongside the error and the transcript carries no orphan tool calls.
 //
-// Model calls are retried per cfg.Retry, but only when the failed attempt
-// streamed nothing; once data arrived the partial assistant message is
-// finalized into the transcript (tool calls cleared) and the partial Result
-// is returned alongside the error. Whenever Run returns an error together
-// with a non-nil Result, the Result carries the transcript accumulated so
-// far.
+// Model-call retry belongs to the Provider, not to Run: a provider built by
+// either dialect constructor re-attempts transient failures itself, and a
+// retried call is one turn here because Run only ever sees the outcome. When
+// a call fails after data arrived, the partial assistant message is finalized
+// into the transcript (tool calls cleared) and the partial Result is returned
+// alongside the error. Whenever Run returns an error together with a non-nil
+// Result, the Result carries the transcript accumulated so far.
 //
 // If the loop ends with the model having produced no content (a
 // thinking-only turn, or the cap hit mid-research), one extra tool-less
@@ -130,10 +134,6 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = DefaultMaxTurns
-	}
-	retry := DefaultRetry
-	if cfg.Retry != nil {
-		retry = *cfg.Retry
 	}
 
 	var advertised []Tool
@@ -164,7 +164,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			turnTools = advertised
 		}
 
-		comp, err := runModelCall(ctx, &cfg, retry, req, transcript, turnTools, res)
+		comp, err := runModelCall(ctx, &cfg, req, transcript, turnTools, res)
 		if err != nil {
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
@@ -248,7 +248,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
 			wrapMsgs = append(wrapMsgs, wrapMsg)
-			comp2, err2 := runModelCall(ctx, &cfg, retry, req, wrapMsgs, nil, res)
+			comp2, err2 := runModelCall(ctx, &cfg, req, wrapMsgs, nil, res)
 			if err2 == nil {
 				if s := strings.TrimSpace(comp2.Message.Content); s != "" {
 					final := comp2.Message
@@ -274,19 +274,19 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 }
 
-// runModelCall executes one model call with retry (see retryComplete for the
-// nothing-streamed guard); the retry loop counts as ONE turn. Every call that
-// produced a completion — success or partial — appends its usage to the
-// result.
+// runModelCall executes one model call and counts it as one turn — including
+// when the provider re-attempted it internally, which Run neither sees nor
+// needs to. Every call that produced a completion — success or partial —
+// appends its usage to the result.
 func runModelCall(
-	ctx context.Context, cfg *Config, retry RetryPolicy,
+	ctx context.Context, cfg *Config,
 	req Request, msgs []Message, tools []Tool, res *Result,
 ) (*Completion, error) {
 	r := req
 	r.Messages = msgs
 	r.Tools = tools
 
-	comp, err := retryComplete(ctx, cfg.Provider, retry, r, &cfg.Events.StreamEvents)
+	comp, err := cfg.Provider.Complete(ctx, r, &cfg.Events.StreamEvents)
 	res.Turns++
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)

@@ -79,8 +79,8 @@ func TestSubagentExecuteDefaultReadonlyToolset(t *testing.T) {
 		Model:     "sub-model",
 		MaxTokens: 512,
 		Extra:     map[string]any{"temperature": 0.2},
-		Retry:     &noSleep,
-		Tools:     parent,
+
+		Tools: parent,
 	})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"investigate"}`))
@@ -111,7 +111,7 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 	}}
 	parent := subParentExec()
 	parent.ask = map[string]bool{"Repo__write": true} // an "always ask" parent flag
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Tools: parent})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Tools: parent})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"write","allowed_tools":["Repo__write"]}`))
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 
 func TestSubagentAllowedToolsBareNameFallback(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("ok")}}}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Tools: subParentExec()})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Tools: subParentExec()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["write"]}`))
 	require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestSubagentAllowedToolsAmbiguousBareName(t *testing.T) {
 		{Name: "B__read", Readonly: true},
 	}}
 	provider := &scriptProvider{}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Tools: parent})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Tools: parent})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["read"]}`))
 	require.NoError(t, err)
@@ -157,7 +157,7 @@ func TestSubagentAllowedToolsAmbiguousBareName(t *testing.T) {
 
 func TestSubagentAllowedToolsUnknownNameTeaches(t *testing.T) {
 	provider := &scriptProvider{}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Tools: subParentExec()})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Tools: subParentExec()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["nope"]}`))
 	require.NoError(t, err)
@@ -169,14 +169,14 @@ func TestSubagentAllowedToolsUnknownNameTeaches(t *testing.T) {
 
 func TestSubagentAllowedToolsEdgeCases(t *testing.T) {
 	t.Run("no tools at all", func(t *testing.T) {
-		exec := NewSubagentExecutor(SubagentConfig{Provider: &scriptProvider{}, Model: "m", Retry: &noSleep})
+		exec := NewSubagentExecutor(SubagentConfig{Provider: &scriptProvider{}, Model: "m"})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["x"]}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Equal(t, "run_subagent: the sub-agent has no tools available, so allowed_tools cannot be applied -- omit it.", res.Content)
 	})
 	t.Run("only blank names", func(t *testing.T) {
-		exec := NewSubagentExecutor(SubagentConfig{Provider: &scriptProvider{}, Model: "m", Retry: &noSleep, Tools: subParentExec()})
+		exec := NewSubagentExecutor(SubagentConfig{Provider: &scriptProvider{}, Model: "m", Tools: subParentExec()})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["", "  "]}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
@@ -194,7 +194,7 @@ func TestSubagentNoRecursion(t *testing.T) {
 		{Name: "Repo__read", Readonly: true},
 	}}
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("done")}}}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Tools: parent})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Tools: parent})
 
 	var schema map[string]any
 	require.NoError(t, json.Unmarshal(exec.Tools()[0].InputSchema, &schema))
@@ -221,7 +221,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	}
 	base := func(provider *scriptProvider) SubagentConfig {
 		return SubagentConfig{
-			Provider: provider, Model: "m", Retry: &noSleep,
+			Provider: provider, Model: "m",
 			ParentSystem:   "sys prompt",
 			ParentMessages: parentMsgs,
 		}
@@ -359,7 +359,7 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 	}
 	var acts []SubagentActivity
 	exec := NewSubagentExecutor(SubagentConfig{
-		Provider: provider, Model: "m", Retry: &noSleep, Tools: parent,
+		Provider: provider, Model: "m", Tools: parent,
 		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
 	})
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
@@ -388,7 +388,7 @@ func TestSubagentActivityToolError(t *testing.T) {
 	parent.execute = func(context.Context, ToolCall) (ToolResult, error) { return ToolResult{}, errors.New("boom") }
 	var acts []SubagentActivity
 	exec := NewSubagentExecutor(SubagentConfig{
-		Provider: provider, Model: "m", Retry: &noSleep, Tools: parent,
+		Provider: provider, Model: "m", Tools: parent,
 		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
 	})
 	_, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
@@ -415,7 +415,7 @@ func TestSubagentGateSerializes(t *testing.T) {
 	require.NoError(t, err)
 
 	provider := &countingProvider{inner: &scriptProvider{steps: []scriptStep{{comp: assistantComp("done")}}}}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Gate: gate})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Gate: gate})
 
 	done := make(chan ToolResult, 1)
 	go func() {
@@ -440,7 +440,7 @@ func TestSubagentGateCancelledWhileWaiting(t *testing.T) {
 	defer hold()
 
 	provider := &scriptProvider{}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep, Gate: gate})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Gate: gate})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	res, err := exec.Execute(ctx, subCall(`{"prompt":"p"}`))
@@ -481,7 +481,7 @@ func TestSubagentExecuteErrors(t *testing.T) {
 	})
 	t.Run("sub-run failure is a recoverable result", func(t *testing.T) {
 		provider := &scriptProvider{steps: []scriptStep{{err: &APIError{Status: 400, Body: "bad"}}}}
-		exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep})
+		exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m"})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
 		require.NoError(t, err, "the parent loop never aborts on tool failure")
 		assert.True(t, res.IsError)
@@ -497,7 +497,7 @@ func TestSubagentCustomSystemPromptAndMaxTurns(t *testing.T) {
 		{comp: assistantComp("capped answer")},
 	}}
 	exec := NewSubagentExecutor(SubagentConfig{
-		Provider: provider, Model: "m", Retry: &noSleep, Tools: subParentExec(),
+		Provider: provider, Model: "m", Tools: subParentExec(),
 		MaxTurns: 2, SystemPrompt: "  custom brief  ",
 	})
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
@@ -513,7 +513,7 @@ func TestSubagentNoOutputPlaceholder(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: &Completion{Message: Message{Role: RoleAssistant}, StopReason: StopEndTurn}},
 	}}
-	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m", Retry: &noSleep})
+	exec := NewSubagentExecutor(SubagentConfig{Provider: provider, Model: "m"})
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
