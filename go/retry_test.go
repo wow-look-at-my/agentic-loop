@@ -172,6 +172,79 @@ func TestRetryingProvider(t *testing.T) {
 			"exponential backoff: base * 2^(attempt-1), no jitter")
 	})
 
+	t.Run("every retry is announced before its backoff", func(t *testing.T) {
+		// Ten attempts of uncapped backoff is minutes of silence otherwise;
+		// the caller has to be able to show what failed and what it is waiting
+		// on. One event per retry, none for the attempt that succeeds.
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 503, Body: "unavailable"}},
+			{err: &APIError{Status: 429, Body: "slow down"}},
+			{comp: assistantComp("recovered")},
+		}}
+		var seen []RetryAttempt
+		ev := &StreamEvents{OnRetry: func(a RetryAttempt) error {
+			seen = append(seen, a)
+			return nil
+		}}
+		policy := RetryPolicy{MaxAttempts: 5, BaseDelay: time.Second,
+			Sleep: func(context.Context, time.Duration) error { return nil }}
+
+		_, err := newProvider(inner, &policy).
+			Complete(context.Background(), Request{Model: "m"}, ev)
+		require.NoError(t, err)
+		require.Len(t, seen, 2, "one per retry, none for the successful attempt")
+
+		assert.Equal(t, 1, seen[0].Attempt)
+		assert.Equal(t, 5, seen[0].Of)
+		assert.Equal(t, time.Second, seen[0].Delay)
+		var ae *APIError
+		require.ErrorAs(t, seen[0].Err, &ae, "the caller can render why it failed")
+		assert.Equal(t, 503, ae.Status)
+
+		assert.Equal(t, 2, seen[1].Attempt)
+		assert.Equal(t, 2*time.Second, seen[1].Delay, "the delay actually about to be waited")
+	})
+
+	t.Run("no retry event when nothing is retried", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{{err: &APIError{Status: 400}}}}
+		fired := 0
+		ev := &StreamEvents{OnRetry: func(RetryAttempt) error { fired++; return nil }}
+		_, err := newProvider(inner, &noSleep).
+			Complete(context.Background(), Request{Model: "m"}, ev)
+		require.Error(t, err)
+		assert.Zero(t, fired, "a permanent failure is not a retry")
+	})
+
+	t.Run("OnRetry error stops the retrying", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 503}},
+			{comp: assistantComp("never reached")},
+		}}
+		gaveUp := errors.New("client went away")
+		ev := &StreamEvents{OnRetry: func(RetryAttempt) error { return gaveUp }}
+		_, err := newProvider(inner, &noSleep).
+			Complete(context.Background(), Request{Model: "m"}, ev)
+		require.ErrorIs(t, err, gaveUp, "the caller's error surfaces, not the upstream's")
+		assert.False(t, IsTransient(err), "a callback error is never transient")
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("an announced retry does not count as streamed", func(t *testing.T) {
+		// OnRetry fires outside the probe, so notifying about attempt N cannot
+		// make attempt N+1 look unsafe to send.
+		inner := &scriptProvider{steps: []scriptStep{
+			{err: &APIError{Status: 503}},
+			{err: &APIError{Status: 503}},
+			{comp: assistantComp("recovered")},
+		}}
+		ev := &StreamEvents{OnRetry: func(RetryAttempt) error { return nil }}
+		comp, err := newProvider(inner, &noSleep).
+			Complete(context.Background(), Request{Model: "m"}, ev)
+		require.NoError(t, err)
+		assert.Equal(t, "recovered", comp.Message.Content)
+		assert.Len(t, inner.reqs, 3)
+	})
+
 	t.Run("permanent error surfaces immediately", func(t *testing.T) {
 		inner := &scriptProvider{steps: []scriptStep{
 			{err: &APIError{Status: 400, Body: "bad request"}},

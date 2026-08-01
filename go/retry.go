@@ -86,6 +86,10 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 // failed attempt streamed nothing — no partial completion, no delivered stream
 // event — and the error is transient: once a delta reached the caller's sink,
 // re-sending would duplicate it.
+//
+// Every retry is announced through StreamEvents.OnRetry BEFORE the backoff, so
+// a waiting caller can show what failed and what is being waited on rather
+// than sitting silent through minutes of backoff.
 func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Request, ev *StreamEvents) (*Completion, error) {
 	attempts := policy.attempts()
 	var comp *Completion
@@ -96,7 +100,15 @@ func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Requ
 		if err == nil || comp != nil || delivered || !IsTransient(err) || attempt >= attempts {
 			break
 		}
-		if serr := policy.sleep(ctx, policy.delay(attempt)); serr != nil {
+		delay := policy.delay(attempt)
+		if cberr := ev.emitRetry(RetryAttempt{
+			Attempt: attempt, Of: attempts, Delay: delay, Err: err,
+		}); cberr != nil {
+			// The caller pulled the plug on retrying (a dead sink, a UI that
+			// gave up). Surface their error, not the upstream's.
+			return comp, cberr
+		}
+		if serr := policy.sleep(ctx, delay); serr != nil {
 			break
 		}
 	}

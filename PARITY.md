@@ -48,8 +48,9 @@ An empty baseURL fails fast with a permanent (never-retried) error. There
 are no per-dialect base-URL defaults: baseURL is always explicit.
 
 **Callback error contract** (every callback below): `StreamEvents.onText /
-onReasoning / onUsage / onProgress / onTimings` and `Events.onToolCall /
-onToolResult` all return/throw an error to signal failure. Semantics to
+onReasoning / onUsage / onProgress / onTimings / onRetry` and
+`Events.onToolCall / onToolResult` all return/throw an error to signal
+failure. Semantics to
 reproduce exactly:
 
 - A stream-callback error ABORTS the upstream read immediately; `complete`
@@ -308,7 +309,8 @@ reported.
   is flagged `contextOverflow` — surfaced explicitly, never retried.
 - **RetryPolicy**: defaults **10 attempts** (1 try + 9 retries), 500ms base,
   `delay = base × 2^(attempt−1)`, no jitter, no cap (the 9 delays sum to
-  ~255s). Retry only transient
+  ~255s — which is why retrying MUST be observable, below). Retry only
+  transient
   failures; the final attempt's error surfaces regardless; a sleep
   interrupted by cancellation stops retrying and surfaces the last fn
   error.
@@ -323,6 +325,15 @@ reported.
 - **The retry condition**: re-attempt ONLY when the failed attempt produced
   no partial completion AND delivered no stream event AND the error is
   transient.
+- **Retrying MUST be observable.** Before each backoff, fire
+  `StreamEvents.onRetry` with `{attempt (1-based), of, delay, err}` — the
+  delay actually about to be waited. Minutes of silent backoff is not an
+  acceptable user experience; the host has to be able to show the failure
+  and the wait. It fires from the retry layer, NOT from a dialect provider;
+  it must NOT mark the call as having "streamed something" (i.e. it is
+  emitted outside the delivery probe), and a non-nil return stops the
+  retrying and surfaces THAT error in place of the upstream's. No event
+  fires for an attempt that succeeds, or for a failure that is not retried.
 - **The loop has NO retry knob.** `Run`'s config MUST NOT carry a retry
   policy, and neither must the sub-agent executor's config; both inherit
   whatever the Provider does. A retried call counts as ONE turn, trivially,

@@ -96,7 +96,8 @@ base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`,
 `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
 
 One streaming model call. `StreamEvents` carries optional callbacks —
-`OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings` — all nil-safe,
+`OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings`, `OnRetry` —
+all nil-safe,
 and **every callback returns an error**: a non-nil return aborts the stream
 read immediately, and `Complete` returns the partial `*Completion` (content,
 reasoning, tool calls, usage so far) together with that error. The error
@@ -259,8 +260,7 @@ requested tools, feed the results back, repeat. Key behaviors:
 ### Retry and error classification
 
 `RetryPolicy` (default `DefaultRetry`: **10 attempts**, 500ms base, delay =
-base × 2^(n−1), no jitter, no cap — so riding out a fully-down upstream can
-take ~255s before the error surfaces) retries only what `IsTransient`
+base × 2^(n−1), no jitter, no cap) retries only what `IsTransient`
 allows: HTTP 408,
 429, any 5xx, and network/transport errors. Context cancellation, other
 4xx, and **errors your own callbacks returned** are permanent. A 400 whose
@@ -297,6 +297,24 @@ nothing**; once data arrived the error surfaces with the partial completion
 attached. Delivery is marked **before** each callback runs, so a callback
 that fails on the very first delta still counts as "streamed something" —
 the call is never re-sent into a dead sink.
+
+**Retrying is not silent.** Ten attempts of uncapped backoff is minutes of
+wall-clock, so every retry fires `StreamEvents.OnRetry` *before* its
+backoff, carrying which attempt failed, of how many, the delay about to be
+waited, and the error — show it, don't leave the user staring at nothing:
+
+```go
+ev := &agentic.StreamEvents{
+    OnRetry: func(a agentic.RetryAttempt) error {
+        log.Printf("attempt %d/%d failed (%v), retrying in %s", a.Attempt, a.Of, a.Err, a.Delay)
+        return nil // returning an error stops the retrying
+    },
+}
+```
+
+`OnRetry` fires from the retry layer, not from a dialect provider, and does
+**not** count as "streamed something" — a notification about a failed
+attempt cannot make the next one unsafe.
 
 `Run` therefore has no retry knob, and a retried call is one turn: `Run`
 only ever sees the outcome. A custom `Provider` implementation is

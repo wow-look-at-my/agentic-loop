@@ -1,6 +1,9 @@
 package agentic
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PromptProgress reports prompt-processing (prefill) progress, when the
 // upstream emits it (ollama with the llama.cpp return_progress patch):
@@ -29,12 +32,26 @@ type Timings struct {
 	PredictedMS float64 `json:"predicted_ms,omitempty"`
 }
 
+// RetryAttempt describes a failed model call that is about to be re-sent:
+// which attempt just failed (1-based) out of how many are allowed, how long
+// the backoff before the next one is, and why it failed. It exists so a
+// caller can SHOW the failure and the wait — retrying is otherwise a silent
+// gap that, at the default ten attempts of uncapped backoff, can run for
+// minutes with no sign the call is still alive.
+type RetryAttempt struct {
+	Attempt int
+	Of      int
+	Delay   time.Duration
+	Err     error
+}
+
 // StreamEvents are optional streaming callbacks for one model call. All
 // fields are optional and a nil *StreamEvents is valid: providers guard every
 // emit. OnText receives content deltas, OnReasoning thinking/reasoning
 // deltas, OnUsage each merged usage snapshot as it arrives, OnProgress
-// prefill progress updates, and OnTimings each provider-reported timings
-// snapshot (OpenAI dialect only — Anthropic never fires it).
+// prefill progress updates, OnTimings each provider-reported timings
+// snapshot (OpenAI dialect only — Anthropic never fires it), and OnRetry a
+// transient failure about to be re-attempted.
 //
 // A non-nil error returned by any callback ABORTS the stream read
 // immediately: Complete stops consuming the upstream response and returns the
@@ -50,6 +67,12 @@ type StreamEvents struct {
 	OnUsage     func(Usage) error
 	OnProgress  func(PromptProgress) error
 	OnTimings   func(Timings) error
+	// OnRetry fires before each backoff, from the retry layer rather than
+	// from a dialect provider. Returning an error stops the retrying and
+	// surfaces that error in place of the upstream's. It does NOT count as
+	// "streamed something": a notification about a failed attempt cannot make
+	// the next one unsafe.
+	OnRetry func(RetryAttempt) error
 }
 
 // emitText forwards a non-empty content delta, tolerating nil receivers.
@@ -90,6 +113,14 @@ func (ev *StreamEvents) emitTimings(t Timings) error {
 		return nil
 	}
 	return wrapCallbackErr(ev.OnTimings(t))
+}
+
+// emitRetry forwards an imminent retry, tolerating nil receivers.
+func (ev *StreamEvents) emitRetry(a RetryAttempt) error {
+	if ev == nil || ev.OnRetry == nil {
+		return nil
+	}
+	return wrapCallbackErr(ev.OnRetry(a))
 }
 
 // probeEvents wraps ev so the caller can observe whether the provider

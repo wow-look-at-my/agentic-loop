@@ -66,12 +66,18 @@ cd go && go-toolchain
   implementations (`openaiProvider`, `anthropicProvider`) stay unexported;
   do not re-export them or add construction side doors.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
-  wrap what they build (`ProviderConfig.Retry`, nil = `DefaultRetry`; a
-  one-attempt policy disables it and returns the provider unwrapped). Do
-  NOT add a retry knob to `Config` or `SubagentConfig` — two layers would
-  compound into 16 attempts, and an opt-in retry is one callers forget to
-  enable. The provider is also the only layer that knows whether a call
-  streamed anything, which is what makes re-sending safe.
+  end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
+  nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
+  returns the dialect provider unwrapped). `ProviderConfig.Retry` is the
+  library's ONE retry knob — do NOT add another to `Config` or
+  `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
+  one callers forget to enable. The provider is also the only layer that
+  knows whether a call streamed anything, which is what makes re-sending
+  safe.
+- **Retrying must stay observable.** 10 attempts of uncapped backoff is
+  ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
+  the failure and the wait. It is emitted OUTSIDE the delivery probe — a
+  retry notification must never mark the call as having streamed.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the compaction
   request text, the param-strip regexes, the overflow regex, and the two
