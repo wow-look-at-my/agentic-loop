@@ -311,6 +311,13 @@ reported.
   failures; the final attempt's error surfaces regardless; a sleep
   interrupted by cancellation stops retrying and surfaces the last fn
   error.
+- **Retrying provider decorator**: wraps a Provider with the model-call
+  retry semantics of §8 — re-attempt ONLY when the failed attempt produced
+  no partial completion AND delivered no stream event AND the error is
+  transient. It MUST share one implementation with the loop's per-turn
+  call so the two cannot drift, and a zero-value policy MUST resolve to
+  the defaults above. For callers driving their own loop; composes with
+  the §7 stripper in either order.
 
 ## 7. Rejected-parameter strip middleware
 

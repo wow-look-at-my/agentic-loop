@@ -274,11 +274,10 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 }
 
-// runModelCall executes one model call with retry. A retry happens only when
-// the failed attempt streamed nothing (no partial completion, no delivered
-// events) and the error is transient; the retry loop counts as ONE turn.
-// Every call that produced a completion — success or partial — appends its
-// usage to the result.
+// runModelCall executes one model call with retry (see retryComplete for the
+// nothing-streamed guard); the retry loop counts as ONE turn. Every call that
+// produced a completion — success or partial — appends its usage to the
+// result.
 func runModelCall(
 	ctx context.Context, cfg *Config, retry RetryPolicy,
 	req Request, msgs []Message, tools []Tool, res *Result,
@@ -287,19 +286,7 @@ func runModelCall(
 	r.Messages = msgs
 	r.Tools = tools
 
-	attempts := retry.attempts()
-	var comp *Completion
-	var err error
-	for attempt := 1; ; attempt++ {
-		delivered := false
-		comp, err = cfg.Provider.Complete(ctx, r, probeEvents(&cfg.Events.StreamEvents, &delivered))
-		if err == nil || comp != nil || delivered || !IsTransient(err) || attempt >= attempts {
-			break
-		}
-		if serr := retry.sleep(ctx, retry.delay(attempt)); serr != nil {
-			break
-		}
-	}
+	comp, err := retryComplete(ctx, cfg.Provider, retry, r, &cfg.Events.StreamEvents)
 	res.Turns++
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)

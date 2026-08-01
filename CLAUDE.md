@@ -89,8 +89,15 @@ cd go && go-toolchain
   repo's builds) — never by a job. Never name a workflow job `all-builds`:
   the guard step inside go-toolchain@v1 hard-fails any run whose workflow
   defines a job by that name. The CI job here is `build`.
-- The `permissions` block (`id-token: write`, `contents: read`,
-  `actions: read`) is required by the toolchain action; don't trim it.
+- The `permissions` block (`id-token: write`, `contents: write`,
+  `actions: read`, `checks: read`, `deployments: write`,
+  `artifact-metadata: write`) is required by the toolchain action; don't trim
+  it. Everything past `id-token` backs a step of the default-on autorelease —
+  dependency-graph submission, the GitHub Deployment, the artifact storage
+  record — none of which can be opted out of, so a missing grant fails the
+  build *after* tests and vet have passed. A red run whose test output looks
+  clean is usually this, not the code; `action.yml`'s `autorelease` input
+  description is the authoritative list.
 
 ## Git workflow
 
