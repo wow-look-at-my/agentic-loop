@@ -423,6 +423,24 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
      finalization (the tool ran; its executed result is dropped from the
      transcript); else append
      `{role:"tool", content, toolCallID, toolIsError}`.
+- **Stuck detection** (on the tool branch, before the batch executes):
+  fingerprint the turn's tool calls as their names + raw arguments in
+  order — call IDs are EXCLUDED (providers mint a fresh one per call, so
+  including them makes every batch unique and the detector dead code).
+  Identical to the previous turn's fingerprint ⇒ increment the repeat
+  count; anything else ⇒ reset it to 1.
+  - repeats >= `StuckFailAt` (6): end the run — the batch is NOT executed,
+    the assistant message is appended with its toolCalls cleared (the
+    mid-stream-cancel shape), and the partial Result rides alongside an
+    error matching `ErrStuck` whose text is
+    `agentic: model is stuck repeating the same tool calls: <n> identical turns in a row`.
+    The port's equivalent must be identifiable the same way (a sentinel or
+    subclass, not a string match) and must classify as PERMANENT.
+  - repeats == `StuckNudgeAt` (3): after that batch's tool results, append
+    ONE user turn with stuckNudgeInstruction, verbatim:
+    `You have now requested the same tool calls several times in a row and received the same results each time. Repeating them again cannot tell you anything new. Do something different: act on the results you already have, call a different tool, or write your final answer now. Another identical request ends this run.`
+  - Both thresholds are CONSTANTS, not config: a verbatim repeat is never
+    the model working, so there is nothing to tune.
 - Internal turn hook: the loop exposes a package-internal per-turn hook
   (1-based turn number, fired as each NUMBERED turn begins; the stall
   wrap-up call is not a numbered turn). It is not public API — it exists

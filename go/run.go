@@ -2,6 +2,7 @@ package agentic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -21,6 +22,48 @@ const wrapUpInstruction = "Stop researching and write your final answer now, usi
 // produced neither content nor reasoning, so the caller never gets a
 // confusing empty result.
 const noOutputPlaceholder = "(subagent produced no output)"
+
+// StuckNudgeAt and StuckFailAt bound a model that stops making progress: a
+// turn whose tool calls are byte-identical to the previous turn's cannot
+// learn anything new, because the same calls produce the same results, which
+// produce the same turn again. The StuckNudgeAt-th identical turn in a row
+// gets one nudge appended after its tool results; the StuckFailAt-th ends the
+// run with ErrStuck instead of spending the rest of MaxTurns on it. Any
+// change in what the model asks for clears the count.
+//
+// They are constants, not knobs: a loop repeating itself verbatim is never
+// the model working, so there is nothing to tune.
+const (
+	StuckNudgeAt = 3
+	StuckFailAt  = 6
+)
+
+// stuckNudgeInstruction is appended as a user turn after the results of the
+// StuckNudgeAt-th identical tool-call batch, telling the model what the
+// transcript alone does not: that it is repeating itself, and that repeating
+// again ends the run.
+const stuckNudgeInstruction = "You have now requested the same tool calls several times in a row and received the same results each time. " +
+	"Repeating them again cannot tell you anything new. Do something different: act on the results you already have, " +
+	"call a different tool, or write your final answer now. Another identical request ends this run."
+
+// ErrStuck ends a run whose model kept requesting a byte-identical tool-call
+// batch after being nudged. Callers match it with errors.Is; the partial
+// Result rides alongside it like every other mid-run failure.
+var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls")
+
+// batchFingerprint identifies a tool-call batch by what the model asked for —
+// the calls' names and raw arguments, in order. Call IDs are deliberately
+// excluded: providers mint a fresh ID per call, so including them would make
+// every batch unique and the detector dead code. Lengths are interleaved so
+// no pair of adjacent fields can be re-cut into a different batch with the
+// same fingerprint.
+func batchFingerprint(calls []ToolCall) string {
+	var b strings.Builder
+	for _, c := range calls {
+		fmt.Fprintf(&b, "%d:%s|%d:%s|", len(c.Name), c.Name, len(c.Arguments), c.Arguments)
+	}
+	return b.String()
+}
 
 // Events are the loop's callbacks: the embedded StreamEvents fire during each
 // model call, OnToolCall fires before each requested tool call is handled,
@@ -151,6 +194,10 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	copy(transcript, req.Messages)
 
 	res := &Result{}
+	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call
+	// fingerprint and how many turns in a row have repeated it.
+	lastBatch := ""
+	repeats := 0
 	finish := func(final Message) (*Result, error) {
 		transcript = append(transcript, final)
 		res.Messages = transcript
@@ -194,6 +241,27 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// allowed to run them: replay the assistant's tool-call message, then
 		// each tool result, so the next turn sees the full sub-conversation.
 		if len(calls) > 0 && !lastTurn {
+			// A batch identical to the previous turn's makes no progress: the
+			// same calls return the same results, which produce the same
+			// batch again. Nudge once, then end the run rather than spending
+			// the remaining turns on it. The failing batch is never executed
+			// — it would only repeat work already in the transcript — so the
+			// assistant message is finalized with its tool calls cleared,
+			// leaving no orphan to replay.
+			if fp := batchFingerprint(calls); fp == lastBatch {
+				repeats++
+			} else {
+				lastBatch, repeats = fp, 1
+			}
+			if repeats >= StuckFailAt {
+				stuck := assistant
+				stuck.ToolCalls = nil
+				transcript = append(transcript, stuck)
+				res.Messages = transcript
+				res.Final = stuck
+				return res, fmt.Errorf("%w: %d identical turns in a row", ErrStuck, repeats)
+			}
+
 			transcript = append(transcript, assistant)
 			aIdx := len(transcript) - 1
 			// abortBatch ends the run mid-batch — an approval decision that
@@ -228,6 +296,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					ToolCallID:  call.ID,
 					ToolIsError: result.IsError,
 				})
+			}
+			if repeats == StuckNudgeAt {
+				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
 			}
 			continue
 		}

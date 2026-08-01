@@ -103,7 +103,9 @@ side of that line it falls on — do not put it on both.
   the failure and the wait. A retry notification is not a stream event and
   never withholds a retry.
 - Exact strings are contract: `DeniedMessage`, the executor refusal texts,
-  `tool execution failed: ...`, the wrap-up instruction, the compaction
+  `tool execution failed: ...`, the wrap-up instruction, the stuck nudge
+  (`stuckNudgeInstruction`; `StuckNudgeAt`/`StuckFailAt` are constants, not
+  knobs), the compaction
   request text, the param-strip regexes, the overflow regex, and the two
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
