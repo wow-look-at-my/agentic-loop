@@ -272,6 +272,16 @@ requested tools, feed the results back, repeat. Key behaviors:
 - **MaxTurns** caps model calls (default `DefaultMaxTurns` = 10). On the final
   permitted turn **tools are withheld** so the model must answer instead of
   requesting another never-executed call.
+- **A stuck model is caught, not waited out.** A turn whose tool calls are
+  byte-identical to the previous turn's cannot learn anything new — the same
+  calls return the same results, which produce the same turn again. The
+  third identical turn in a row (`StuckNudgeAt`) gets one nudge appended
+  after its tool results; the sixth (`StuckFailAt`) ends the run with
+  `ErrStuck` (match it with `errors.Is`) instead of spending the rest of
+  `MaxTurns` — the failing batch is never executed and its tool calls are
+  cleared, so the partial transcript stays replayable. Any change in what
+  the model asks for clears the count; call IDs are excluded from the
+  comparison, since providers mint a fresh one per call.
 - **Tool failures never abort the loop.** An `Execute` error becomes a
   `tool execution failed: ...` error result; a denied approval records
   exactly `DeniedMessage` ("The user denied permission to run this tool.");
