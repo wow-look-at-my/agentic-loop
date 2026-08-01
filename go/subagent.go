@@ -129,14 +129,13 @@ type SubagentActivity struct {
 type SubagentConfig struct {
 	// Provider and Model run the sub-agent (typically the same as the parent
 	// turn's). MaxTokens and Extra are forwarded to every sub-agent model call
-	// (MaxTokens is required when Provider speaks the Anthropic dialect), and
-	// Retry is the nested loop's Config.Retry — off by default, since Provider
-	// already retries.
+	// (MaxTokens is required when Provider speaks the Anthropic dialect).
+	// Retry is not configurable here: the sub-agent's calls inherit whatever
+	// Provider does, like every other call.
 	Provider  Provider
 	Model     string
 	MaxTokens int
 	Extra     map[string]any
-	Retry     *RetryPolicy
 	// Tools is the parent's FULL tool executor (every tool the parent turn
 	// has). The executor derives the read-only subset from it for the default
 	// sub-agent toolset, but a non-read-only tool the orchestrator names in
@@ -368,7 +367,6 @@ func (e *subagentExecutor) runConfig(callID string, subTools ToolExecutor) Confi
 		Tools:    subTools,
 		Approver: approveAll{},
 		MaxTurns: e.cfg.MaxTurns,
-		Retry:    e.cfg.Retry,
 	}
 	act := e.cfg.OnActivity
 	if act == nil {

@@ -6,25 +6,30 @@ import (
 )
 
 // RetryPolicy is exponential-backoff retry for transient failures. The
-// zero-value fields default at use time to 4 attempts (1 try + 3 retries) and
-// a 500ms base delay; the delay before retry n is BaseDelay × 2^(n−1) with no
-// jitter and no cap. Sleep, when nil, uses a context-aware timer; inject it in
-// tests to skip real waiting.
+// zero-value fields default at use time to 10 attempts (1 try + 9 retries)
+// and a 500ms base delay; the delay before retry n is BaseDelay × 2^(n−1)
+// with no jitter and no cap. Sleep, when nil, uses a context-aware timer;
+// inject it in tests to skip real waiting.
 type RetryPolicy struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
 	Sleep       func(context.Context, time.Duration) error
 }
 
-// DefaultRetry is the default policy: 4 attempts, 500ms base delay.
-var DefaultRetry = RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond}
+// defaultAttempts is the attempt cap applied when a policy does not set one.
+// Ten, matching Claude Code: a transient upstream should be ridden out, not
+// surfaced to the user as a failed turn after three tries.
+const defaultAttempts = 10
+
+// DefaultRetry is the default policy: 10 attempts, 500ms base delay.
+var DefaultRetry = RetryPolicy{MaxAttempts: defaultAttempts, BaseDelay: 500 * time.Millisecond}
 
 // attempts returns the effective attempt cap.
 func (p RetryPolicy) attempts() int {
 	if p.MaxAttempts > 0 {
 		return p.MaxAttempts
 	}
-	return 4
+	return defaultAttempts
 }
 
 // base returns the effective base delay.
@@ -83,11 +88,6 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 // re-sending would duplicate it.
 func retryComplete(ctx context.Context, p Provider, policy RetryPolicy, req Request, ev *StreamEvents) (*Completion, error) {
 	attempts := policy.attempts()
-	if attempts <= 1 {
-		// Retry is off: skip the probe wrapper, which would allocate a closure
-		// per callback to answer a question nothing asks.
-		return p.Complete(ctx, req, ev)
-	}
 	var comp *Completion
 	var err error
 	for attempt := 1; ; attempt++ {
@@ -110,20 +110,20 @@ type retryingProvider struct {
 }
 
 // newProvider finishes a dialect implementation into the Provider callers
-// hold: it gives it the library's standard retry behavior, so a transient
-// failure (408, 429, 5xx, transport errors) is re-attempted per the policy —
-// but ONLY when the attempt streamed nothing, so a caller's sink never sees
-// the same delta twice. Permanent failures — other 4xx, context overflow,
+// hold: it gives it the library's retry behavior, so a transient failure
+// (408, 429, 5xx, transport errors) is re-attempted per the policy — but ONLY
+// when the attempt streamed nothing, so a caller's sink never sees the same
+// delta twice. Permanent failures — other 4xx, context overflow,
 // cancellation, and errors the caller's own stream callbacks returned —
 // surface immediately.
 //
-// A nil policy means DefaultRetry, because retry is not something a caller
-// opts into: a retry you have to remember to enable is one that silently
-// isn't there. A policy capped at one attempt turns it off and returns the
-// dialect provider unwrapped.
+// A nil policy means DefaultRetry. A policy capped at one attempt returns the
+// dialect provider unwrapped: retry is off, and the probe wrapper would be
+// pure overhead.
 //
-// Both dialect constructors end here, so every Provider the library builds
-// retries. See ProviderConfig.Retry.
+// Both dialect constructors end here, so retry is not something a caller opts
+// into: a retry you have to remember to enable is one that silently isn't
+// there. ProviderConfig.Retry is the library's ONE retry knob.
 func newProvider(dialect Provider, policy *RetryPolicy) Provider {
 	resolved := DefaultRetry
 	if policy != nil {

@@ -306,8 +306,9 @@ reported.
 - **Context overflow**: a 400 whose body matches (case-insensitive)
   `prompt (is )?too long|context (length|window)|maximum context|too many tokens|exceeds?.{0,20}(context|token)`
   is flagged `contextOverflow` — surfaced explicitly, never retried.
-- **RetryPolicy**: defaults 4 attempts (1 try + 3 retries), 500ms base,
-  `delay = base × 2^(attempt−1)`, no jitter, no cap. Retry only transient
+- **RetryPolicy**: defaults **10 attempts** (1 try + 9 retries), 500ms base,
+  `delay = base × 2^(attempt−1)`, no jitter, no cap (the 9 delays sum to
+  ~255s). Retry only transient
   failures; the final attempt's error surfaces regardless; a sleep
   interrupted by cancellation stops retrying and surfaces the last fn
   error.
@@ -322,12 +323,11 @@ reported.
 - **The retry condition**: re-attempt ONLY when the failed attempt produced
   no partial completion AND delivered no stream event AND the error is
   transient.
-- **The loop's `retry` is a SEPARATE, opt-in layer.** `Run`'s config (and
-  the sub-agent executor's, which feeds it) keeps a `retry` policy, but it
-  MUST default to OFF (one attempt) — not to the defaults above — because
-  the Provider already retries and stacking the two MULTIPLIES the attempts
-  (4 × 4 = 16) and their backoff. It exists for a custom Provider that does
-  not retry on its own. A retried call counts as ONE turn either way.
+- **The loop has NO retry knob.** `Run`'s config MUST NOT carry a retry
+  policy, and neither must the sub-agent executor's config; both inherit
+  whatever the Provider does. A retried call counts as ONE turn, trivially,
+  because the loop only sees the outcome. A custom Provider implementation
+  owns its own retry.
 
 ## 7. Rejected-parameter strip middleware
 
@@ -397,9 +397,9 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
 - With a nil executor, a hallucinated call gets the teaching result
   `unknown tool: <name>` and the loop continues (deviation from the source
   subagent, which ended the loop; the teaching behavior is deliberate).
-- **Retry**: the Provider re-attempts internally (§6); `config.retry`, when
-  set, adds a loop-level pass on top with the same nothing-streamed guard.
-  Either way a retried call counts as ONE turn.
+- **Retry** is NOT the loop's concern (see §6): the Provider re-attempts
+  internally, so a retried call counts as ONE turn here trivially — the
+  loop only sees the outcome.
 - **Mid-stream break/cancel**: the provider returns a partial completion +
   error; the loop appends the partial assistant message with its
   **toolCalls cleared** (they never executed) and returns the partial
@@ -463,9 +463,8 @@ loop's own config.
 
 ### 10a. run_subagent (`NewSubagentExecutor(SubagentConfig)`)
 
-Config: `provider`, `model`, `maxTokens`, `extra`, `retry` (the nested
-loop's policy; off by default like §8's), `tools` (the parent's FULL
-executor), `parentSystem` +
+Config: `provider`, `model`, `maxTokens`, `extra`, `tools` (the parent's
+FULL executor; there is deliberately NO retry field — see §6), `parentSystem` +
 `parentMessages` (the share_context source), `maxTurns` (<= 0 ⇒ the loop
 default 10), `gate?`, `systemPrompt?` (empty ⇒
 `DefaultSubagentSystemPrompt`), `onActivity?`.
@@ -492,7 +491,7 @@ default 10), `gate?`, `systemPrompt?` (empty ⇒
   acquisition failure ⇒ `run_subagent was cancelled before it could start:
   <err>`. The nested run is this library's §8 loop — one user message (the
   composed task), the subagent system prompt, the config's
-  model/maxTokens/extra/retry, and an approve-everything Approver (the
+  model/maxTokens/extra, and an approve-everything Approver (the
   source loop never consulted the approval flow: the explicit grant IS the
   authorization). A nested-run error ⇒ `sub-agent failed: <err>`; success ⇒
   the TRIMMED final content as the tool result (the nested loop's stall
@@ -663,8 +662,7 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   tools, stall wrap-up request shape (tool-less; instruction as the last
   user message; stalled assistant absent), hallucinated-call teaching
   error, no-retry-after-partial, retried-call-is-one-turn, plus
-  retry-on-by-default straight from a constructor with no policy set,
-  no-loop-retry-by-default, and the loop-x-provider multiplication.
+  retry-on-by-default straight from a constructor with no policy set.
 - Param stripper: all four phrasings, camelCase↔snake_case normalization,
   retry-once, memory across calls, never on cancel/after delivery.
 - Provider factories: one per dialect building that dialect's

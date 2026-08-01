@@ -258,8 +258,10 @@ requested tools, feed the results back, repeat. Key behaviors:
 
 ### Retry and error classification
 
-`RetryPolicy` (default `DefaultRetry`: 4 attempts, 500ms base, delay =
-base × 2^(n−1), no jitter) retries only what `IsTransient` allows: HTTP 408,
+`RetryPolicy` (default `DefaultRetry`: **10 attempts**, 500ms base, delay =
+base × 2^(n−1), no jitter, no cap — so riding out a fully-down upstream can
+take ~255s before the error surfaces) retries only what `IsTransient`
+allows: HTTP 408,
 429, any 5xx, and network/transport errors. Context cancellation, other
 4xx, and **errors your own callbacks returned** are permanent. A 400 whose
 body says the prompt exceeded the context window is flagged — check with
@@ -296,11 +298,9 @@ attached. Delivery is marked **before** each callback runs, so a callback
 that fails on the very first delta still counts as "streamed something" —
 the call is never re-sent into a dead sink.
 
-`Config.Retry` adds a **loop-level** pass on top, for a custom `Provider`
-that does not retry on its own. It is off by default, and deliberately so:
-stacking it on a constructor-built provider MULTIPLIES the attempts
-(4 × 4 = 16) and their backoff. Either way a retried call counts as one
-turn.
+`Run` therefore has no retry knob, and a retried call is one turn: `Run`
+only ever sees the outcome. A custom `Provider` implementation is
+responsible for its own retry.
 
 ### Rejected-parameter recovery
 

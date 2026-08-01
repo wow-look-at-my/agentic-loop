@@ -132,7 +132,7 @@ func TestRetryPolicyDo(t *testing.T) {
 
 	t.Run("zero value defaults", func(t *testing.T) {
 		var p RetryPolicy
-		assert.Equal(t, 4, p.attempts())
+		assert.Equal(t, defaultAttempts, p.attempts())
 		assert.Equal(t, 500*time.Millisecond, p.base())
 		assert.Equal(t, 500*time.Millisecond, p.delay(1))
 		assert.Equal(t, 2*time.Second, p.delay(3))
@@ -148,7 +148,7 @@ func TestRetryPolicyDo(t *testing.T) {
 }
 
 func TestDefaultRetryValues(t *testing.T) {
-	assert.Equal(t, 4, DefaultRetry.MaxAttempts)
+	assert.Equal(t, 10, DefaultRetry.MaxAttempts, "ten attempts, matching Claude Code")
 	assert.Equal(t, 500*time.Millisecond, DefaultRetry.BaseDelay)
 }
 
@@ -253,7 +253,7 @@ func TestRetryingProvider(t *testing.T) {
 	})
 
 	t.Run("zero-value policy uses the DefaultRetry values", func(t *testing.T) {
-		steps := make([]scriptStep, 8)
+		steps := make([]scriptStep, DefaultRetry.MaxAttempts)
 		for i := range steps {
 			steps[i] = scriptStep{err: &APIError{Status: 503}}
 		}
@@ -267,6 +267,11 @@ func TestRetryingProvider(t *testing.T) {
 			Complete(context.Background(), Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, DefaultRetry.MaxAttempts)
-		assert.Equal(t, []time.Duration{500 * time.Millisecond, 1 * time.Second, 2 * time.Second}, delays)
+		// Uncapped doubling from the 500ms base, one delay per retry.
+		assert.Equal(t, []time.Duration{
+			500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 4 * time.Second,
+			8 * time.Second, 16 * time.Second, 32 * time.Second, 64 * time.Second,
+			128 * time.Second,
+		}, delays)
 	})
 }
