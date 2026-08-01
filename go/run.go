@@ -61,9 +61,14 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 // DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), and the event
 // callbacks.
 //
-// There is no retry knob: retry is the Provider's job (ProviderConfig.Retry),
-// since it is the layer that knows whether a call streamed anything. A
-// provider from either dialect constructor already retries.
+// There is deliberately NO retry knob. The loop is a high-level construct:
+// it knows nothing about connections, status codes, or backoff, and an error
+// that reaches it is treated as REAL and PERMANENT — the layer whose job was
+// to make the call happen has already given up, so Run stops rather than
+// second-guessing it. Riding out transient failure belongs to the Provider
+// (ProviderConfig.Retry), which is also the only layer that can see whether a
+// call streamed anything — the condition that decides whether re-sending is
+// safe. See "Layering" in README.md.
 type Config struct {
 	Provider Provider
 	Tools    ToolExecutor
@@ -114,13 +119,14 @@ type Result struct {
 // plus the callback's error — in every case the partial Result rides
 // alongside the error and the transcript carries no orphan tool calls.
 //
-// Model-call retry belongs to the Provider, not to Run: a provider built by
-// either dialect constructor re-attempts transient failures itself, and a
-// retried call is one turn here because Run only ever sees the outcome. When
-// a call fails after data arrived, the partial assistant message is finalized
-// into the transcript (tool calls cleared) and the partial Result is returned
-// alongside the error. Whenever Run returns an error together with a non-nil
-// Result, the Result carries the transcript accumulated so far.
+// A model-call error ENDS the run — the loop assumes any failure reaching it
+// is permanent (see Config). Transient failures never get this far: the
+// Provider rides them out, and a retried call is one turn here because Run
+// only ever sees the outcome. When a call fails after data arrived, the
+// partial assistant message is finalized into the transcript (tool calls
+// cleared) and the partial Result is returned alongside the error. Whenever
+// Run returns an error together with a non-nil Result, the Result carries the
+// transcript accumulated so far.
 //
 // If the loop ends with the model having produced no content (a
 // thinking-only turn, or the cap hit mid-research), one extra tool-less

@@ -130,8 +130,9 @@ type SubagentConfig struct {
 	// Provider and Model run the sub-agent (typically the same as the parent
 	// turn's). MaxTokens and Extra are forwarded to every sub-agent model call
 	// (MaxTokens is required when Provider speaks the Anthropic dialect).
-	// Retry is not configurable here: the sub-agent's calls inherit whatever
-	// Provider does, like every other call.
+	// There is no Retry here for the same reason Config has none: the nested
+	// run is a loop, and loops do not retry. The sub-agent's calls inherit
+	// whatever Provider does, like every other call in the library.
 	Provider  Provider
 	Model     string
 	MaxTokens int

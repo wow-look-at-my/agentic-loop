@@ -79,6 +79,30 @@ mapping: `stop → end_turn`, `tool_calls → tool_use`, `length → max_tokens`
 anything else raw. Post-stream inference (both dialects): missing stop
 reason becomes `tool_use` if calls were assembled, else `end_turn`.
 
+## 1a. Layering — loop vs provider
+
+The responsibility split the whole design rests on. A port that blurs it
+ends up implementing the same concern twice.
+
+- **The loop (`run`) is high-level.** Ask the model, run the tools it asks
+  for, feed results back, repeat. It MUST know nothing about HTTP, status
+  codes, or backoff.
+- **An error reaching the loop is REAL and PERMANENT: the loop STOPS.** It
+  is entitled to that assumption — the layer whose job was to make the call
+  happen has already given up. The loop MUST NOT retry and MUST NOT expose
+  a retry knob (§6).
+- **The provider carries out what the loop asks.** When the loop says
+  "complete this request", making that true across transient failure (429,
+  502, dropped connection, rejected parameter) is the provider's
+  responsibility — implementation details of doing the thing, not outcomes
+  to propagate. It surfaces an error only when the operation genuinely
+  cannot be completed.
+
+Provider owns HOW a call is made and everything transient in the attempt;
+the loop owns WHAT calls to make and what to do with results. Hence retry
+(§6) and the param stripper (§7) are BOTH provider-side, and neither the
+loop config nor the sub-agent config carries a retry policy.
+
 ## 2. Executor combinators
 
 - **Composite**: skip nil executors and empty tool names; **first

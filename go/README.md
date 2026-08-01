@@ -73,6 +73,46 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myExecuto
 	})
 ```
 
+## Layering — which layer owns what
+
+Two layers, and the split decides where anything new belongs. Get this
+backwards and you end up with the same concern implemented twice, fighting
+each other.
+
+**The loop (`Run`) is a high-level construct.** It asks the model something,
+runs the tools the model asks for, feeds the results back, and repeats until
+there is an answer. It knows nothing about HTTP, connections, status codes,
+or backoff — those words do not appear in it. Its contract with the layer
+below is simply *"complete this request."*
+
+Consequently **an error that reaches the loop is treated as real and
+permanent, and the loop stops.** It is entitled to that assumption: by the
+time a failure has surfaced this far, the layer whose job was to make the
+call happen has already given up. The loop does not second-guess it, does
+not retry, and has no retry knob to configure — deliberately.
+
+**The provider is where the loop's instructions are actually carried out.**
+When the loop says "complete this request", making that true is the
+provider's responsibility, including everything that can go transiently
+wrong in the attempt: a 429, a 502, a dropped connection, a rejected
+parameter. Those are implementation details of *doing the thing*, not
+outcomes worth propagating. The provider surfaces an error only when the
+operation genuinely cannot be completed — at which point it is, by
+construction, permanent.
+
+So: the provider owns **how** a model call gets made and everything that
+can transiently go wrong doing it; the loop owns **what** calls to make and
+what to do with the results.
+
+That is why `ProviderConfig.Retry` is the library's one retry knob, why
+`NewParamStripper` is a provider decorator rather than a loop feature, and
+why `Config`/`SubagentConfig` carry no retry policy. It is also why retry
+lives where it can see whether a call streamed anything — the condition
+that decides whether re-sending is even safe — which the loop cannot see.
+
+The one thing the provider must NOT do is hide the wait: see
+`StreamEvents.OnRetry` under [Retry](#retry-and-error-classification).
+
 ## The pieces
 
 ### Provider
