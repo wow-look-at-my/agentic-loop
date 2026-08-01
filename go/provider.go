@@ -136,6 +136,13 @@ func probeEvents(ev *StreamEvents, delivered *bool) *StreamEvents {
 		OnUsage:     func(u Usage) error { *delivered = true; return ev.emitUsage(u) },
 		OnProgress:  func(p PromptProgress) error { *delivered = true; return ev.emitProgress(p) },
 		OnTimings:   func(t Timings) error { *delivered = true; return ev.emitTimings(t) },
+		// Forwarded but deliberately NOT marking delivery: a retry
+		// notification is not streamed data, and treating it as such would let
+		// announcing a retry suppress the next one. Forwarding matters because
+		// a probe can sit ABOVE the retry layer — NewParamStripper does —
+		// and rebuilding the events without this field would silently swallow
+		// every retry notification beneath it.
+		OnRetry: func(a RetryAttempt) error { return ev.emitRetry(a) },
 	}
 }
 
