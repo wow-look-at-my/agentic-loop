@@ -294,6 +294,17 @@ requested tools, feed the results back, repeat. Key behaviors:
   already-appended results are dropped) so the transcript stays replayable
   with no orphan tool calls, and the partial `Result` is returned together
   with your error.
+- **Per-turn hooks.** `Events.OnTurnBegin(turn, req)` fires before each
+  numbered model call (turns are numbered 1..MaxTurns; the stall wrap-up
+  call fires as `turn == MaxTurns+1`) with the 1-based turn number and a
+  pointer to the per-call `Request`: mutate it (append a wind-down message,
+  tweak `System`, add `Extra`) and the change applies to that one call only,
+  never the persistent transcript. `Events.OnTurnEnd(turn, comp, err)` fires
+  after each call with the `Completion` (nil when the call produced none) and
+  the call's error. A non-nil return from either aborts the run like any
+  other callback error: `OnTurnBegin` aborts before the call, `OnTurnEnd`
+  after it with the completed data kept. The internal subagent telemetry
+  hook is unaffected.
 - **Approval**: a tool whose `NeedsApproval(name)` is true pauses for
   `Approver.Ask`. A nil `Approver` fails closed (denies). If `Ask` returns an
   error (the decision never arrived), the run ends with the pending batch
@@ -398,7 +409,12 @@ never fires on context cancellation or after data streamed.
   `stream_options`) so usage — including cached-token counts — arrives on the
   stream. Set `CacheKey` to send `prompt_cache_key` (a routing hint), and set
   `SelfHosted` to add `cache_prompt: true` for llama.cpp-style servers
-  (never send it to hosted OpenAI/Azure — they 400 on unknown fields).
+  (never send it to hosted OpenAI/Azure -- they 400 on unknown fields). Set
+  `PromptCache` to add the two Anthropic-style ephemeral `cache_control`
+  breakpoints in openai shape (a static one on the leading system message
+  and a moving one on the tail content block) for Anthropic-fronting
+  gateways that pass them through; keep it off for strict OpenAI-compatible
+  servers, which 400 on the unknown marker.
 
 ### Usage accounting
 
@@ -418,6 +434,20 @@ merged during the call: `Usage` is a value type, so this is how a caller
 reading only the returned `Completion` distinguishes an upstream that
 reported all-zero usage from one that reported none at all (common on local
 servers) — check it before persisting or displaying `Usage`.
+
+`Completion.RawUsage` carries the provider's usage object verbatim (the raw
+wire JSON on the openai dialect, the merged wire-shaped object on Anthropic)
+for logging and for extracting provider extras the normalized `Usage` drops:
+`Completion.ReasoningTokens` (openai
+`usage.completion_tokens_details.reasoning_tokens`) and
+`Completion.CostUsd` (`usage.cost`, falling back to `usage.estimated_cost`),
+each a tri-state pointer present only when the upstream reported it.
+
+`Completion.Streamed` records whether the response actually arrived as an SSE
+stream. A 200 that is NOT `text/event-stream` is read as a plain JSON body
+and reassembled into a Completion with `Streamed` false -- a server that
+ignores `stream: true` is accepted transparently, and the flag preserves the
+truth of how the call was transported.
 
 ### Compaction and one-off calls
 

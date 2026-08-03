@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -90,6 +91,18 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		return nil, readAPIError(resp)
+	}
+
+	// A 200 that is NOT an SSE stream is a plain JSON response -- the server
+	// ignored stream:true and answered with the non-streaming Messages shape.
+	// It is accepted transparently and reassembled into a Completion with
+	// Streamed false, like the OpenAI dialect.
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		body, rerr := io.ReadAll(resp.Body)
+		if rerr != nil {
+			return nil, badRequestErr("anthropic: read non-streaming response: " + rerr.Error())
+		}
+		return parseAnthropicNonStream(body)
 	}
 
 	st := &anStream{ev: ev, blocks: map[int]*anBlock{}}
@@ -537,5 +550,137 @@ func (st *anStream) completion() *Completion {
 	if st.haveUsage {
 		u = floorTotal(st.currentUsage())
 	}
-	return &Completion{Message: msg, Usage: u, UsageReported: st.haveUsage, StopReason: stop}
+	comp := &Completion{Message: msg, Usage: u, UsageReported: st.haveUsage, StopReason: stop, Streamed: true}
+	if st.haveUsage {
+		// The wire-shaped usage object a non-streaming response would carry
+		// (input_tokens EXCLUDES cached tokens; the cache fields ride as
+		// siblings), assembled from the merged stream state.
+		comp.RawUsage = anRawUsageJSON(st.inputTokens, st.outputTokens, st.cacheRead, st.cacheWrite)
+	}
+	return comp
+}
+
+// anRawUsageJSON builds the Messages-API-shaped usage object the provider's
+// usage fragments combine into: input/output tokens plus the tri-state cache
+// sibling fields (each included only when reported). Reasoning and cost
+// figures never exist on this dialect.
+func anRawUsageJSON(input, output int, read, write *int) json.RawMessage {
+	m := map[string]any{
+		"input_tokens":  input,
+		"output_tokens": output,
+	}
+	if read != nil {
+		m["cache_read_input_tokens"] = *read
+	}
+	if write != nil {
+		m["cache_creation_input_tokens"] = *write
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// anNonStream is the non-streaming Messages API response shape a server that
+// ignores stream:true answers with.
+type anNonStream struct {
+	Content    []anNonStreamBlock `json:"content"`
+	StopReason string             `json:"stop_reason"`
+	Usage      *anUsage           `json:"usage"`
+}
+
+// anNonStreamBlock is one content block of a non-streaming response.
+type anNonStreamBlock struct {
+	Type      string          `json:"type"`
+	Text      string          `json:"text"`
+	Thinking  string          `json:"thinking"`
+	Signature string          `json:"signature"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Input     json.RawMessage `json:"input"`
+	Data      string          `json:"data"`
+}
+
+// parseAnthropicNonStream reassembles a plain-JSON Messages response into a
+// Completion with Streamed false. Content blocks map onto the same
+// Message fields the stream path builds (text concatenated, thinking and
+// redacted_thinking collected, tool_use calls assembled with their input
+// re-serialized to the raw argument string), usage normalized identically,
+// and the stop reason post-inferred the same way.
+func parseAnthropicNonStream(data []byte) (*Completion, error) {
+	var resp anNonStream
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, badRequestErr("anthropic: decode non-streaming response: " + err.Error())
+	}
+	comp := &Completion{
+		Message:    Message{Role: RoleAssistant},
+		StopReason: resp.StopReason,
+		Streamed:   false,
+	}
+	for _, b := range resp.Content {
+		switch b.Type {
+		case "text":
+			comp.Message.Content += b.Text
+		case "thinking":
+			comp.Message.Thinking = append(comp.Message.Thinking, ThinkingBlock{Text: b.Thinking, Signature: b.Signature})
+		case "redacted_thinking":
+			comp.Message.Thinking = append(comp.Message.Thinking, ThinkingBlock{Redacted: b.Data})
+		case "tool_use":
+			args := b.Input
+			if len(args) == 0 {
+				args = json.RawMessage(`{}`)
+			}
+			comp.Message.ToolCalls = append(comp.Message.ToolCalls, ToolCall{
+				ID: b.ID, Name: b.Name, Arguments: string(args),
+			})
+		}
+	}
+	if resp.Usage != nil {
+		comp.Usage = floorTotal(resp.Usage.toUsage())
+		comp.UsageReported = true
+		comp.RawUsage = anRawUsageJSON(
+			resp.Usage.InputTokens,
+			intOrZero(resp.Usage.OutputTokens),
+			resp.Usage.CacheReadInputTokens,
+			resp.Usage.CacheCreationInputTokens,
+		)
+	}
+	if comp.StopReason == "" {
+		if len(comp.Message.ToolCalls) > 0 {
+			comp.StopReason = StopToolUse
+		} else {
+			comp.StopReason = StopEndTurn
+		}
+	}
+	return comp, nil
+}
+
+// intOrZero dereferences a tri-state int pointer, zero when nil.
+func intOrZero(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// toUsage normalizes a Messages-API usage object: input_tokens EXCLUDES
+// cached tokens, so the full prompt is input + cache_read + cache_creation;
+// the tri-state cache pointers pass through as reported.
+func (u *anUsage) toUsage() Usage {
+	read, write := 0, 0
+	if u.CacheReadInputTokens != nil {
+		read = *u.CacheReadInputTokens
+	}
+	if u.CacheCreationInputTokens != nil {
+		write = *u.CacheCreationInputTokens
+	}
+	out := Usage{
+		PromptTokens:     u.InputTokens + read + write,
+		CompletionTokens: intOrZero(u.OutputTokens),
+		CacheReadTokens:  clonePtr(u.CacheReadInputTokens),
+		CacheWriteTokens: clonePtr(u.CacheCreationInputTokens),
+	}
+	out.TotalTokens = out.PromptTokens + out.CompletionTokens
+	return out
 }
