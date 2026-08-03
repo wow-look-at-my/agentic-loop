@@ -134,6 +134,11 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 // DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), and the event
 // callbacks.
 //
+// Output dedup is ON by default: a read-only tool result whose content is
+// byte-identical to an earlier call in the same run is fed back as a short
+// [unchanged] marker instead of the full text (see OutputDeduper). Set
+// DisableOutputDedup to turn that off.
+//
 // There is deliberately NO retry knob. The loop is a high-level construct:
 // it knows nothing about connections, status codes, or backoff, and an error
 // that reaches it is treated as REAL and PERMANENT -- the layer whose job was
@@ -148,6 +153,11 @@ type Config struct {
 	Approver Approver
 	MaxTurns int
 	Events   Events
+
+	// DisableOutputDedup opts out of collapsing byte-identical read-only tool
+	// results into [unchanged] markers. On by default; only set when the full
+	// output must always reach the model.
+	DisableOutputDedup bool
 
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
@@ -192,6 +202,10 @@ type Result struct {
 // plus the callback's error -- in every case the partial Result rides
 // alongside the error and the transcript carries no orphan tool calls.
 //
+// Read-only tool results that are byte-identical to an earlier call in the
+// run are fed back as a short [unchanged] marker instead of the full content
+// (see OutputDeduper; Config.DisableOutputDedup opts out).
+//
 // A model-call error ENDS the run -- the loop assumes any failure reaching it
 // is permanent (see Config). Transient failures never get this far: the
 // Provider rides them out, and a retried call is one turn here because Run
@@ -218,6 +232,25 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	var advertised []Tool
 	if cfg.Tools != nil {
 		advertised = cfg.Tools.Tools()
+	}
+
+	// Output dedup: build the readonly-tool name set from the advertised list
+	// and create one deduper for the whole run, so an unchanged read-only
+	// result collapses to a marker instead of re-dumping a huge output.
+	var readonlyTools map[string]bool
+	var deduper *OutputDeduper
+	if !cfg.DisableOutputDedup {
+		for _, t := range advertised {
+			if t.Readonly && t.Name != "" {
+				if readonlyTools == nil {
+					readonlyTools = map[string]bool{}
+				}
+				readonlyTools[t.Name] = true
+			}
+		}
+		if len(readonlyTools) > 0 {
+			deduper = NewOutputDeduper()
+		}
 	}
 
 	transcript := make([]Message, len(req.Messages), len(req.Messages)+8)
@@ -320,9 +353,15 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				if cberr := cfg.Events.emitToolResult(call, result); cberr != nil {
 					return abortBatch(cberr)
 				}
+				content := result.Content
+				if deduper != nil && readonlyTools[call.Name] && !result.IsError {
+					if collapsed, deduped := deduper.Collapse(call.Name, result); deduped {
+						content = collapsed
+					}
+				}
 				transcript = append(transcript, Message{
 					Role:        RoleTool,
-					Content:     result.Content,
+					Content:     content,
 					ToolCallID:  call.ID,
 					ToolIsError: result.IsError,
 				})

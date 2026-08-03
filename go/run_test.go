@@ -511,3 +511,109 @@ func TestRunStreamEventsForwarded(t *testing.T) {
 	assert.True(t, gotProgress)
 	assert.True(t, gotTimings)
 }
+
+// toolMessages collects the RoleTool entries of a transcript in order.
+func toolMessages(t *testing.T, res *Result) []Message {
+	t.Helper()
+	var out []Message
+	for _, m := range res.Messages {
+		if m.Role == RoleTool {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// identicalExec is a fake executor whose every call to a tool returns the
+// same byte-identical content, modeling a read-only probe whose output does
+// not change between calls.
+func identicalExec(tools []Tool, content string) *fakeExec {
+	return &fakeExec{
+		tools: tools,
+		execute: func(context.Context, ToolCall) (ToolResult, error) {
+			return ToolResult{Content: content}, nil
+		},
+	}
+}
+
+func TestRunDedupsReadonlyToolAcrossTurns(t *testing.T) {
+	const fullOutput = "the huge status diff"
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("", ToolCall{ID: "c2", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("done")},
+	}}
+	exec := identicalExec([]Tool{{Name: "status", Readonly: true}}, fullOutput)
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
+	require.NoError(t, err)
+
+	msgs := toolMessages(t, res)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, fullOutput, msgs[0].Content, "first occurrence feeds the full output")
+	assert.Contains(t, msgs[1].Content, UnchangedPrefix, "a byte-identical readonly result collapses to the marker")
+	assert.NotEqual(t, fullOutput, msgs[1].Content)
+	assert.False(t, msgs[1].ToolIsError, "a collapsed result is still a success")
+}
+
+func TestRunNeverDedupsNonReadonlyTools(t *testing.T) {
+	const fullOutput = "same bytes every write"
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "write_file", Arguments: "{}"})},
+		{comp: assistantComp("", ToolCall{ID: "c2", Name: "write_file", Arguments: "{}"})},
+		{comp: assistantComp("done")},
+	}}
+	exec := identicalExec([]Tool{{Name: "write_file"}}, fullOutput) // no Readonly flag
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
+	require.NoError(t, err)
+
+	msgs := toolMessages(t, res)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, fullOutput, msgs[0].Content)
+	assert.Equal(t, fullOutput, msgs[1].Content, "non-readonly results are never collapsed, even byte-identical")
+}
+
+func TestRunDisableOutputDedup(t *testing.T) {
+	const fullOutput = "the huge status diff"
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("", ToolCall{ID: "c2", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("done")},
+	}}
+	exec := identicalExec([]Tool{{Name: "status", Readonly: true}}, fullOutput)
+
+	res, err := Run(context.Background(),
+		Config{Provider: provider, Tools: exec, DisableOutputDedup: true}, Request{Model: "m"})
+	require.NoError(t, err)
+
+	msgs := toolMessages(t, res)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, fullOutput, msgs[0].Content)
+	assert.Equal(t, fullOutput, msgs[1].Content, "DisableOutputDedup keeps the full output on every repeat")
+}
+
+func TestRunReadonlyToolErrorNeverDedupsNorSeeds(t *testing.T) {
+	const fullOutput = "boom: read failed"
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("", ToolCall{ID: "c2", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("done")},
+	}}
+	exec := &fakeExec{
+		tools: []Tool{{Name: "status", Readonly: true}},
+		execute: func(context.Context, ToolCall) (ToolResult, error) {
+			return ToolResult{Content: fullOutput, IsError: true}, nil
+		},
+	}
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
+	require.NoError(t, err)
+
+	msgs := toolMessages(t, res)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, fullOutput, msgs[0].Content)
+	assert.True(t, msgs[0].ToolIsError)
+	assert.Equal(t, fullOutput, msgs[1].Content, "an error result is never collapsed and never seeds the deduper")
+	assert.True(t, msgs[1].ToolIsError)
+}
