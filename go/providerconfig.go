@@ -23,13 +23,13 @@ type ProviderConfig struct {
 	// header can override them.
 	Headers map[string]string
 	// Retry is the transient-failure retry policy for every call this provider
-	// makes. Nil means DefaultRetry — retry is ON by default, because a call
+	// makes. Nil means DefaultRetry -- retry is ON by default, because a call
 	// that fails before streaming anything is always safe to re-send and an
 	// opt-in retry is one a caller forgets to enable. Set
 	// &RetryPolicy{MaxAttempts: 1} to turn it off.
 	//
 	// Retry lives here, not around the loop, because the provider is the layer
-	// that knows whether a call streamed anything — the condition that decides
+	// that knows whether a call streamed anything -- the condition that decides
 	// whether re-sending is safe.
 	Retry *RetryPolicy
 }
@@ -39,10 +39,22 @@ type ProviderConfig struct {
 type OpenAIConfig struct {
 	ProviderConfig
 
-	// SelfHosted adds cache_prompt:true to every request — the KV-cache
+	// SelfHosted adds cache_prompt:true to every request -- the KV-cache
 	// prefix-reuse opt-in llama.cpp-style servers honor. It must stay false
 	// for hosted OpenAI/Azure, which reject unknown body fields with a 400.
 	SelfHosted bool
+	// PromptCache emits two Anthropic-style ephemeral cache_control
+	// breakpoints in openai dialect shape -- a static one on the leading
+	// system message and a moving one on the tail content block -- for
+	// Anthropic-fronting gateways that pass cache_control through. Default
+	// false: plain OpenAI-compatible servers reject the unknown marker.
+	PromptCache bool
+	// ReplayReasoning replays the accumulated reasoning text as
+	// message.reasoning on each assistant message, the gateway-extension
+	// behavior that keeps a model seeing its own chain-of-thought on the
+	// openai dialect. Default false: strict OpenAI-compatible servers reject
+	// the unknown field.
+	ReplayReasoning bool
 }
 
 // AnthropicConfig configures NewAnthropicProvider: the shared ProviderConfig
@@ -59,7 +71,7 @@ type AnthropicConfig struct {
 }
 
 // NewOpenAIProvider builds the Provider for OpenAI-compatible chat-completions
-// APIs. It fails fast — with a permanent (never-retried) error — on an empty
+// APIs. It fails fast -- with a permanent (never-retried) error -- on an empty
 // BaseURL. The returned Provider retries transient failures per
 // ProviderConfig.Retry. The concrete implementation is unexported; consumers
 // hold only the Provider interface.
@@ -68,17 +80,19 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 		return nil, badRequestErr("agentic: OpenAIConfig.BaseURL is required")
 	}
 	return newProvider(&openaiProvider{
-		baseURL:    cfg.BaseURL,
-		apiKey:     cfg.APIKey,
-		httpClient: cfg.HTTPClient,
-		userAgent:  cfg.UserAgent,
-		selfHosted: cfg.SelfHosted,
-		headers:    cfg.Headers,
+		baseURL:         cfg.BaseURL,
+		apiKey:          cfg.APIKey,
+		httpClient:      cfg.HTTPClient,
+		userAgent:       cfg.UserAgent,
+		selfHosted:      cfg.SelfHosted,
+		promptCache:     cfg.PromptCache,
+		replayReasoning: cfg.ReplayReasoning,
+		headers:         cfg.Headers,
 	}, cfg.Retry), nil
 }
 
 // NewAnthropicProvider builds the Provider for the Anthropic Messages API. It
-// fails fast — with a permanent (never-retried) error — on an empty BaseURL.
+// fails fast -- with a permanent (never-retried) error -- on an empty BaseURL.
 // The returned Provider retries transient failures per ProviderConfig.Retry.
 // The concrete implementation is unexported; consumers hold only the Provider
 // interface.

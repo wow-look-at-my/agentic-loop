@@ -51,7 +51,7 @@ const stuckNudgeInstruction = "You have now requested the same tool calls severa
 // Result rides alongside it like every other mid-run failure.
 var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls")
 
-// batchFingerprint identifies a tool-call batch by what the model asked for —
+// batchFingerprint identifies a tool-call batch by what the model asked for --
 // the calls' names and raw arguments, in order. Call IDs are deliberately
 // excluded: providers mint a fresh ID per call, so including them would make
 // every batch unique and the detector dead code. Lengths are interleaved so
@@ -66,20 +66,50 @@ func batchFingerprint(calls []ToolCall) string {
 }
 
 // Events are the loop's callbacks: the embedded StreamEvents fire during each
-// model call, OnToolCall fires before each requested tool call is handled,
-// and OnToolResult fires with its recorded result (executed, denied, or a
-// teaching error). All optional.
+// model call, OnTurnBegin fires before each numbered model call (with the
+// 1-based turn number and a pointer to the per-call Request, which the hook
+// may mutate -- the transcript, system, or Extra it is about to send), OnTurnEnd
+// fires after each call (with the turn number, the Completion -- nil when the
+// call failed before producing one -- and the call's error), OnToolCall fires
+// before each requested tool call is handled, and OnToolResult fires with its
+// recorded result (executed, denied, or a teaching error). All optional.
+//
+// Turns are numbered 1..maxTurns; the stall wrap-up call fires as
+// turn == maxTurns+1. Like the stream callbacks, OnTurnBegin and OnTurnEnd may
+// return a non-nil error to abort the run: OnTurnBegin aborts before the call
+// (no completion), OnTurnEnd aborts after it with the completed data kept (the
+// assistant message is finalized the way a mid-stream break is).
 //
 // Like the stream callbacks, OnToolCall and OnToolResult may return a non-nil
-// error to abort the run: the turn is finalized the way a cancellation is —
+// error to abort the run: the turn is finalized the way a cancellation is --
 // the pending batch is cleared so the transcript stays replayable with no
-// orphan tool calls — and the partial Result is returned together with that
+// orphan tool calls -- and the partial Result is returned together with that
 // error (errors.Is against the caller's sentinel holds; the error is never
 // classified transient).
 type Events struct {
 	StreamEvents
+	OnTurnBegin  func(turn int, req *Request) error
+	OnTurnEnd    func(turn int, comp *Completion, err error) error
 	OnToolCall   func(ToolCall) error
 	OnToolResult func(ToolCall, ToolResult) error
+}
+
+// emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.
+// The hook receives the per-call Request that is about to be sent and may
+// mutate it; the mutations apply to that one call only.
+func (e *Events) emitTurnBegin(turn int, req *Request) error {
+	if e == nil || e.OnTurnBegin == nil {
+		return nil
+	}
+	return wrapCallbackErr(e.OnTurnBegin(turn, req))
+}
+
+// emitTurnEnd forwards a numbered turn's end, tolerating nil callbacks.
+func (e *Events) emitTurnEnd(turn int, comp *Completion, err error) error {
+	if e == nil || e.OnTurnEnd == nil {
+		return nil
+	}
+	return wrapCallbackErr(e.OnTurnEnd(turn, comp, err))
 }
 
 // emitToolCall forwards a requested tool call, tolerating nil callbacks.
@@ -106,11 +136,11 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 //
 // There is deliberately NO retry knob. The loop is a high-level construct:
 // it knows nothing about connections, status codes, or backoff, and an error
-// that reaches it is treated as REAL and PERMANENT — the layer whose job was
+// that reaches it is treated as REAL and PERMANENT -- the layer whose job was
 // to make the call happen has already given up, so Run stops rather than
 // second-guessing it. Riding out transient failure belongs to the Provider
 // (ProviderConfig.Retry), which is also the only layer that can see whether a
-// call streamed anything — the condition that decides whether re-sending is
+// call streamed anything -- the condition that decides whether re-sending is
 // safe. See "Layering" in README.md.
 type Config struct {
 	Provider Provider
@@ -121,14 +151,14 @@ type Config struct {
 
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
-	// turn). It is unexported: package-internal machinery — the subagent
-	// executor's live activity telemetry — not public API.
+	// turn). It is unexported: package-internal machinery -- the subagent
+	// executor's live activity telemetry -- not public API.
 	turnHook func(turn int)
 }
 
 // Result is the outcome of a Run. Messages is the input transcript plus
 // everything the loop appended (assistant turns, tool results, and the final
-// message). Usages holds one entry per model call IN ORDER — deliberately not
+// message). Usages holds one entry per model call IN ORDER -- deliberately not
 // summed, because successive prompts overlap (each turn re-sends the growing
 // transcript) and summing would double-count the shared prefix many times
 // over. Turns is the number of model calls made.
@@ -150,7 +180,7 @@ type Result struct {
 // Execute error becomes a recoverable "tool execution failed: ..." error
 // result, a call the model hallucinated with no executor configured gets an
 // "unknown tool: ..." error result, and a denied approval records
-// DeniedMessage — in every case the loop continues so the model can react.
+// DeniedMessage -- in every case the loop continues so the model can react.
 //
 // An Approver.Ask error (the decision never arrived) ends the run: the
 // current assistant message keeps its content and reasoning but its ToolCalls
@@ -159,10 +189,10 @@ type Result struct {
 // partial Result is returned alongside the error. An error returned by
 // OnToolCall or OnToolResult ends the run the same way, and a stream
 // callback error surfaces through the model call as a partial completion
-// plus the callback's error — in every case the partial Result rides
+// plus the callback's error -- in every case the partial Result rides
 // alongside the error and the transcript carries no orphan tool calls.
 //
-// A model-call error ENDS the run — the loop assumes any failure reaching it
+// A model-call error ENDS the run -- the loop assumes any failure reaching it
 // is permanent (see Config). Transient failures never get this far: the
 // Provider rides them out, and a retried call is one turn here because Run
 // only ever sees the outcome. When a call fails after data arrived, the
@@ -217,11 +247,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			turnTools = advertised
 		}
 
-		comp, err := runModelCall(ctx, &cfg, req, transcript, turnTools, res)
+		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
 		if err != nil {
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
-				// and usage, but drop any assembled tool calls — they were
+				// and usage, but drop any assembled tool calls -- they were
 				// never executed, and replaying an assistant tool_call with no
 				// matching result 400s on most upstreams.
 				partial := comp.Message
@@ -245,7 +275,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// same calls return the same results, which produce the same
 			// batch again. Nudge once, then end the run rather than spending
 			// the remaining turns on it. The failing batch is never executed
-			// — it would only repeat work already in the transcript — so the
+			// -- it would only repeat work already in the transcript -- so the
 			// assistant message is finalized with its tool calls cleared,
 			// leaving no orphan to replay.
 			if fp := batchFingerprint(calls); fp == lastBatch {
@@ -264,7 +294,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 			transcript = append(transcript, assistant)
 			aIdx := len(transcript) - 1
-			// abortBatch ends the run mid-batch — an approval decision that
+			// abortBatch ends the run mid-batch -- an approval decision that
 			// never arrived, or a tool callback that returned an error. It
 			// clears the pending batch: the assistant message keeps its
 			// content/reasoning but loses its tool_calls, and this batch's
@@ -304,7 +334,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 
 		// The loop is ending. A real textual answer is the result. Dangling
-		// tool calls (a capped last turn) are cleared — they will never
+		// tool calls (a capped last turn) are cleared -- they will never
 		// execute, and a replayable transcript must not carry orphans.
 		if strings.TrimSpace(assistant.Content) != "" {
 			final := assistant
@@ -312,7 +342,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			return finish(final)
 		}
 
-		// The model stopped without writing an answer — it produced only
+		// The model stopped without writing an answer -- it produced only
 		// reasoning, or hit the turn cap mid-research. When tools were in
 		// play (so it may already have gathered useful results), make one
 		// final tool-less request that forces it to synthesize an answer from
@@ -325,7 +355,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
 			wrapMsgs = append(wrapMsgs, wrapMsg)
-			comp2, err2 := runModelCall(ctx, &cfg, req, wrapMsgs, nil, res)
+			comp2, err2 := runModelCall(ctx, &cfg, req, maxTurns+1, wrapMsgs, nil, res)
 			if err2 == nil {
 				if s := strings.TrimSpace(comp2.Message.Content); s != "" {
 					final := comp2.Message
@@ -351,22 +381,33 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 }
 
-// runModelCall executes one model call and counts it as one turn — including
+// runModelCall executes one model call and counts it as one turn -- including
 // when the provider re-attempted it internally, which Run neither sees nor
-// needs to. Every call that produced a completion — success or partial —
-// appends its usage to the result.
+// needs to. Every call that produced a completion -- success or partial --
+// appends its usage to the result. turn is the 1-based turn number (the stall
+// wrap-up call is maxTurns+1): OnTurnBegin fires before the call with the
+// per-call Request (mutations apply to this call only), OnTurnEnd after it.
 func runModelCall(
 	ctx context.Context, cfg *Config,
-	req Request, msgs []Message, tools []Tool, res *Result,
+	req Request, turn int, msgs []Message, tools []Tool, res *Result,
 ) (*Completion, error) {
 	r := req
 	r.Messages = msgs
 	r.Tools = tools
+	if cberr := cfg.Events.emitTurnBegin(turn, &r); cberr != nil {
+		// The call never happened; nothing to count or record.
+		return nil, cberr
+	}
 
 	comp, err := cfg.Provider.Complete(ctx, r, &cfg.Events.StreamEvents)
 	res.Turns++
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)
+	}
+	if cberr := cfg.Events.emitTurnEnd(turn, comp, err); cberr != nil {
+		// The call happened; its data is kept, the run aborts on the sink
+		// failure (Run finalizes the completion like a mid-stream break).
+		return comp, cberr
 	}
 	return comp, err
 }

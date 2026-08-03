@@ -27,7 +27,7 @@ distilled, dependency-free extraction.
 | `PromptProgress` | `processed`, `total`, `cache`, `timeMS` | Wire-faithful to the upstream `prompt_progress` object (`{total, cache, processed, time_ms}`). |
 | `Timings` | `promptN`, `promptMS`, `predictedN`, `predictedMS` | Wire-faithful to the llama.cpp-style chunk `timings` object (`{prompt_n, prompt_ms, predicted_n, predicted_ms}`; the `_ms` fields are floats). Decode only — the library NEVER synthesizes timings from wall-clock time. |
 | `Request` | `model`, `system`, `messages`, `tools`, `maxTokens`, `extra`, `cacheKey` | See §3/§4 for per-dialect handling. |
-| `Completion` | `message`, `usage`, `usageReported`, `timings?`, `stopReason` | `usageReported` = at least one usage snapshot was merged (usage is a value, so this is the "reported vs absent" tri-state for the whole struct). `timings` = the LAST reported snapshot, absent when the provider never reported one; the Anthropic dialect never sets it. |
+| `Completion` | `message`, `usage`, `usageReported`, `timings?`, `rawUsage`, `reasoningTokens?`, `costUsd?`, `streamed`, `stopReason` | `usageReported` = at least one usage snapshot was merged (usage is a value, so this is the "reported vs absent" tri-state for the whole struct). `timings` = the LAST reported snapshot, absent when the provider never reported one; the Anthropic dialect never sets it. `rawUsage` = the provider's usage object verbatim (the raw wire JSON on the openai dialect; the merged wire-shaped object on Anthropic), absent when no usage was reported. `reasoningTokens` = openai `usage.completion_tokens_details.reasoning_tokens`, `costUsd` = openai `usage.cost` / `usage.estimated_cost` -- each a tri-state pointer present only when the upstream reported it (Anthropic never sets either). `streamed` = whether the response actually arrived as an SSE stream (a non-SSE 200 is read as plain JSON and reassembled with `streamed` false). |
 | `Result` | `messages`, `final`, `usages[]`, `turns` | `usages` = one entry per model call IN ORDER, never summed (successive prompts overlap; summing double-counts the shared prefix). |
 
 Seams (interfaces): `Provider.complete(req, events) -> Completion`
@@ -185,6 +185,34 @@ then caller headers (which may override).
   OnTimings and REPLACES the held snapshot (last wins — never merged, never
   summed); the last one becomes `completion.timings`. No timings ⇒ the
   field stays absent. Anthropic has no equivalent (§4 never fires it).
+- **Plain-JSON fallback**: a 200 whose `Content-Type` is NOT
+  `text/event-stream` is read as the non-streaming response body and
+  reassembled into a `Completion` with `streamed` FALSE -- a server that
+  ignores `stream:true` (or a proxy that buffered it) is accepted
+  transparently. Reassembly: `choices[0].message` maps onto the message
+  (content string or null; `reasoning` becomes a single thinking block;
+  `tool_calls` become calls with `arguments` the raw string),
+  `choices[0].finish_reason` is normalized and post-inferred like the
+  streamed path, and `usage` is normalized as in section 5 with
+  `rawUsage`/`reasoningTokens`/`costUsd` captured. A malformed body or a
+  response with no choices is a permanent (never-retried) error. The SSE
+  path always sets `streamed` TRUE.
+- **`PromptCache`** (openai config flag, default false): adds the two
+  Anthropic-style ephemeral `cache_control` breakpoints in openai shape --
+  a static one on the leading system message (its string content becomes a
+  marked one-block array) and a moving one on the last content block of the
+  last message (string content becomes a marked one-block array; a block
+  array gets the marker on its last block; empty content passes through
+  unmarked). Applied to the per-request wire copy only; the caller's
+  transcript is never mutated. Intended for Anthropic-fronting gateways
+  that pass cache_control through; strict OpenAI-compatible servers 400 on
+  the marker.
+- **`ReplayReasoning`** (openai config flag, default false): when set, each
+  assistant message's accumulated reasoning replays as `message.reasoning`
+  (the gateway-extension behavior that keeps a model seeing its own
+  chain-of-thought on this dialect); empty or redacted-only thinking
+  produces no field. Default false, so strict OpenAI-compatible servers
+  never see the unknown field.
 
 ## 4. Anthropic dialect
 
@@ -293,6 +321,22 @@ name is redundant):
 report the FULL prompt); `completionTokens = output_tokens`;
 `totalTokens = prompt + completion`. Tri-state cache fields pass through as
 reported.
+
+**Plain-JSON fallback**: a 200 whose `Content-Type` is NOT
+`text/event-stream` is read as the non-streaming Messages body and
+reassembled into a `Completion` with `streamed` FALSE. Reassembly: content
+blocks map onto the same fields as the stream path (text concatenated;
+thinking and redacted_thinking collected with signatures/data; tool_use
+calls with their input object re-serialized to the raw argument string),
+`stop_reason` is post-inferred like the streamed path, and `usage` is
+normalized identically. `completion.rawUsage` is the merged wire-shaped
+usage object `{input_tokens, output_tokens, cache_read_input_tokens?,
+cache_creation_input_tokens?}` (input_tokens EXCLUDES cached tokens; each
+cache field included only when reported); the stream path synthesizes the
+same shape from the merged message_start/message_delta state.
+`reasoningTokens`/`costUsd` never exist on this dialect. A malformed body
+is a permanent (never-retried) error. The SSE path always sets `streamed`
+TRUE.
 
 ## 5. Usage merging, flooring, cache normalization
 
@@ -447,6 +491,16 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   solely so the built-in subagent executor (§10) can emit its `turn`
   activity at exactly the source's emission points. The port needs an
   equivalent internal seam.
+- **Public per-turn hooks** (in addition to the internal seam, which stays
+  byte-for-byte): `Events.onTurnBegin(turn, req)` fires before each model
+  call (numbered turns 1..maxTurns, the stall wrap-up as maxTurns+1), with
+  a pointer to the per-call request the hook may MUTATE (the change applies
+  to that one call only, never the persistent transcript; wind-down prompt
+  injection rides this). `Events.onTurnEnd(turn, completion, err)` fires
+  after each call (completion nil when the call produced none). A non-nil
+  return aborts the run like any other callback error: onTurnBegin aborts
+  before the call (nothing counted), onTurnEnd after it (the completed data
+  is kept, finalized like a mid-stream break).
 - With a nil executor, a hallucinated call gets the teaching result
   `unknown tool: <name>` and the loop continues (deviation from the source
   subagent, which ended the loop; the teaching behavior is deliberate).
@@ -749,3 +803,22 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   fallback on failure/empty, summary request shape (system prompt, user
   input layout, tool-less) + `no model available` / `failed` / `empty
   output` texts, `(no extractable content)` placeholder.
+- Per-turn hooks (`onTurnBegin`/`onTurnEnd`): numbered 1..maxTurns in order,
+  the wrap-up as maxTurns+1; a begin-hook mutation of the per-call request
+  reaches the provider for that call only; begin-error aborts before the
+  call (no turn counted, provider never called), end-error aborts after it
+  (completed data kept); the internal turnHook still fires once per numbered
+  turn.
+- Completion extras + streaming: `rawUsage` verbatim (unknown provider
+  fields survive), `reasoningTokens` from
+  `completion_tokens_details.reasoning_tokens`, `costUsd` from `cost` (wins
+  over `estimated_cost`), all tri-state absent; plain-JSON fallback on both
+  dialects (non-SSE 200 makes `streamed` false, exact reassembly incl. tool
+  calls/thinking/usage, malformed body permanent); `streamed` true on the
+  SSE path.
+- openai `PromptCache`: exactly two `cache_control` breakpoints (static
+  system + moving tail; a role:"tool" tail is marked in openai shape), the
+  stored transcript marker-free, absent by default.
+- openai `ReplayReasoning`: assistant thinking replays as `message.reasoning`
+  only when enabled; empty/redacted thinking emits no field; absent by
+  default.

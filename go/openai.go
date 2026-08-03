@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -15,19 +16,26 @@ import (
 // baseURL + "/chat/completions". apiKey, when non-empty, is sent as a Bearer
 // token, and headers are applied after the defaults so a caller-supplied
 // header can override them. selfHosted adds cache_prompt:true to every
-// request — the KV-cache prefix-reuse opt-in llama.cpp-style servers honor —
+// request -- the KV-cache prefix-reuse opt-in llama.cpp-style servers honor --
 // and must stay false for hosted OpenAI/Azure, which reject unknown body
-// fields with a 400. A nil httpClient uses http.DefaultClient.
+// fields with a 400. promptCache adds the two Anthropic-style ephemeral
+// cache_control breakpoints in openai shape for Anthropic-fronting gateways
+// that pass them through; replayReasoning echoes each assistant message's
+// accumulated reasoning back as message.reasoning (the gateway extension a
+// model needs to keep seeing its chain-of-thought). A nil httpClient uses
+// http.DefaultClient.
 //
 // The fields are read-only during Complete, so a value is safe for concurrent
 // use.
 type openaiProvider struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
-	userAgent  string
-	selfHosted bool
-	headers    map[string]string
+	baseURL         string
+	apiKey          string
+	httpClient      *http.Client
+	userAgent       string
+	selfHosted      bool
+	promptCache     bool
+	replayReasoning bool
+	headers         map[string]string
 }
 
 // oaReserved are the Extra keys the typed core always overrides.
@@ -68,6 +76,19 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 		return nil, readAPIError(resp)
 	}
 
+	// A 200 that is NOT an SSE stream is a plain JSON response -- the server
+	// ignored stream:true (or a proxy buffered it) and answered with the
+	// non-streaming shape. It is accepted transparently and reassembled into a
+	// Completion with Streamed false, so the caller keeps a truthful record of
+	// how the call was actually transported.
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		body, rerr := io.ReadAll(resp.Body)
+		if rerr != nil {
+			return nil, badRequestErr("openai: read non-streaming response: " + rerr.Error())
+		}
+		return o.parseNonStream(body)
+	}
+
 	st := &oaStream{ev: ev, acc: newToolCallAccumulator()}
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("openai: %w", scanErr)
@@ -85,11 +106,13 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 // routing. stream is always forced true, tools are sent only when non-empty
 // (no tool_choice is ever sent), and stream_options defaults to
 // {"include_usage":true} only when the caller has not supplied a
-// stream_options key via Extra — without it OpenAI and most compatibles omit
+// stream_options key via Extra -- without it OpenAI and most compatibles omit
 // usage from streamed responses entirely. MaxTokens > 0 sets max_tokens
 // (overriding an Extra value); 0 leaves the field to Extra or the provider
 // default. CacheKey, when set, rides as prompt_cache_key, and selfHosted adds
-// cache_prompt:true.
+// cache_prompt:true. promptCache marks the per-request wire copy with the two
+// ephemeral cache breakpoints; replayReasoning echoes assistant reasoning back
+// as message.reasoning.
 func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.Extra {
@@ -99,7 +122,11 @@ func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
 		body[k] = v
 	}
 	body["model"] = req.Model
-	body["messages"] = oaWireMessages(req.System, req.Messages)
+	msgs := oaWireMessages(req.System, req.Messages, o.replayReasoning)
+	if o.promptCache {
+		oaMarkPromptCache(msgs)
+	}
+	body["messages"] = msgs
 	body["stream"] = true
 	if len(req.Tools) > 0 {
 		tools := make([]oaTool, 0, len(req.Tools))
@@ -162,36 +189,49 @@ type oaFunctionCall struct {
 
 // oaMessage is one chat message on the OpenAI wire. Its encoding is owned by
 // MarshalJSON, because the content field has a role-dependent presence rule
-// the standard omitempty cannot express.
+// the standard omitempty cannot express, and because ContentBlocks (a prompt
+// cache_control block array) takes precedence over the plain Content string
+// when set. Reasoning carries the replayed gateway-extension reasoning text
+// (ReplayReasoning).
 type oaMessage struct {
-	Role       string
-	Content    string
-	ToolCalls  []oaToolCall
-	ToolCallID string
+	Role          string
+	Content       string
+	ContentBlocks []map[string]any
+	ToolCalls     []oaToolCall
+	ToolCallID    string
+	Reasoning     string
 }
 
 // MarshalJSON serializes a message for an OpenAI-compatible request. The
 // OpenAI spec requires a content field on tool, user, and system messages
 // even when empty: a plain `content,omitempty` drops an empty tool result and
 // produces {"role":"tool","tool_call_id":...}, which upstreams reject with
-// "invalid message content type: <nil>" / a 400 — failing the whole turn. So
+// "invalid message content type: <nil>" / a 400 -- failing the whole turn. So
 // content is always emitted, except for an assistant message that carries
 // tool_calls, where the spec makes content optional and the model originally
 // produced none; there an empty content is omitted to match what was
-// generated.
+// generated. A non-empty ContentBlocks array is emitted as the content field
+// (a block pointer is never "empty" to omitempty, so even an empty string
+// content survives -- the same trick as the *string below).
 func (m oaMessage) MarshalJSON() ([]byte, error) {
 	type wire struct {
 		Role       string       `json:"role"`
-		Content    *string      `json:"content,omitempty"`
+		Content    any          `json:"content,omitempty"`
+		Reasoning  string       `json:"reasoning,omitempty"`
 		ToolCalls  []oaToolCall `json:"tool_calls,omitempty"`
 		ToolCallID string       `json:"tool_call_id,omitempty"`
 	}
-	w := wire{Role: m.Role, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID}
+	w := wire{Role: m.Role, Reasoning: m.Reasoning, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID}
 	if !(m.Role == "assistant" && m.Content == "" && len(m.ToolCalls) > 0) {
-		// A non-nil pointer (even to "") is always emitted by omitempty, so this
-		// forces a content field to appear; nil omits it for the assistant-with-
-		// tool-calls case above.
-		w.Content = &m.Content
+		if len(m.ContentBlocks) > 0 {
+			w.Content = m.ContentBlocks
+		} else {
+			// A non-nil pointer (even to "") is always emitted by omitempty, so this
+			// forces a content field to appear; nil omits it for the assistant-with-
+			// tool-calls case above.
+			s := m.Content
+			w.Content = &s
+		}
 	}
 	return json.Marshal(w)
 }
@@ -200,15 +240,19 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 // prompt (when non-empty) is prepended as a system message, assistant
 // tool calls are replayed as tool_calls, and tool results ride as role:"tool"
 // messages keyed by tool_call_id. Message.Thinking is not replayed on this
-// dialect (OpenAI-compatible APIs have no reasoning-replay field), and
-// Message.ToolIsError has no wire equivalent.
-func oaWireMessages(system string, msgs []Message) []oaMessage {
+// dialect by default (OpenAI-compatible APIs have no reasoning-replay field) --
+// only when replayReasoning is set, so a strict server never sees the unknown
+// field -- and Message.ToolIsError has no wire equivalent.
+func oaWireMessages(system string, msgs []Message, replayReasoning bool) []oaMessage {
 	out := make([]oaMessage, 0, len(msgs)+1)
 	if system != "" {
 		out = append(out, oaMessage{Role: string(RoleSystem), Content: system})
 	}
 	for _, m := range msgs {
 		wm := oaMessage{Role: string(m.Role), Content: m.Content, ToolCallID: m.ToolCallID}
+		if replayReasoning && m.Role == RoleAssistant {
+			wm.Reasoning = reasoningText(m)
+		}
 		for _, tc := range m.ToolCalls {
 			wm.ToolCalls = append(wm.ToolCalls, oaToolCall{
 				ID:       tc.ID,
@@ -219,6 +263,61 @@ func oaWireMessages(system string, msgs []Message) []oaMessage {
 		out = append(out, wm)
 	}
 	return out
+}
+
+// reasoningText concatenates an assistant message's accumulated reasoning. On
+// the openai dialect the provider always produces a single ThinkingBlock; the
+// concatenation keeps replay robust to a multi-block message regardless.
+func reasoningText(m Message) string {
+	var b strings.Builder
+	for _, tb := range m.Thinking {
+		if tb.Text != "" {
+			b.WriteString(tb.Text)
+		}
+	}
+	return b.String()
+}
+
+// oaMarkPromptCache applies the two Anthropic-style ephemeral prompt-cache
+// breakpoints to a per-request wire message list in openai shape: the leading
+// system message's string content becomes a marked one-block array (the static
+// breakpoint) and the last message's content gets the moving marker. It
+// operates on the freshly-built wire structures only (the caller's Messages
+// are never touched), and empty content passes through unmarked -- an empty
+// marked text block is rejected by upstreams and caching is an optimization,
+// never a correctness requirement.
+func oaMarkPromptCache(msgs []oaMessage) {
+	if len(msgs) == 0 {
+		return
+	}
+	msgs[len(msgs)-1] = oaWithMarkedContent(msgs[len(msgs)-1])
+	if msgs[0].Role == "system" {
+		msgs[0] = oaWithMarkedContent(msgs[0])
+	}
+}
+
+// oaWithMarkedContent returns a copy of the message whose content carries the
+// ephemeral cache breakpoint: a non-empty block array gets the marker on its
+// last block, a non-empty string becomes a one-block array, and empty content
+// passes through unmarked.
+func oaWithMarkedContent(m oaMessage) oaMessage {
+	switch {
+	case len(m.ContentBlocks) > 0:
+		blocks := make([]map[string]any, len(m.ContentBlocks))
+		copy(blocks, m.ContentBlocks)
+		marked := make(map[string]any, len(blocks[len(blocks)-1])+1)
+		for k, v := range blocks[len(blocks)-1] {
+			marked[k] = v
+		}
+		marked["cache_control"] = cacheEphemeral
+		blocks[len(blocks)-1] = marked
+		m.ContentBlocks = blocks
+	case m.Content != "":
+		m.ContentBlocks = []map[string]any{{
+			"type": "text", "text": m.Content, "cache_control": cacheEphemeral,
+		}}
+	}
+	return m
 }
 
 // oaChunk is one SSE delta from a streaming chat completion.
@@ -264,14 +363,21 @@ func (d oaDelta) reasoning() string {
 // under prompt_tokens_details.cached_tokens, DeepSeek reports
 // prompt_cache_hit_tokens, and Anthropic-compatible layers pass through
 // cache_read_input_tokens. The cache fields are pointers so an absent field
-// is distinguishable from an explicit zero (the tri-state contract).
+// is distinguishable from an explicit zero (the tri-state contract). The
+// provider-reported dollar figure rides under cost (OpenRouter/Requesty) or
+// estimated_cost (DeepInfra), and reasoning tokens under
+// completion_tokens_details.reasoning_tokens -- all pointers for the same
+// tri-state reason.
 type oaUsage struct {
-	PromptTokens         int                    `json:"prompt_tokens"`
-	CompletionTokens     int                    `json:"completion_tokens"`
-	TotalTokens          int                    `json:"total_tokens"`
-	PromptTokensDetails  *oaPromptTokensDetails `json:"prompt_tokens_details"`
-	PromptCacheHitTokens *int                   `json:"prompt_cache_hit_tokens"`
-	CacheReadInputTokens *int                   `json:"cache_read_input_tokens"`
+	PromptTokens           int                      `json:"prompt_tokens"`
+	CompletionTokens       int                      `json:"completion_tokens"`
+	TotalTokens            int                      `json:"total_tokens"`
+	PromptTokensDetails    *oaPromptTokensDetails   `json:"prompt_tokens_details"`
+	CompletionTokensDetail *oaCompletionTokenDetail `json:"completion_tokens_details"`
+	PromptCacheHitTokens   *int                     `json:"prompt_cache_hit_tokens"`
+	CacheReadInputTokens   *int                     `json:"cache_read_input_tokens"`
+	Cost                   *float64                 `json:"cost"`
+	EstimatedCost          *float64                 `json:"estimated_cost"`
 }
 
 // oaPromptTokensDetails is the OpenAI breakdown of prompt tokens.
@@ -279,11 +385,40 @@ type oaPromptTokensDetails struct {
 	CachedTokens *int `json:"cached_tokens"`
 }
 
+// oaCompletionTokenDetail is the OpenAI breakdown of completion tokens; the
+// reasoning_tokens figure is the only field the library reads.
+type oaCompletionTokenDetail struct {
+	ReasoningTokens *int `json:"reasoning_tokens"`
+}
+
+// reasoningTokens returns the reported reasoning-token count, or nil when the
+// snapshot carries none.
+func (u *oaUsage) reasoningTokens() *int {
+	if u.CompletionTokensDetail == nil {
+		return nil
+	}
+	return clonePtr(u.CompletionTokensDetail.ReasoningTokens)
+}
+
+// costUsd returns the provider-reported dollar cost -- usage.cost wins over
+// usage.estimated_cost -- or nil when neither field is present.
+func (u *oaUsage) costUsd() *float64 {
+	if u.Cost != nil {
+		v := *u.Cost
+		return &v
+	}
+	if u.EstimatedCost != nil {
+		v := *u.EstimatedCost
+		return &v
+	}
+	return nil
+}
+
 // toUsage normalizes a wire snapshot: the largest cache signal present wins
 // (the dialects are mutually exclusive in practice) and lands in
 // CacheReadTokens; when any cache info was reported, CacheWriteTokens is an
-// explicit 0 — OpenAI-compatible servers neither report nor bill a separate
-// cache-write class — while a snapshot with no cache fields at all leaves
+// explicit 0 -- OpenAI-compatible servers neither report nor bill a separate
+// cache-write class -- while a snapshot with no cache fields at all leaves
 // both nil (unknown). prompt_tokens already includes cached tokens on this
 // dialect, so PromptTokens passes through untouched.
 func (u *oaUsage) toUsage() Usage {
@@ -364,14 +499,17 @@ func (a *toolCallAccumulator) empty() bool { return len(a.order) == 0 }
 
 // oaStream accumulates one streamed completion.
 type oaStream struct {
-	ev      *StreamEvents
-	content strings.Builder
-	reason  strings.Builder
-	acc     *toolCallAccumulator
-	finish  string
-	usage   *Usage
-	timings *Timings
-	sawData bool
+	ev              *StreamEvents
+	content         strings.Builder
+	reason          strings.Builder
+	acc             *toolCallAccumulator
+	finish          string
+	usage           *Usage
+	usageRaw        json.RawMessage
+	reasoningTokens *int
+	costUsd         *float64
+	timings         *Timings
+	sawData         bool
 }
 
 // onData decodes one SSE payload. Unparseable chunks are tolerated silently
@@ -393,7 +531,22 @@ func (st *oaStream) onData(data []byte) error {
 	if chunk.Usage != nil {
 		st.sawData = true
 		u := chunk.Usage.toUsage()
-		st.usage = mergeUsage(st.usage, &u)
+		merged := mergeUsage(st.usage, &u)
+		if merged != st.usage {
+			// A new snapshot won the merge: capture its verbatim wire usage
+			// and the provider extras the normalized Usage drops, so the
+			// final Completion carries them. (A discarded regressing snapshot
+			// is skipped with the merged view.)
+			st.usage = merged
+			var raw struct {
+				Usage json.RawMessage `json:"usage"`
+			}
+			if err := json.Unmarshal(data, &raw); err == nil {
+				st.usageRaw = raw.Usage
+			}
+			st.reasoningTokens = chunk.Usage.reasoningTokens()
+			st.costUsd = chunk.Usage.costUsd()
+		}
 		if err := st.ev.emitUsage(*st.usage); err != nil {
 			return err
 		}
@@ -435,8 +588,8 @@ func (st *oaStream) onData(data []byte) error {
 
 // completion assembles the final (or partial) result: accumulated content,
 // reasoning as a single ThinkingBlock, assembled tool calls, the merged
-// usage with the total floored at prompt+completion (a genuine surplus —
-// reasoning tokens — is preserved), the last timings snapshot (nil when the
+// usage with the total floored at prompt+completion (a genuine surplus --
+// reasoning tokens -- is preserved), the last timings snapshot (nil when the
 // upstream reported none), and the normalized stop reason.
 func (st *oaStream) completion() *Completion {
 	var calls []ToolCall
@@ -459,12 +612,87 @@ func (st *oaStream) completion() *Completion {
 		u = floorTotal(*st.usage)
 	}
 	return &Completion{
-		Message:       msg,
-		Usage:         u,
-		UsageReported: st.usage != nil,
-		Timings:       st.timings,
-		StopReason:    normalizeStopReason(finish),
+		Message:         msg,
+		Usage:           u,
+		UsageReported:   st.usage != nil,
+		Timings:         st.timings,
+		RawUsage:        st.usageRaw,
+		ReasoningTokens: st.reasoningTokens,
+		CostUsd:         st.costUsd,
+		Streamed:        true,
+		StopReason:      normalizeStopReason(finish),
 	}
+}
+
+// oaNonStream is the non-streaming chat-completions response shape a server
+// that ignores stream:true answers with.
+type oaNonStream struct {
+	Choices []struct {
+		Message      oaNonStreamMessage `json:"message"`
+		FinishReason string             `json:"finish_reason"`
+	} `json:"choices"`
+	Usage json.RawMessage `json:"usage"`
+}
+
+// oaNonStreamMessage is the assistant message inside a non-streaming choice.
+// Content is a pointer because a tool-call-only response carries null.
+type oaNonStreamMessage struct {
+	Role      string       `json:"role"`
+	Content   *string      `json:"content"`
+	Reasoning string       `json:"reasoning"`
+	ToolCalls []oaToolCall `json:"tool_calls"`
+}
+
+// parseNonStream reassembles a plain-JSON chat-completions response into a
+// Completion with Streamed false -- the transparent acceptance of a server that
+// ignored stream:true (or a proxy that buffered it). The stop reason is
+// normalized and post-inferred exactly like the streamed path; usage extras
+// (reasoning tokens, provider cost, the verbatim usage object) are captured
+// when present.
+func (o *openaiProvider) parseNonStream(data []byte) (*Completion, error) {
+	var resp oaNonStream
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, badRequestErr("openai: decode non-streaming response: " + err.Error())
+	}
+	if len(resp.Choices) == 0 {
+		return nil, badRequestErr("openai: non-streaming response carries no choices")
+	}
+	first := resp.Choices[0]
+	content := ""
+	if first.Message.Content != nil {
+		content = *first.Message.Content
+	}
+	comp := &Completion{
+		Message:    Message{Role: RoleAssistant, Content: content},
+		StopReason: normalizeStopReason(first.FinishReason),
+		Streamed:   false,
+	}
+	if r := first.Message.Reasoning; r != "" {
+		comp.Message.Thinking = []ThinkingBlock{{Text: r}}
+	}
+	for _, tc := range first.Message.ToolCalls {
+		comp.Message.ToolCalls = append(comp.Message.ToolCalls, ToolCall{
+			ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments,
+		})
+	}
+	if len(resp.Usage) > 0 {
+		var u oaUsage
+		if err := json.Unmarshal(resp.Usage, &u); err == nil {
+			comp.Usage = floorTotal(u.toUsage())
+			comp.UsageReported = true
+			comp.RawUsage = resp.Usage
+			comp.ReasoningTokens = u.reasoningTokens()
+			comp.CostUsd = u.costUsd()
+		}
+	}
+	if comp.StopReason == "" {
+		if len(comp.Message.ToolCalls) > 0 {
+			comp.StopReason = StopToolUse
+		} else {
+			comp.StopReason = StopEndTurn
+		}
+	}
+	return comp, nil
 }
 
 // normalizeStopReason maps OpenAI finish reasons onto the normalized

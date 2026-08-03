@@ -16,17 +16,22 @@ import (
 // sseHandler serves the given data payloads as an SSE stream, terminated by
 // [DONE], capturing the request body and headers.
 type sseHandler struct {
-	payloads []string
-	body     []byte
-	header   http.Header
-	hits     int
+	payloads    []string
+	contentType string
+	body        []byte
+	header      http.Header
+	hits        int
 }
 
 func (h *sseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.hits++
 	h.body, _ = io.ReadAll(r.Body)
 	h.header = r.Header.Clone()
-	w.Header().Set("Content-Type", "text/event-stream")
+	ct := h.contentType
+	if ct == "" {
+		ct = "text/event-stream"
+	}
+	w.Header().Set("Content-Type", ct)
 	fl := w.(http.Flusher)
 	for _, p := range h.payloads {
 		_, _ = w.Write([]byte("data: " + p + "\n\n"))
