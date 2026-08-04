@@ -32,6 +32,15 @@ type ProviderConfig struct {
 	// that knows whether a call streamed anything -- the condition that decides
 	// whether re-sending is safe.
 	Retry *RetryPolicy
+	// RateLimiter, when non-nil, throttles this provider's outgoing request
+	// starts (its transient-failure retries included, which ride the same
+	// http.Client) to the limiter's fixed rate -- a provider's per-minute
+	// request cap, spaced evenly. A single RateLimiter shared across several
+	// providers throttles them TOGETHER, so concurrent callers (e.g. the jobs
+	// of one benchmark run) stay under one per-endpoint cap. Like Retry, it
+	// lives here because HOW a call gets made -- including without tripping the
+	// upstream's rate limit -- is the provider's job.
+	RateLimiter *RateLimiter
 }
 
 // OpenAIConfig configures NewOpenAIProvider: the shared ProviderConfig
@@ -82,7 +91,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 	return newProvider(&openaiProvider{
 		baseURL:         cfg.BaseURL,
 		apiKey:          cfg.APIKey,
-		httpClient:      cfg.HTTPClient,
+		httpClient:      rateLimitedClient(cfg.HTTPClient, cfg.RateLimiter),
 		userAgent:       cfg.UserAgent,
 		selfHosted:      cfg.SelfHosted,
 		promptCache:     cfg.PromptCache,
@@ -104,7 +113,7 @@ func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 		baseURL:        cfg.BaseURL,
 		apiKey:         cfg.APIKey,
 		version:        cfg.Version,
-		httpClient:     cfg.HTTPClient,
+		httpClient:     rateLimitedClient(cfg.HTTPClient, cfg.RateLimiter),
 		userAgent:      cfg.UserAgent,
 		disableCaching: cfg.DisableCaching,
 		headers:        cfg.Headers,

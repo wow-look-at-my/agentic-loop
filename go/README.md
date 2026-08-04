@@ -383,6 +383,35 @@ attempt cannot make the next one unsafe.
 only ever sees the outcome. A custom `Provider` implementation is
 responsible for its own retry.
 
+### Rate limiting
+
+`ProviderConfig.RateLimiter`, when set, throttles the provider's outgoing
+request starts to the limiter's fixed rate — a provider's per-minute request
+cap, spaced evenly:
+
+```go
+limiter := agentic.NewRateLimiter(30) // at most 30 requests/minute
+p, _ := agentic.NewOpenAIProvider(agentic.OpenAIConfig{
+    ProviderConfig: agentic.ProviderConfig{
+        BaseURL:     url,
+        RateLimiter: limiter,
+    },
+})
+```
+
+Like retry, the throttle belongs to the Provider: staying under an upstream's
+rate limit is part of making the call happen. The limiter is wired in as an
+`http.RoundTripper` on the provider's client, so **retries ride the same
+gate** — a re-sent attempt is a request too. Only request **starts** are
+counted (a slow call never pushes the average over the limit), and because
+consecutive starts are at least one interval apart, no 60-second window can
+contain more than the configured number of started requests.
+
+**Share one limiter to throttle many providers together.** `RateLimiter` is
+safe for concurrent use; a single instance passed to every provider of a run
+(e.g. the concurrent jobs of a benchmark) keeps them under one per-endpoint
+cap — per-provider limiters would multiply it by the number of callers.
+
 ### Rejected-parameter recovery
 
 ```go
