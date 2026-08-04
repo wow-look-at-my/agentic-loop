@@ -196,4 +196,9 @@ func TestRateLimitedClientWrapsTheBaseTransport(t *testing.T) {
 	rt, ok = noTransport.Transport.(*rateLimitedTransport)
 	require.True(t, ok)
 	require.NotNil(t, rt.base)
+
+	// A nil limiter leaves the base client untouched (the common case: the
+	// dialect constructors always route their client through here).
+	require.Same(t, base, rateLimitedClient(base, nil))
+	require.Nil(t, rateLimitedClient(nil, nil))
 }

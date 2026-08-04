@@ -106,8 +106,12 @@ func (rt *rateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, er
 // rateLimitedClient returns a copy of base (or http.DefaultClient when base is
 // nil) whose transport is wrapped with limiter. The copy preserves base's
 // other settings (timeout, redirect policy, ...) so limiting is additive,
-// never replacing.
+// never replacing. A nil limiter returns base unchanged -- the common case,
+// since the dialect constructors always route their client through here.
 func rateLimitedClient(base *http.Client, limiter *RateLimiter) *http.Client {
+	if limiter == nil {
+		return base
+	}
 	if base == nil {
 		base = http.DefaultClient
 	}
