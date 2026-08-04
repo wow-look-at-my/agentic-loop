@@ -88,7 +88,14 @@ func (d *OutputDeduper) Collapse(tool string, result ToolResult) (content string
 
 // unchangedMarker builds the stable marker text for the n-th occurrence
 // (n = 2 for the first repeat) of an unchanged read-only tool output.
+//
+// It states what is known — that the OUTPUT repeated — and never that the
+// inputs did. The deduper keys on tool plus content hash, deliberately not on
+// arguments, so identical output is also what a tool IGNORING an argument
+// produces: three differently-worded queries once collapsed here because the
+// tool read none of them, and a marker asserting the caller had repeated
+// itself sent the model looking for a fault in itself instead of in the call.
 func unchangedMarker(tool string, n int) string {
-	return fmt.Sprintf("%s The output of %s is byte-identical to an earlier call in this conversation (repeat #%d). Nothing has changed — reference that earlier result. Do not call this tool again with the same inputs.",
+	return fmt.Sprintf("%s The output of %s is byte-identical to an earlier call in this conversation (repeat #%d). Nothing has changed — reference that earlier result rather than re-reading it. If you did change the arguments, the difference made no difference: either it genuinely does not affect the result, or this tool ignores the field you changed — check its schema before trying a third phrasing.",
 		UnchangedPrefix, tool, n)
 }

@@ -43,7 +43,12 @@ func TestOutputDeduperMarkerIsInformative(t *testing.T) {
 	assert.Contains(t, marker, "byte-identical")
 	assert.Contains(t, marker, "earlier call")
 	assert.Contains(t, marker, "Nothing has changed")
-	assert.Contains(t, marker, "Do not call this tool again with the same inputs")
+	// The marker may only claim what the deduper actually knows. It hashes
+	// output, not arguments, so identical output is equally what a tool that
+	// IGNORES an argument produces — and telling a caller it repeated itself
+	// when it did not points the investigation the wrong way.
+	assert.NotContains(t, marker, "with the same inputs")
+	assert.Contains(t, marker, "this tool ignores the field you changed")
 }
 
 func TestOutputDeduperDifferentContentDoesNotCollapse(t *testing.T) {
