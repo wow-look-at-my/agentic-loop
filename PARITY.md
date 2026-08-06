@@ -407,6 +407,15 @@ TRUE.
   whatever the Provider does. A retried call counts as ONE turn, trivially,
   because the loop only sees the outcome. A custom Provider implementation
   owns its own retry.
+- **Rate limiting belongs to the PROVIDER, configured by `ProviderConfig.rateLimiter`**
+  (absent ⇒ no throttle). A non-nil limiter spaces the provider's outgoing
+  request starts to a fixed rate (`NewRateLimiter(n)` = at most n starts per
+  minute, spaced evenly), enforced as an `http.RoundTripper` wrapper on the
+  provider's client so transient-failure RETRIES ride the same gate. Only
+  request starts are counted; consecutive starts are >= one interval apart,
+  so no 60s window exceeds the cap. A single limiter shared across providers
+  throttles them together — the port MUST NOT fall back to per-provider
+  limiters for concurrent callers, or the cap would multiply.
 
 ## 7. Rejected-parameter strip middleware
 
