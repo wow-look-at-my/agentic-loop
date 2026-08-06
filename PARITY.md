@@ -693,14 +693,27 @@ default 10), `gate?`, `systemPrompt?` (empty ⇒
   returns a release func. The source app used capacity 1 process-wide;
   the capacity is the caller's choice here.
 - **Activity telemetry** (`onActivity`): steps
-  `{callID, kind, turn, tool, detail, isError}` with kinds `turn` (1-based,
-  at each numbered nested-turn start), `tool_call` (before execution,
-  detail = argument preview), `tool_result` (after, detail = result-text
-  preview, isError from the recorded result). `callID` = the parent
-  run_subagent call's id. Previews are whitespace-flattened
-  (`fields`-join) and capped at 160 runes (`157 + "..."`). Telemetry only —
-  never fed back to any model, and the nested run's stream events NEVER
-  reach the parent's StreamEvents.
+  `{callID, kind, turn, tool, detail, content, isError}` with kinds `turn`
+  (1-based, at each numbered nested-turn start), `tool_call` (before
+  execution, detail = argument preview), `tool_result` (after, detail =
+  result-text preview, isError from the recorded result), `text` (the
+  sub-agent's own answer for a turn) and `thinking` (its reasoning blocks,
+  newline-joined) — the last two emitted at each turn's end, carrying that
+  turn's number, and only when non-empty. `callID` = the parent
+  run_subagent call's id. `detail` is whitespace-flattened
+  (`fields`-join) and capped at 160 runes (`157 + "..."`); `content` is the
+  SAME text uncapped and unflattened, so a host can render the whole
+  arguments/output/answer/reasoning. Telemetry only — never fed back to any
+  model, and the nested run's stream events NEVER reach the parent's
+  StreamEvents.
+- **Leaked tool-call envelopes**: a final message whose line starts with a
+  tool-call envelope token (`<|tool_calls|>`, `<tool_call>`,
+  `<|python_tag|>`, `<function=`, the DeepSeek/DSML forms) is a run that
+  never answered — the backend did not parse the model's tool-call
+  template. The report is cut at that line; if what survives is under 40
+  runes it is replaced by `SubagentNoReportText`, else it keeps the prose
+  plus `SubagentCutOffNote`. Either way the result is `isError`. Matching
+  is line-start only, so prose quoting those tokens mid-line is untouched.
 
 ### 10b. web_fetch (`NewWebFetchExecutor(WebFetchConfig)`)
 
@@ -823,8 +836,10 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   delimiters) + its misuse errors; summary-mode briefing request shape
   (system prompt, tool-less, `Conversation to brief the sub-agent on:`
   prefix) and no-call-on-empty-context; gate serialization + cancelled
-  acquire text; activity sequence turn/tool_call/tool_result with stamped
-  callID and 160-rune flattened previews; nested-run failure ⇒
+  acquire text; activity sequence turn/tool_call/tool_result/text/thinking
+  with stamped callID, 160-rune flattened previews and uncapped content;
+  leaked-envelope reports (cut text + `SubagentCutOffNote`, envelope-only ⇒
+  `SubagentNoReportText`, mid-line mentions untouched); nested-run failure ⇒
   `sub-agent failed: ...`; placeholder pass-through.
 - web_fetch: advertisement (readonly, exact description), HTML cleanup
   pipeline output, truncation note, 5 MiB body cap text, non-2xx/transport

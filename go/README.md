@@ -234,11 +234,19 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
   recoverable teaching error listing the valid options. A shared `*Gate`
   (`NewGate(n)`, a context-cancellable cap-n semaphore; nil = unlimited)
   bounds concurrency, and `OnActivity` streams live
-  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, IsError}` steps
-  (kinds `turn`/`tool_call`/`tool_result`, previews whitespace-flattened and
-  capped at 160 runes). The sub-run's streaming never leaks into the
-  parent's `StreamEvents` — the parent sees only the final report and the
-  activity feed.
+  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, Content, IsError}`
+  steps (kinds `turn`/`tool_call`/`tool_result`/`text`/`thinking`). `Detail`
+  is the one-line preview — whitespace-flattened, capped at 160 runes —
+  and `Content` is the same thing WHOLE: the full arguments, full tool
+  output, full answer or full reasoning, so a host can show what the
+  sub-agent actually read and said rather than a truncated hint. The
+  sub-run's streaming never leaks into the parent's `StreamEvents` — the
+  parent sees only the final report and the activity feed. A final message
+  that is really a leaked tool-call envelope (a backend that did not parse
+  the model's tool-call template) is never passed off as findings: it is cut
+  at the envelope and returned as an error result carrying
+  `SubagentCutOffNote`, or `SubagentNoReportText` when nothing usable
+  survives.
 - **`NewWebFetchExecutor(WebFetchConfig)`** — the `web_fetch` tool: one
   unauthenticated, plain HTTP GET (http/https only, userinfo rejected, 5 MiB
   body cap, 45 s default client timeout), cleaned to readable text (built-in
