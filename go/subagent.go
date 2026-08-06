@@ -109,6 +109,8 @@ const (
 	SubagentActivityTurn       = "turn"        // a new sub-agent turn began
 	SubagentActivityToolCall   = "tool_call"   // the sub-agent invoked a tool
 	SubagentActivityToolResult = "tool_result" // a sub-agent tool returned
+	SubagentActivityText       = "text"        // the sub-agent's own answer for a turn
+	SubagentActivityThinking   = "thinking"    // its reasoning for a turn
 )
 
 // SubagentActivity is one progress step from a running sub-agent. CallID is
@@ -117,12 +119,19 @@ const (
 // 160 runes (an argument preview for tool_call, a result preview for
 // tool_result).
 type SubagentActivity struct {
-	CallID  string
-	Kind    string // one of the SubagentActivity* constants
-	Turn    int    // 1-based turn number (SubagentActivityTurn)
-	Tool    string // tool name (tool_call / tool_result)
-	Detail  string // arguments preview, result preview, or other short context
-	IsError bool   // tool_result only: the tool reported an error
+	CallID string
+	Kind   string // one of the SubagentActivity* constants
+	Turn   int    // 1-based turn number (every kind but tool_call/tool_result)
+	Tool   string // tool name (tool_call / tool_result)
+	Detail string // arguments preview, result preview, or other short context
+	// Content is the SAME text as Detail but WHOLE: the full arguments, the
+	// full tool output, the full answer or the full reasoning, never capped or
+	// whitespace-flattened. Detail alone left a host with no way to show what a
+	// sub-agent actually read or said — a 160-rune preview of a file listing
+	// answers nothing — so hosts that can render a scrollable block use this
+	// and keep Detail for the one-line summary.
+	Content string
+	IsError bool // tool_result only: the tool reported an error
 }
 
 // SubagentConfig configures NewSubagentExecutor.
@@ -354,7 +363,10 @@ func (e *subagentExecutor) Execute(ctx context.Context, call ToolCall) (ToolResu
 	if runErr != nil {
 		return ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: strings.TrimSpace(res.Final.Content)}, nil
+	// Not just the final text: a run that ended by emitting a tool-call
+	// envelope as TEXT never answered, and passing that up as findings is the
+	// one failure the orchestrator cannot detect for itself.
+	return subagentReport(res.Final.Content), nil
 }
 
 // runConfig assembles the nested Run's Config: the sub-agent's toolset, the
@@ -379,10 +391,11 @@ func (e *subagentExecutor) runConfig(callID string, subTools ToolExecutor) Confi
 	cfg.Events = Events{
 		OnToolCall: func(c ToolCall) error {
 			act(SubagentActivity{
-				CallID: callID,
-				Kind:   SubagentActivityToolCall,
-				Tool:   c.Name,
-				Detail: subagentPreview(c.Arguments),
+				CallID:  callID,
+				Kind:    SubagentActivityToolCall,
+				Tool:    c.Name,
+				Detail:  subagentPreview(c.Arguments),
+				Content: c.Arguments,
 			})
 			return nil
 		},
@@ -392,12 +405,55 @@ func (e *subagentExecutor) runConfig(callID string, subTools ToolExecutor) Confi
 				Kind:    SubagentActivityToolResult,
 				Tool:    c.Name,
 				Detail:  subagentPreview(r.Content),
+				Content: r.Content,
 				IsError: r.IsError,
 			})
 			return nil
 		},
+		// What the sub-agent itself said each turn. Without this a host can
+		// show every tool a sub-agent touched and still not show a word of its
+		// own reasoning or working notes — the run reads as a list of file
+		// accesses with a report appearing from nowhere at the end.
+		OnTurnEnd: func(turn int, comp *Completion, _ error) error {
+			if comp == nil {
+				return nil
+			}
+			if think := thinkingText(comp.Message.Thinking); think != "" {
+				act(SubagentActivity{
+					CallID:  callID,
+					Kind:    SubagentActivityThinking,
+					Turn:    turn,
+					Detail:  subagentPreview(think),
+					Content: think,
+				})
+			}
+			if text := comp.Message.Content; strings.TrimSpace(text) != "" {
+				act(SubagentActivity{
+					CallID:  callID,
+					Kind:    SubagentActivityText,
+					Turn:    turn,
+					Detail:  subagentPreview(text),
+					Content: text,
+				})
+			}
+			return nil
+		},
 	}
 	return cfg
+}
+
+// thinkingText joins a completion's reasoning blocks into one string.
+func thinkingText(blocks []ThinkingBlock) string {
+	if len(blocks) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Text != "" {
+			parts = append(parts, b.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // approveAll is the nested run's Approver: a tool the sub-agent holds is

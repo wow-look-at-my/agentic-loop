@@ -109,9 +109,20 @@ side of that line it falls on — do not put it on both.
   request text, the param-strip regexes, the overflow regex, and the two
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
-  and allowed_tools error texts, the context-summary and web-summary
+  and allowed_tools error texts, `SubagentCutOffNote`,
+  `SubagentNoReportText`, the context-summary and web-summary
   prompts, the web_fetch validation/cap/result texts) are pinned by tests
   and by PARITY.md. Do not "improve" them.
+- **A sub-agent's report is what it ANSWERED, never what it was mid-way
+  through saying.** A backend that fails to parse a model's tool-call
+  template makes the model emit the call as text, so the run ends on an
+  envelope; `subagentReport` (`subagent_leak.go`) cuts it and flags the
+  result rather than handing working notes up as findings. Matching is
+  line-start only — prose quoting `<tool_call>` mid-line is a legitimate
+  report and must stay untouched.
+- **`SubagentActivity.Content` is the whole text; `Detail` is the preview.**
+  Hosts render the former; do not cap it, and do not drop it back to a
+  preview — a 160-rune hint of a file listing tells a reader nothing.
 - Callback errors (`StreamEvents.On*`, `Events.OnToolCall/OnToolResult`
   returning non-nil) must keep their contract: abort + partial
   result/completion, `errors.Is`-reachable, never `*APIError`, never

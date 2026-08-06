@@ -366,17 +366,53 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "report", res.Content)
 
-	require.Len(t, acts, 4, "turn, tool_call, tool_result, turn")
+	require.Len(t, acts, 5, "turn, tool_call, tool_result, turn, text")
 	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 1}, acts[0])
 	assert.Equal(t, SubagentActivity{
 		CallID: "call-7", Kind: SubagentActivityToolCall, Tool: "Repo__read", Detail: `{"q": "x"}`,
-	}, acts[1], "the arguments preview is whitespace-flattened")
+		Content: "  {\"q\":\n \"x\"} ",
+	}, acts[1], "the preview is whitespace-flattened; Content is the arguments verbatim")
 	assert.Equal(t, SubagentActivityToolResult, acts[2].Kind)
 	assert.Equal(t, "call-7", acts[2].CallID)
 	assert.False(t, acts[2].IsError)
 	assert.Len(t, []rune(acts[2].Detail), subagentPreviewMaxRunes, "result previews are rune-capped")
 	assert.True(t, strings.HasSuffix(acts[2].Detail, "..."))
+	assert.Equal(t, longOut, acts[2].Content, "Content carries the WHOLE tool output, uncapped")
 	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 2}, acts[3])
+	// The sub-agent's own words for the turn, so a host can show what it said
+	// and not just which files it touched.
+	assert.Equal(t, SubagentActivity{
+		CallID: "call-7", Kind: SubagentActivityText, Turn: 2, Detail: "report", Content: "report",
+	}, acts[4])
+}
+
+// TestSubagentActivityReportsThinking: a turn that reasons without answering
+// still shows its reasoning, which used to be invisible to the host entirely.
+func TestSubagentActivityReportsThinking(t *testing.T) {
+	thinking := assistantComp("")
+	thinking.Message.Thinking = []ThinkingBlock{{Text: "first I check the layout"}, {Text: "then the callers"}}
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: thinking},
+		{comp: assistantComp("report")},
+	}}
+	var acts []SubagentActivity
+	exec := NewSubagentExecutor(SubagentConfig{
+		Provider: provider, Model: "m", Tools: subParentExec(),
+		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
+	})
+	_, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
+	require.NoError(t, err)
+
+	var think *SubagentActivity
+	for i := range acts {
+		if acts[i].Kind == SubagentActivityThinking {
+			think = &acts[i]
+		}
+	}
+	require.NotNil(t, think, "reasoning must reach the host")
+	assert.Equal(t, 1, think.Turn)
+	assert.Equal(t, "first I check the layout\nthen the callers", think.Content)
+	assert.Equal(t, "first I check the layout then the callers", think.Detail)
 }
 
 func TestSubagentActivityToolError(t *testing.T) {
@@ -393,9 +429,10 @@ func TestSubagentActivityToolError(t *testing.T) {
 	})
 	_, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
 	require.NoError(t, err)
-	require.Len(t, acts, 4)
+	require.Len(t, acts, 5)
 	assert.True(t, acts[2].IsError, "an executor failure marks the tool_result step")
 	assert.Equal(t, "tool execution failed: boom", acts[2].Detail)
+	assert.Equal(t, "tool execution failed: boom", acts[2].Content)
 }
 
 // countingProvider counts Complete calls race-safely around an inner provider.
