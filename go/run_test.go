@@ -253,6 +253,55 @@ func TestRunStallFallbackSynthesizes(t *testing.T) {
 	assert.Len(t, res.Usages, 2)
 }
 
+// leakedTurn is what a backend that failed to parse the model's tool-call
+// template returns: narration, then the call itself as text.
+const leakedTurn = "I have the legacy quote. Now let me get the current one.\n\n" +
+	`<tool_call>` + "\n" + `{"name":"alpha","arguments":{}}`
+
+func TestRunLeakedToolCallWrapsUpInsteadOfAnswering(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+		{comp: assistantComp(leakedTurn)},
+		{comp: assistantComp("the synthesized findings")},
+	}}
+	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
+	require.NoError(t, err)
+
+	require.Len(t, provider.reqs, 3, "the leaked turn is a stall, so the wrap-up fires")
+	wrapReq := provider.reqs[2]
+	assert.Empty(t, wrapReq.Tools, "the wrap-up call withholds tools")
+	last := wrapReq.Messages[len(wrapReq.Messages)-1]
+	assert.Equal(t, wrapUpInstruction, last.Content)
+	for _, m := range wrapReq.Messages {
+		assert.NotContains(t, m.Content, "<tool_call>", "the leaked turn never enters the transcript")
+	}
+
+	assert.Equal(t, "the synthesized findings", res.Final.Content)
+	assert.NotContains(t, res.Final.Content, "<tool_call>")
+}
+
+func TestRunLeakedToolCallKeptWhenWrapUpProducesNothing(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp(leakedTurn)},
+		{comp: assistantComp("")},
+	}}
+	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
+	require.NoError(t, err)
+	require.Len(t, provider.reqs, 2)
+	assert.Equal(t, leakedTurn, res.Final.Content,
+		"a failed wrap-up keeps the leaked text so subagentReport can cut and flag it")
+}
+
+func TestRunLeakedToolCallIsAnAnswerWithoutTools(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp(leakedTurn)}}}
+	res, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m"})
+	require.NoError(t, err)
+	require.Len(t, provider.reqs, 1, "no executor, so no wrap-up: describing an envelope is an answer")
+	assert.Equal(t, leakedTurn, res.Final.Content)
+}
+
 func TestRunStallFallbackToReasoning(t *testing.T) {
 	stalled := &Completion{Message: Message{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "the reasoning"}}}, StopReason: StopEndTurn}
 	emptyAgain := &Completion{Message: Message{Role: RoleAssistant}, StopReason: StopEndTurn}
