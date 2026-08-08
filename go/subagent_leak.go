@@ -80,6 +80,22 @@ func splitLeakedToolCalls(s string) (clean string, leaked bool) {
 	return strings.TrimRight(s[:cut], " \t\n\r"), true
 }
 
+// stalledOnLeakedCall reports whether an assistant message that ended the loop
+// is an interrupted turn rather than an answer. The narration above a leaked
+// envelope is the preamble to a request the backend never parsed, so treating
+// it as the result hands working notes up as conclusions -- and skips the
+// wrap-up that exists to salvage exactly this state.
+//
+// hasTools gates it: a run with no executor cannot have leaked a call, and a
+// model asked to DESCRIBE an envelope is answering the question it was given.
+func stalledOnLeakedCall(hasTools bool, content string) bool {
+	if !hasTools {
+		return false
+	}
+	_, leaked := splitLeakedToolCalls(strings.TrimSpace(content))
+	return leaked
+}
+
 // hasLeakedOpener reports whether a line begins with a tool-call envelope.
 func hasLeakedOpener(line string) bool {
 	for _, opener := range leakedToolCallOpeners {

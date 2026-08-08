@@ -375,20 +375,22 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// The loop is ending. A real textual answer is the result. Dangling
 		// tool calls (a capped last turn) are cleared -- they will never
 		// execute, and a replayable transcript must not carry orphans.
-		if strings.TrimSpace(assistant.Content) != "" {
+		// A leaked tool-call envelope is a stall, not an answer, and falls
+		// through to the wrap-up (see stalledOnLeakedCall).
+		if strings.TrimSpace(assistant.Content) != "" && !stalledOnLeakedCall(cfg.Tools != nil, assistant.Content) {
 			final := assistant
 			final.ToolCalls = nil
 			return finish(final)
 		}
 
 		// The model stopped without writing an answer -- it produced only
-		// reasoning, or hit the turn cap mid-research. When tools were in
-		// play (so it may already have gathered useful results), make one
-		// final tool-less request that forces it to synthesize an answer from
-		// what it has. The stalling turn's assistant message is deliberately
-		// NOT in the transcript (it is only appended on the tool-execution
-		// branch), so the wrap-up request can't be rejected for an unanswered
-		// tool call.
+		// reasoning, hit the turn cap mid-research, or leaked its next tool
+		// call as text. When tools were in play (so it may already have
+		// gathered useful results), make one final tool-less request that
+		// forces it to synthesize an answer from what it has. The stalling
+		// turn's assistant message is deliberately NOT in the transcript (it
+		// is only appended on the tool-execution branch), so the wrap-up
+		// request can't be rejected for an unanswered tool call.
 		if cfg.Tools != nil {
 			wrapMsg := Message{Role: RoleUser, Content: wrapUpInstruction}
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
