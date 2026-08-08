@@ -143,7 +143,7 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 		"the completed data is kept, like a mid-stream break")
 }
 
-func TestWrapUpFiresAsTurnMaxTurnsPlusOne(t *testing.T) {
+func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: &Completion{Message: Message{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "only thoughts"}}}, StopReason: StopEndTurn}},
 		{comp: assistantComp("synthesized report")},
@@ -153,7 +153,6 @@ func TestWrapUpFiresAsTurnMaxTurnsPlusOne(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec,
-		MaxTurns: 4,
 		Events: Events{
 			OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil },
 			OnTurnEnd:   func(turn int, _ *Completion, _ error) error { ends = append(ends, turn); return nil },
@@ -163,9 +162,11 @@ func TestWrapUpFiresAsTurnMaxTurnsPlusOne(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
-	// One numbered turn (1), then the wrap-up as maxTurns+1.
-	assert.Equal(t, []int{1, 5}, begins)
-	assert.Equal(t, []int{1, 5}, ends)
+	// One numbered turn (1) stalled, so the wrap-up is turn 2 -- the call it
+	// actually is. It used to be numbered maxTurns+1, which named a turn that
+	// never ran.
+	assert.Equal(t, []int{1, 2}, begins)
+	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)
 	assert.Equal(t, 2, res.Turns)
 }

@@ -7,9 +7,13 @@ import (
 	"strings"
 )
 
-// DefaultMaxTurns is the model-call cap applied when Config.MaxTurns is not
-// positive.
-const DefaultMaxTurns = 10
+// There is deliberately NO turn cap. A counted cap cannot tell "looping
+// uselessly" from "deep in a hard task", so it always fires at the worst
+// moment: after the model has spent every call gathering context and just
+// before it writes any of it down. What bounds a run instead is ErrStuck (a
+// model repeating itself is the only mechanically detectable kind of "not
+// progressing") and the caller's ctx, which bounds wall-clock and spend
+// without discarding work in flight.
 
 // wrapUpInstruction is appended as a final user turn to force a model that
 // stalled at "thinking" (no content) into actually writing its answer from
@@ -28,8 +32,11 @@ const noOutputPlaceholder = "(subagent produced no output)"
 // learn anything new, because the same calls produce the same results, which
 // produce the same turn again. The StuckNudgeAt-th identical turn in a row
 // gets one nudge appended after its tool results; the StuckFailAt-th ends the
-// run with ErrStuck instead of spending the rest of MaxTurns on it. Any
-// change in what the model asks for clears the count.
+// run with ErrStuck. Any change in what the model asks for clears the count.
+//
+// With no turn cap, this is the loop's own bound on a model that has stopped
+// progressing -- and unlike a cap it fires on evidence of uselessness rather
+// than on a budget running out.
 //
 // They are constants, not knobs: a loop repeating itself verbatim is never
 // the model working, so there is nothing to tune.
@@ -74,8 +81,8 @@ func batchFingerprint(calls []ToolCall) string {
 // before each requested tool call is handled, and OnToolResult fires with its
 // recorded result (executed, denied, or a teaching error). All optional.
 //
-// Turns are numbered 1..maxTurns; the stall wrap-up call fires as
-// turn == maxTurns+1. Like the stream callbacks, OnTurnBegin and OnTurnEnd may
+// Turns are numbered from 1; the stall wrap-up call fires as one past the
+// turn that stalled. Like the stream callbacks, OnTurnBegin and OnTurnEnd may
 // return a non-nil error to abort the run: OnTurnBegin aborts before the call
 // (no completion), OnTurnEnd aborts after it with the completed data kept (the
 // assistant message is finalized the way a mid-stream break is).
@@ -131,8 +138,8 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 // Config wires one Run: the Provider to call, the ToolExecutor whose tools
 // are advertised and executed (nil runs tool-less), the Approver consulted
 // for calls the executor flags via NeedsApproval (nil denies gated calls with
-// DeniedMessage), the turn cap (<= 0 means DefaultMaxTurns), and the event
-// callbacks.
+// DeniedMessage), and the event callbacks. There is deliberately no turn
+// cap -- see the note above wrapUpInstruction for what bounds a run instead.
 //
 // Output dedup is ON by default: a read-only tool result whose content is
 // byte-identical to an earlier call in the same run is fed back as a short
@@ -151,7 +158,6 @@ type Config struct {
 	Provider Provider
 	Tools    ToolExecutor
 	Approver Approver
-	MaxTurns int
 	Events   Events
 
 	// DisableOutputDedup opts out of collapsing byte-identical read-only tool
@@ -224,11 +230,6 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	if cfg.Provider == nil {
 		return nil, badRequestErr("agentic: Config.Provider is required")
 	}
-	maxTurns := cfg.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = DefaultMaxTurns
-	}
-
 	var advertised []Tool
 	if cfg.Tools != nil {
 		advertised = cfg.Tools.Tools()
@@ -272,15 +273,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if cfg.turnHook != nil {
 			cfg.turnHook(turn + 1)
 		}
-		// On the last permitted turn, withhold tools so the model must answer
-		// rather than request another (never-executed) tool call.
-		lastTurn := turn == maxTurns-1
-		var turnTools []Tool
-		if !lastTurn {
-			turnTools = advertised
-		}
-
-		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
+		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, advertised, res)
 		if err != nil {
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
@@ -303,7 +296,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// Keep looping while the model is still requesting tools and we are
 		// allowed to run them: replay the assistant's tool-call message, then
 		// each tool result, so the next turn sees the full sub-conversation.
-		if len(calls) > 0 && !lastTurn {
+		if len(calls) > 0 {
 			// A batch identical to the previous turn's makes no progress: the
 			// same calls return the same results, which produce the same
 			// batch again. Nudge once, then end the run rather than spending
@@ -372,9 +365,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			continue
 		}
 
-		// The loop is ending. A real textual answer is the result. Dangling
-		// tool calls (a capped last turn) are cleared -- they will never
-		// execute, and a replayable transcript must not carry orphans.
+		// The loop is ending: the model asked for no tools. ToolCalls is
+		// cleared defensively so a replayable transcript can never carry an
+		// orphan.
 		// A leaked tool-call envelope is a stall, not an answer, and falls
 		// through to the wrap-up (see stalledOnLeakedCall).
 		if strings.TrimSpace(assistant.Content) != "" && !stalledOnLeakedCall(cfg.Tools != nil, assistant.Content) {
@@ -396,7 +389,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
 			wrapMsgs = append(wrapMsgs, wrapMsg)
-			comp2, err2 := runModelCall(ctx, &cfg, req, maxTurns+1, wrapMsgs, nil, res)
+			comp2, err2 := runModelCall(ctx, &cfg, req, turn+2, wrapMsgs, nil, res)
 			if err2 == nil {
 				if s := strings.TrimSpace(comp2.Message.Content); s != "" {
 					final := comp2.Message
@@ -426,7 +419,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 // when the provider re-attempted it internally, which Run neither sees nor
 // needs to. Every call that produced a completion -- success or partial --
 // appends its usage to the result. turn is the 1-based turn number (the stall
-// wrap-up call is maxTurns+1): OnTurnBegin fires before the call with the
+// wrap-up call is one past the turn that stalled): OnTurnBegin fires with the
 // per-call Request (mutations apply to this call only), OnTurnEnd after it.
 func runModelCall(
 	ctx context.Context, cfg *Config,
