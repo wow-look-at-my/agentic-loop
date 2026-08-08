@@ -522,8 +522,14 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   Result + error. The partial call's usage snapshot IS recorded.
 - **Ending with text**: trimmed non-empty content ends the loop; the final
   assistant message is appended with any dangling (capped last turn)
-  toolCalls cleared.
-- **Stall fallback** (content empty at loop end):
+  toolCalls cleared. EXCEPT when an executor is configured AND the content
+  carries a leaked tool-call envelope at a line start (the §10a token
+  list): the backend failed to parse a real call, so the
+  narration above it is a preamble, not an answer, and the turn is treated
+  as a stall. Gated on the executor: a tool-less chat DESCRIBING an
+  envelope is answering.
+- **Stall fallback** (content empty at loop end, or a leaked envelope as
+  above):
   - with an executor: one extra TOOL-LESS wrap-up call on transcript +
     user(wrapUpInstruction). The stalling turn's assistant message is NOT
     in that request (it was never appended — only the tool branch
@@ -723,6 +729,8 @@ default 10), `gate?`, `systemPrompt?` (empty ⇒
   runes it is replaced by `SubagentNoReportText`, else it keeps the prose
   plus `SubagentCutOffNote`. Either way the result is `isError`. Matching
   is line-start only, so prose quoting those tokens mid-line is untouched.
+  This is the BACKSTOP: §8 routes a leaked envelope into the wrap-up first,
+  so a report only reaches here when that synthesis call also failed.
 
 ### 10b. web_fetch (`NewWebFetchExecutor(WebFetchConfig)`)
 

@@ -246,7 +246,9 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
   the model's tool-call template) is never passed off as findings: it is cut
   at the envelope and returned as an error result carrying
   `SubagentCutOffNote`, or `SubagentNoReportText` when nothing usable
-  survives.
+  survives. That is the backstop: the loop routes a leaked envelope into the
+  stall wrap-up first, so a run only reports this way when the synthesis
+  call failed too.
 - **`NewWebFetchExecutor(WebFetchConfig)`** — the `web_fetch` tool: one
   unauthenticated, plain HTTP GET (http/https only, userinfo rejected, 5 MiB
   body cap, 45 s default client timeout), cleaned to readable text (built-in
@@ -318,8 +320,9 @@ requested tools, feed the results back, repeat. Key behaviors:
   error (the decision never arrived), the run ends with the pending batch
   cleared exactly as above.
 - **Stall fallback**: if the loop ends with no written answer (a
-  thinking-only turn, or the cap hit mid-research) and tools were in play,
-  one extra tool-less wrap-up turn forces the model to synthesize its answer
+  thinking-only turn, the cap hit mid-research, or a tool call the backend
+  left in the message text instead of parsing) and tools were in play, one
+  extra tool-less wrap-up turn forces the model to synthesize its answer
   from what it gathered; failing that, the final content falls back to the
   accumulated reasoning, then to a clear placeholder.
 - **Result.Usages** holds one entry per model call, in order — deliberately

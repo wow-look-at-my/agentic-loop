@@ -116,10 +116,13 @@ side of that line it falls on — do not put it on both.
 - **A sub-agent's report is what it ANSWERED, never what it was mid-way
   through saying.** A backend that fails to parse a model's tool-call
   template makes the model emit the call as text, so the run ends on an
-  envelope; `subagentReport` (`subagent_leak.go`) cuts it and flags the
-  result rather than handing working notes up as findings. Matching is
-  line-start only — prose quoting `<tool_call>` mid-line is a legitimate
-  report and must stay untouched.
+  envelope. Two layers handle it: the loop treats such a turn as a STALL
+  (`stalledOnLeakedCall`) so the wrap-up synthesizes from what was gathered,
+  and `subagentReport` (`subagent_leak.go`) is the backstop that cuts and
+  flags whatever still gets through. Matching is line-start only — prose
+  quoting `<tool_call>` mid-line is a legitimate report and must stay
+  untouched — and the stall path is gated on an executor being configured,
+  so a tool-less chat describing an envelope still answers normally.
 - **`SubagentActivity.Content` is the whole text; `Detail` is the preview.**
   Hosts render the former; do not cap it, and do not drop it back to a
   preview — a 160-rune hint of a file listing tells a reader nothing.
