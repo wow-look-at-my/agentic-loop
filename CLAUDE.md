@@ -17,7 +17,8 @@ redesign — check these when a behavior question comes up):
   the OpenAI dialect (wire shapes, the Message content presence rule, the
   tool-call accumulator, usage merging, the llama.cpp `timings` decode,
   param-strip retry, the SSE scanner and its buffer sizes), the loop
-  semantics (RunSubagent's final-turn tools-withheld + wrap-up fallback;
+  semantics (RunSubagent's wrap-up fallback — but NOT its turn cap, which
+  this library deliberately dropped, see Hard rules;
   Run's approval flow and cancel/approval finalization), the executor
   combinators, and the two built-in tool executors — `run_subagent`
   (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
@@ -98,6 +99,16 @@ side of that line it falls on — do not put it on both.
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
   safe.
+- **There is NO turn cap, and adding one back is a regression.** No
+  `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
+  tools-withheld final turn. A counted cap cannot tell a model looping
+  uselessly from one deep in a hard task, so it fires at the worst possible
+  moment: after the run has spent every call gathering context and right
+  before the model writes any of it down — the most expensive failure mode
+  available, since the whole investigation is paid for and then discarded.
+  What bounds a run is `ErrStuck` (repetition is the only mechanically
+  detectable form of not-progressing) and the caller's `ctx`.
+  `TestRunHasNoTurnCap` guards this.
 - **Retrying must stay observable.** 10 attempts of uncapped backoff is
   ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
   the failure and the wait. A retry notification is not a stream event and
@@ -127,6 +138,73 @@ side of that line it falls on — do not put it on both.
   returning non-nil) must keep their contract: abort + partial
   result/completion, `errors.Is`-reachable, never `*APIError`, never
   transient, delivery marked before the callback fires.
+
+## Fix the bug. Never build around it.
+
+When something is broken — here or in anything this library touches — the
+only acceptable response is to fix the broken thing. Not a wrapper that
+avoids it, not a sentinel that satisfies it, not a comment explaining how to
+live with it. Fixed bugs are the deliverable. Workarounds are a bill sent to
+everyone who comes later.
+
+The turn cap is the case study. The loop capped every run at 10 model calls
+and offered no way to say "no cap". A consumer needed uncapped runs, so
+instead of removing the cap it wrote this:
+
+```go
+// subagentNoCapTurns is the effectively-unbounded turn count the wrapper maps
+// the app's "0 = no cap" convention onto: the library treats MaxTurns <= 0 as
+// its own default (10), so the documented SUBAGENT_MAX_TURNS=0 behavior needs
+// an explicit huge cap instead.
+const subagentNoCapTurns = 1 << 30
+```
+
+Read what that comment is: a correct, well-written diagnosis of a library
+bug, checked in NEXT TO the bug instead of on top of it. Whoever wrote it
+understood the defect completely — they had to, in order to route around it.
+The fix was deleting a field. They wrote a paragraph instead.
+
+What the workaround actually cost:
+
+- **The bug stayed.** Every other consumer still got a silent hard 10.
+- **It hid the bug.** The symptom was gone in one place, so nothing pushed
+  anyone toward the real fix. Bugs get fixed because they hurt; a workaround
+  is anaesthetic.
+- **It cost days.** Agents were cut off mid-investigation, produced truncated
+  reports, and were relaunched to redo work they had already done. Every one
+  of those hours went on re-deriving something the workaround's own author
+  already knew.
+- **It made the codebase lie.** `MaxTurns` looked like a supported knob.
+  `1 << 30` looked like a considered value. Neither was true.
+
+**Why the time cost is the part that matters.** A workaround is not a neutral
+trade of elegance for speed. It converts a bounded, one-time cost — fix it
+now, while the diagnosis is in your head and the file is open — into an
+unbounded, recurring one, paid by other people who do NOT have that context,
+at unpredictable moments, usually under deadline. A bug you fix is gone
+forever. A bug you route around is rediscovered from scratch by everyone who
+trips on it, and each rediscovery costs more than the original fix, because
+they must reverse-engineer the workaround before they can even see the bug.
+Days spent that way buy nothing: no feature ships, no question is answered,
+no code improves. It is the purest waste available in software, and twenty
+minutes on the real fix avoids all of it.
+
+Concretely:
+
+- **Diagnosing a bug obligates you to fix it.** If you understood it well
+  enough to avoid it, you understood it well enough to fix it.
+- **Never encode a bug's shape into a constant, sentinel, retry, sleep, or
+  wrapper.** `1 << 30`, a magic default, a layer that exists only to undo a
+  lower layer — all the same move.
+- **A comment explaining a workaround is the alarm, not the solution.** If
+  you are writing prose about why the code is shaped wrong, stop and reshape
+  it.
+- **Another layer, repo, or author is not an exemption.** Fix it there and
+  get it merged. If you genuinely cannot (no access), say so plainly, name
+  the exact fix, and make the workaround loud and temporary — never quiet
+  and permanent.
+- **"It works now" is not done.** It works for you, once. Done means the
+  next person cannot hit it.
 
 ## CI
 

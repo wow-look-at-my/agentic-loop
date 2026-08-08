@@ -277,16 +277,20 @@ that, pass a `NewParamStripper`-wrapped provider in
 `Run(ctx, cfg, req)` drives the turn loop: call the model, execute the
 requested tools, feed the results back, repeat. Key behaviors:
 
-- **MaxTurns** caps model calls (default `DefaultMaxTurns` = 10). On the final
-  permitted turn **tools are withheld** so the model must answer instead of
-  requesting another never-executed call.
+- **There is no turn cap.** The loop runs until the model stops asking for
+  tools. A counted cap cannot tell a model looping uselessly from one deep in
+  a hard task, so it fires at the worst possible moment: after the run has
+  spent every call gathering context and just before the model writes any of
+  it down. Bound a run with the two mechanisms that judge the right thing —
+  `ErrStuck` below (evidence the model stopped progressing) and your own
+  `ctx` (wall-clock and spend, without discarding work in flight).
 - **A stuck model is caught, not waited out.** A turn whose tool calls are
   byte-identical to the previous turn's cannot learn anything new — the same
   calls return the same results, which produce the same turn again. The
   third identical turn in a row (`StuckNudgeAt`) gets one nudge appended
   after its tool results; the sixth (`StuckFailAt`) ends the run with
-  `ErrStuck` (match it with `errors.Is`) instead of spending the rest of
-  `MaxTurns` — the failing batch is never executed and its tool calls are
+  `ErrStuck` (match it with `errors.Is`) rather than letting it spin
+  — the failing batch is never executed and its tool calls are
   cleared, so the partial transcript stays replayable. Any change in what
   the model asks for clears the count; call IDs are excluded from the
   comparison, since providers mint a fresh one per call.
@@ -303,8 +307,8 @@ requested tools, feed the results back, repeat. Key behaviors:
   with no orphan tool calls, and the partial `Result` is returned together
   with your error.
 - **Per-turn hooks.** `Events.OnTurnBegin(turn, req)` fires before each
-  numbered model call (turns are numbered 1..MaxTurns; the stall wrap-up
-  call fires as `turn == MaxTurns+1`) with the 1-based turn number and a
+  numbered model call (turns are numbered from 1; the stall wrap-up call
+  fires one past the turn that stalled) with the 1-based turn number and a
   pointer to the per-call `Request`: mutate it (append a wind-down message,
   tweak `System`, add `Extra`) and the change applies to that one call only,
   never the persistent transcript. `Events.OnTurnEnd(turn, comp, err)` fires

@@ -444,20 +444,23 @@ from both ends. Normalization: lowercase + remove underscores (so
 
 ## 8. The loop (Run)
 
-Shape: the **subagent-style** loop (see the asymmetry note below).
+Shape: one loop, shared by `Run` and `RunSubagent`. The source app's two
+loops differed only in how each handled its capped final turn; with the cap
+gone there is nothing left to diverge on.
 
-- `maxTurns <= 0` → default **10**.
+- **There is NO turn cap, and no `maxTurns` field on either config.** The
+  loop ends when the model stops asking for tools. A counted cap cannot
+  distinguish "looping uselessly" from "deep in a hard task", so it fired at
+  the worst moment — after every call had been spent gathering context and
+  right before the model wrote any of it down. What bounds a run instead:
+  `ErrStuck` (repetition is the only mechanically detectable form of
+  not-progressing) and the caller's cancellation context. A port MUST NOT
+  reintroduce a cap.
 - Each turn advertises `tools.tools()`; `request.tools` is ignored and
-  overwritten (nil executor ⇒ no tools advertised).
-- `lastTurn = (turn == maxTurns − 1)`: the request carries **no tools** on
-  the last permitted turn.
-  - **Asymmetry vs the parent app's loop**: the source chat server's
-    parent `Run` still ADVERTISES tools on its capped last turn (its
-    lastTurn flag only suppresses persisting the never-executed calls and
-    ends the loop); its `RunSubagent` — and this library — WITHHOLD them so
-    the model must answer. Port the library's (subagent) behavior.
-- Continue looping while the executor is non-nil… actually: while the turn
-  produced tool calls AND !lastTurn. Per call, in order:
+  overwritten (nil executor ⇒ no tools advertised). **Every** turn carries
+  them — there is no final turn that withholds tools, because there is no
+  final turn.
+- Continue looping while the turn produced tool calls. Per call, in order:
   1. fire OnToolCall — a thrown/returned error ⇒ the batch-clearing
      finalization below, partial Result + that error;
   2. approval gate: only if `needsApproval(name)` — nil Approver ⇒ deny
@@ -502,7 +505,8 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
   equivalent internal seam.
 - **Public per-turn hooks** (in addition to the internal seam, which stays
   byte-for-byte): `Events.onTurnBegin(turn, req)` fires before each model
-  call (numbered turns 1..maxTurns, the stall wrap-up as maxTurns+1), with
+  call (turns numbered from 1; the stall wrap-up is one past the turn that
+  stalled), with
   a pointer to the per-call request the hook may MUTATE (the change applies
   to that one call only, never the persistent transcript; wind-down prompt
   injection rides this). `Events.onTurnEnd(turn, completion, err)` fires
@@ -530,8 +534,8 @@ Shape: the **subagent-style** loop (see the asymmetry note below).
     appends), so the wrap-up cannot be rejected for an unanswered tool
     call. Non-empty wrap-up content becomes the final (transcript gains
     the wrap-up user message + the answer); a wrap-up error is swallowed
-    and falls through. Note the wrap-up is an EXTRA call: turns can reach
-    maxTurns + 1.
+    and falls through. Note the wrap-up is an EXTRA call, numbered one past
+    the turn that stalled.
   - last resort: final content = trimmed content, else the concatenated
     thinking text, else the placeholder `(subagent produced no output)`.
   - wrapUpInstruction, verbatim:
@@ -612,8 +616,7 @@ loop's own config.
 
 Config: `provider`, `model`, `maxTokens`, `extra`, `tools` (the parent's
 FULL executor; there is deliberately NO retry field — see §6), `parentSystem` +
-`parentMessages` (the share_context source), `maxTurns` (<= 0 ⇒ the loop
-default 10), `gate?`, `systemPrompt?` (empty ⇒
+`parentMessages` (the share_context source), `gate?`, `systemPrompt?` (empty ⇒
 `DefaultSubagentSystemPrompt`), `onActivity?`.
 
 - Tool name exactly `run_subagent`; `readonly` FALSE (so ReadonlyView drops
@@ -858,8 +861,8 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   fallback on failure/empty, summary request shape (system prompt, user
   input layout, tool-less) + `no model available` / `failed` / `empty
   output` texts, `(no extractable content)` placeholder.
-- Per-turn hooks (`onTurnBegin`/`onTurnEnd`): numbered 1..maxTurns in order,
-  the wrap-up as maxTurns+1; a begin-hook mutation of the per-call request
+- Per-turn hooks (`onTurnBegin`/`onTurnEnd`): numbered from 1 in order, the
+  wrap-up one past the stalled turn; a begin-hook mutation of the request
   reaches the provider for that call only; begin-error aborts before the
   call (no turn counted, provider never called), end-error aborts after it
   (completed data kept); the internal turnHook still fires once per numbered

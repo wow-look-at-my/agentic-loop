@@ -158,8 +158,6 @@ type SubagentConfig struct {
 	// the sub-agent can only ever run with the prompt alone.
 	ParentSystem   string
 	ParentMessages []Message
-	// MaxTurns caps the sub-agent's internal loop; <= 0 means DefaultMaxTurns.
-	MaxTurns int
 	// Gate bounds concurrent sub-agent execution (share one Gate across the
 	// executors that should share the limit). nil = no limit.
 	Gate *Gate
@@ -379,7 +377,6 @@ func (e *subagentExecutor) runConfig(callID string, subTools ToolExecutor) Confi
 		Provider: e.cfg.Provider,
 		Tools:    subTools,
 		Approver: approveAll{},
-		MaxTurns: e.cfg.MaxTurns,
 	}
 	act := e.cfg.OnActivity
 	if act == nil {
