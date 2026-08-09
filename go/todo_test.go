@@ -79,6 +79,14 @@ func TestTodoWriteHandsTheHostTheWholeList(t *testing.T) {
 	}, rec.got[0])
 	assert.Equal(t, "Task list updated (3 tasks):\n[x] write it\n[~] test it\n[ ] ship it", res.Content)
 
+	// The host also gets the list itself, so it can draw the plan while the
+	// turn runs rather than parsing it back out of the model-facing text.
+	require.Len(t, res.Parts, 1)
+	assert.Equal(t, TodoListPartType, res.Parts[0].Type)
+	var carried []Todo
+	require.NoError(t, json.Unmarshal([]byte(res.Parts[0].Text), &carried))
+	assert.Equal(t, rec.got[0], carried)
+
 	// A second call carrying two of the three: the host is told the list is
 	// now two, not that one item changed.
 	res, err = exec.Execute(context.Background(), todoCall(`{"todos":[{"title":"test it","state":"done"}]}`))
@@ -102,6 +110,10 @@ func TestClearingTheListReachesTheHostAsAnEmptyList(t *testing.T) {
 	assert.NotNil(t, rec.got[0])
 	assert.Empty(t, rec.got[0])
 	assert.Equal(t, "Task list cleared.", res.Content)
+	// The empty list reaches the host's display too, or a finished plan stays
+	// on screen forever.
+	require.Len(t, res.Parts, 1)
+	assert.Equal(t, "[]", res.Parts[0].Text)
 }
 
 // A missing state is a task the model has not started. Rejecting the call
@@ -130,6 +142,7 @@ func TestAnUnknownStateIsRefusedWithItsIndexAndTheChoices(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Equal(t, `todos[1] has state "blocked"; it must be one of pending, in_progress, done`, res.Content)
 	assert.Empty(t, rec.got, "a refused call never reaches the host")
+	assert.Empty(t, res.Parts, "a refused call carries no list; a host must not blank its display over it")
 }
 
 // An empty title renders as a row nobody can act on; a title long enough to be

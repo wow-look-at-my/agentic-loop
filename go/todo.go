@@ -10,6 +10,12 @@ import (
 // TodoWriteToolName is the advertised name of the built-in task-list tool.
 const TodoWriteToolName = "todo_write"
 
+// TodoListPartType is the ToolContentPart type the whole new list rides back on
+// (as a JSON array of Todo), so a host's display follows a running turn instead
+// of waiting for the run to end. Like every structured part, it never reaches
+// the model.
+const TodoListPartType = "todo_list"
+
 // The task-list caps. A plan longer than this is not a plan, and a title long
 // enough to be a description does not fit the narrow surface a host renders
 // one in.
@@ -143,7 +149,20 @@ func (e *todoExecutor) Execute(ctx context.Context, call ToolCall) (ToolResult, 
 	if err := e.cfg.Write(ctx, todos); err != nil {
 		return ToolResult{Content: "could not save the task list: " + err.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: RenderTodos(todos)}, nil
+	// The model gets the rendering; the host gets the list itself, so it can
+	// draw the plan rather than parse the text back out of it.
+	return ToolResult{Content: RenderTodos(todos), Parts: []ToolContentPart{todoListPart(todos)}}, nil
+}
+
+// todoListPart carries the stored list to the host.
+func todoListPart(todos []Todo) ToolContentPart {
+	b, err := json.Marshal(todos)
+	if err != nil {
+		// Todo is two strings; Marshal cannot fail on it. An empty array is
+		// still a valid list, so a host never reads a broken document.
+		b = []byte("[]")
+	}
+	return ToolContentPart{Type: TodoListPartType, Text: string(b), MimeType: "application/json"}
 }
 
 // validateTodos normalizes and checks the model's list, returning a teaching

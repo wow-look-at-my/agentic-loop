@@ -22,7 +22,8 @@ distilled, dependency-free extraction.
 | `ToolCall` | `id`, `name`, `arguments` | `arguments` is the RAW JSON object **text** (OpenAI: concatenated streamed fragments; Anthropic: accumulated `input_json_delta.partial_json`). |
 | `Message` | `role`, `content`, `thinking[]`, `toolCalls[]`, `toolCallID`, `toolIsError` | thinking/toolCalls assistant-only; toolCallID/toolIsError tool-only. |
 | `Tool` | `name`, `description`, `inputSchema`, `readonly` | nil/absent schema marshals as `{"type":"object"}`. `readonly` is never sent to the upstream. |
-| `ToolResult` | `content`, `isError` | Text-only by design (see cuts). |
+| `ToolContentPart` | `type`, `text?`, `data?`, `mimeType?`, `uri?`, `name?`, `description?` | An MCP content block, or a block a tool and its host agree on. JSON wire names: `type`, `text`, `data`, `mime_type`, `uri`, `name`, `description` (everything but `type` omitted when empty). |
+| `ToolResult` | `content`, `parts[]`, `isError` | `content` is what the MODEL is fed. `parts` is structured content for the HOST to render (images, audio, files, a tool's own block) and is **never** sent to the model, so a result can carry a megabyte of image at no context cost. `Run` passes the whole result to `Events.OnToolResult`; nothing else in the loop reads `parts`. |
 | `Usage` | `promptTokens`, `completionTokens`, `totalTokens`, `cacheReadTokens?`, `cacheWriteTokens?` | The two cache fields are **tri-state**: absent/undefined = provider reported no cache info; a number (including 0) = a real report. Never zero-fill, never estimate. |
 | `PromptProgress` | `processed`, `total`, `cache`, `timeMS` | Wire-faithful to the upstream `prompt_progress` object (`{total, cache, processed, time_ms}`). |
 | `Timings` | `promptN`, `promptMS`, `predictedN`, `predictedMS` | Wire-faithful to the llama.cpp-style chunk `timings` object (`{prompt_n, prompt_ms, predicted_n, predicted_ms}`; the `_ms` fields are floats). Decode only — the library NEVER synthesizes timings from wall-clock time. |
@@ -801,8 +802,14 @@ Config: `write: (todos) => void | error` — the host's store. A nil/absent
   `unknown tool: <name>`; bad JSON ⇒ `invalid todo_write arguments: <err>`;
   no writer ⇒ `the task list is unavailable: this run has nowhere to keep
   it`; `write` returning an error ⇒ `could not save the task list: <err>`.
-- **Result** (`RenderTodos`, exported so a host can render the same text):
-  empty ⇒ `Task list cleared.`; otherwise `Task list updated (<n> tasks):`
+- **Result parts**: a successful call carries ONE part, `type` exactly
+  `todo_list` (`TodoListPartType`), `mimeType` `application/json`, `text` the
+  validated list as a JSON array of `{title, state}` — including `[]` for a
+  cleared list, so a host's display empties with it. A refused call carries
+  NO part, so a host never blanks its display over a call that changed
+  nothing.
+- **Result text** (`RenderTodos`, exported so a host can render the same
+  text): empty ⇒ `Task list cleared.`; otherwise `Task list updated (<n> tasks):`
   then one line per task, `\n<mark> <title>`, where mark is `[x]` done,
   `[~]` in_progress, `[ ]` pending. The model gets the list back so a call
   that dropped a task is visible in the reply, not only on the user's
@@ -820,8 +827,6 @@ Config: `write: (todos) => void | error` — the host's store. A nil/absent
   are composed or not composed; gating them is caller-side wrapping.
 - Title sanitization (`sanitizeTitle`, `<think>`-stripping, length caps) —
   `OneShot` returns raw trimmed text.
-- Structured tool-result content parts (multimodal blocks); `ToolResult` is
-  text-only.
 - Model-gated thinking/temperature/effort tables (the reference app's
   per-model gates) — callers own `extra`.
 - Pricing/cost computation.

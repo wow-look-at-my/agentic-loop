@@ -187,6 +187,13 @@ type Approver interface {
 }
 ```
 
+A `ToolResult` is `Content` (the text the MODEL is fed), `IsError`, and
+`Parts []ToolContentPart` — structured content for the HOST: images, audio,
+embedded files, or a block a tool and its host agree on. Parts never reach the
+model, so a result can hand a front end a megabyte of image while costing the
+context only what `Content` says. `Run` passes the whole result to
+`Events.OnToolResult`; nothing else in the loop reads them.
+
 Combinators mirror the source application's semantics:
 
 - `NewComposite(execs...)` — one deterministic tool list across executors;
@@ -265,7 +272,9 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
   ordering never has to be reconciled; `TodoConfig.Write(ctx, []Todo)` is
   where the host keeps and displays it, and an empty list arrives as an
   empty (non-nil) one because clearing the list is a real instruction. The
-  library owns the tool's semantics — the schema's `pending`/`in_progress`/
+  result also carries the list itself as a `TodoListPartType` content part, so
+  a host can draw the plan mid-turn instead of parsing it back out of the text.
+  The library owns the tool's semantics — the schema's `pending`/`in_progress`/
   `done` enum, the caps (100 tasks, 200-rune titles), the per-item teaching
   errors naming `todos[<i>]`, and `RenderTodos` (exported, so a host renders
   the same text the model is answered with). A `Write` that returns an error
