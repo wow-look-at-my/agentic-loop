@@ -526,24 +526,26 @@ func TestSubagentExecuteErrors(t *testing.T) {
 	})
 }
 
-func TestSubagentCustomSystemPromptAndMaxTurns(t *testing.T) {
-	// MaxTurns caps the nested loop (tools withheld on the final turn), and a
-	// custom system prompt replaces the default.
+func TestSubagentCustomSystemPromptAndUncappedTurns(t *testing.T) {
+	// A custom system prompt replaces the default, and the nested loop runs as
+	// long as the sub-agent keeps working -- no cap cuts its research short.
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: assistantComp("", ToolCall{ID: "s1", Name: "Repo__read", Arguments: "{}"})},
-		{comp: assistantComp("capped answer")},
+		{comp: assistantComp("", ToolCall{ID: "s1", Name: "Repo__read", Arguments: `{"i":1}`})},
+		{comp: assistantComp("", ToolCall{ID: "s2", Name: "Repo__read", Arguments: `{"i":2}`})},
+		{comp: assistantComp("the report")},
 	}}
 	exec := NewSubagentExecutor(SubagentConfig{
 		Provider: provider, Model: "m", Tools: subParentExec(),
-		MaxTurns: 2, SystemPrompt: "  custom brief  ",
+		SystemPrompt: "  custom brief  ",
 	})
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
 	require.NoError(t, err)
-	assert.Equal(t, "capped answer", res.Content)
-	require.Len(t, provider.reqs, 2)
+	assert.Equal(t, "the report", res.Content)
+	require.Len(t, provider.reqs, 3)
 	assert.Equal(t, "custom brief", provider.reqs[0].System)
-	assert.NotEmpty(t, provider.reqs[0].Tools)
-	assert.Empty(t, provider.reqs[1].Tools, "the nested Run withholds tools on its final permitted turn")
+	for i, r := range provider.reqs {
+		assert.NotEmpty(t, r.Tools, "turn %d keeps its tools", i+1)
+	}
 }
 
 func TestSubagentNoOutputPlaceholder(t *testing.T) {

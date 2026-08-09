@@ -212,18 +212,19 @@ func TestRunApprovalAskError(t *testing.T) {
 	assert.Equal(t, 1, res.Turns)
 }
 
-func TestRunFinalTurnWithholdsTools(t *testing.T) {
+func TestRunAdvertisesToolsOnEveryTurn(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
-		{comp: assistantComp("forced answer")},
+		{comp: assistantComp("answer")},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 2}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 2)
-	assert.NotEmpty(t, provider.reqs[0].Tools)
-	assert.Empty(t, provider.reqs[1].Tools, "tools withheld on the final permitted turn")
-	assert.Equal(t, "forced answer", res.Final.Content)
+	for i, r := range provider.reqs {
+		assert.NotEmpty(t, r.Tools, "turn %d: with no cap there is no final turn to withhold tools on", i+1)
+	}
+	assert.Equal(t, "answer", res.Final.Content)
 	assert.Equal(t, 2, res.Turns)
 }
 
@@ -288,36 +289,44 @@ func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {
 	assert.Equal(t, "sorry", res.Final.Content)
 }
 
-func TestRunMaxTurnsDefault(t *testing.T) {
-	// A model that always requests tools: DefaultMaxTurns caps the loop, the
-	// last turn withholds tools, and the scripted final text ends it.
-	steps := make([]scriptStep, 0, DefaultMaxTurns)
-	for i := 0; i < DefaultMaxTurns-1; i++ {
-		// Distinct arguments per turn: identical batches are the stuck
-		// detector's business (TestRunStuckFailsAfterNudge), and this test is
-		// about the turn cap.
+// noTurnCapProbe is well past the 10-turn cap this loop used to carry, so a
+// regression that reintroduces one fails here instead of in production on the
+// one task that needed the 11th turn. The provider is the in-process
+// scriptProvider stub, so these turns cost microseconds.
+const noTurnCapProbe = 40
+
+func TestRunHasNoTurnCap(t *testing.T) {
+	// A model that keeps asking for tools is never cut off. Distinct arguments
+	// per turn: a model repeating itself is the stuck detector's business
+	// (TestRunStuckFailsAfterNudge); this test is about the absence of a cap.
+	steps := make([]scriptStep, 0, noTurnCapProbe)
+	for i := 0; i < noTurnCapProbe-1; i++ {
 		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: fmt.Sprintf(`{"i":%d}`, i)})})
 	}
-	steps = append(steps, scriptStep{comp: assistantComp("capped")})
+	steps = append(steps, scriptStep{comp: assistantComp("finished on its own terms")})
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
-	assert.Equal(t, DefaultMaxTurns, res.Turns)
-	assert.Empty(t, provider.reqs[DefaultMaxTurns-1].Tools)
-	assert.Equal(t, "capped", res.Final.Content)
-	assert.Len(t, res.Usages, DefaultMaxTurns)
+	assert.Equal(t, noTurnCapProbe, res.Turns, "the loop ends when the model stops asking, not on a count")
+	assert.Equal(t, "finished on its own terms", res.Final.Content)
+	assert.Len(t, res.Usages, noTurnCapProbe)
+	assert.Len(t, exec.executed, noTurnCapProbe-1)
 }
 
-func TestRunLastTurnDanglingCallsCleared(t *testing.T) {
+func TestRunContentAlongsideToolCallsStillRunsThem(t *testing.T) {
+	// The cap used to drop these calls on its final turn: the model wrote a
+	// sentence, asked for a tool, and the request silently evaporated.
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: assistantComp("answer with dangling call", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+		{comp: assistantComp("thinking out loud", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+		{comp: assistantComp("done")},
 	}}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 1}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
-	assert.Nil(t, res.Final.ToolCalls, "never-executed calls do not survive into the final transcript")
-	assert.Empty(t, exec.executed)
+	require.Len(t, exec.executed, 1, "a call is never dropped just because the turn also had prose")
+	assert.Equal(t, "done", res.Final.Content)
+	assert.Nil(t, res.Final.ToolCalls, "no orphan calls in the final transcript")
 }
 
 func TestRunRetriesTransientModelFailure(t *testing.T) {
@@ -412,7 +421,7 @@ func TestRunStuckNudgeUnsticksTheLoop(t *testing.T) {
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 20}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "unstuck", res.Final.Content)
 	assert.Len(t, exec.executed, StuckNudgeAt, "every nudged batch still ran")
@@ -437,11 +446,11 @@ func TestRunStuckFailsAfterNudge(t *testing.T) {
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 100}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.ErrorIs(t, err, ErrStuck)
 	require.NotNil(t, res, "the partial transcript rides alongside the error")
 	assert.Contains(t, err.Error(), fmt.Sprintf("%d identical turns in a row", StuckFailAt))
-	assert.Equal(t, StuckFailAt, res.Turns, "the run ends well short of MaxTurns")
+	assert.Equal(t, StuckFailAt, res.Turns, "the stuck detector ends the run, not a count")
 	assert.Len(t, exec.executed, StuckFailAt-1, "the failing batch is never executed")
 	assert.Nil(t, res.Final.ToolCalls, "no orphan tool call survives into the transcript")
 	assert.Equal(t, RoleAssistant, res.Messages[len(res.Messages)-1].Role)
@@ -462,7 +471,7 @@ func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec, MaxTurns: 100}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
 	assert.Equal(t, 2*StuckFailAt+1, res.Turns)
