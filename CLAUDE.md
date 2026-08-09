@@ -20,7 +20,7 @@ redesign — check these when a behavior question comes up):
   semantics (RunSubagent's wrap-up fallback — but NOT its turn cap, which
   this library deliberately dropped, see Hard rules;
   Run's approval flow and cancel/approval finalization), the executor
-  combinators, and the two built-in tool executors — `run_subagent`
+  combinators, and the built-in tool executors — `run_subagent`
   (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
   `context.go`/`summary.go`: schema, share_context modes, allowed_tools
   grants, Gate, activity telemetry) and `web_fetch`
@@ -122,7 +122,8 @@ side of that line it falls on — do not put it on both.
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
   and allowed_tools error texts, `SubagentCutOffNote`,
   `SubagentNoReportText`, the context-summary and web-summary
-  prompts, the web_fetch validation/cap/result texts) are pinned by tests
+  prompts, the web_fetch validation/cap/result texts, the todo_write
+  description/schema/teaching errors and `RenderTodos`) are pinned by tests
   and by PARITY.md. Do not "improve" them.
 - **A sub-agent's report is what it ANSWERED, never what it was mid-way
   through saying.** A backend that fails to parse a model's tool-call

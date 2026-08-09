@@ -775,6 +775,39 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   failure ⇒ `web_fetch summary failed: <err>`; empty output ⇒
   `web_fetch summary returned empty output`.
 
+### 10c. todo_write (`NewTodoExecutor(TodoConfig)`)
+
+Config: `write: (todos) => void | error` — the host's store. A nil/absent
+`write` refuses every call.
+
+- Tool name exactly `todo_write`; `readonly` FALSE (it writes host state a
+  sub-agent would overwrite for its parent); `needsApproval` false.
+  Description and schema: the Go literals. Schema shape: `todos` (required)
+  is an array of objects with `title` (required, string) and `state`
+  (optional, enum `pending` | `in_progress` | `done`).
+- **Whole-list replacement is the contract**: every call hands `write` the
+  complete list, in the model's order, with no ids. A host never merges. An
+  empty `todos` reaches `write` as an EMPTY, NON-NULL list (clearing the
+  list is a real instruction a host must be able to tell from a no-op).
+- **Normalization**: titles are trimmed; an absent or blank `state` becomes
+  `pending`.
+- **Validation** (exact error texts, none of which reach `write`):
+  `> 100` items ⇒ `too many tasks: the list holds at most 100, and you sent
+  <n>. Track the work at a coarser grain.`; blank title ⇒ `todos[<i>] has
+  an empty title; every task needs one`; title over 200 runes ⇒
+  `todos[<i>] has a title of <n> characters; the limit is 200. It is a task
+  name, not a description.`; unknown state ⇒ `todos[<i>] has state "<s>";
+  it must be one of pending, in_progress, done`. Unknown tool name ⇒
+  `unknown tool: <name>`; bad JSON ⇒ `invalid todo_write arguments: <err>`;
+  no writer ⇒ `the task list is unavailable: this run has nowhere to keep
+  it`; `write` returning an error ⇒ `could not save the task list: <err>`.
+- **Result** (`RenderTodos`, exported so a host can render the same text):
+  empty ⇒ `Task list cleared.`; otherwise `Task list updated (<n> tasks):`
+  then one line per task, `\n<mark> <title>`, where mark is `[x]` done,
+  `[~]` in_progress, `[ ]` pending. The model gets the list back so a call
+  that dropped a task is visible in the reply, not only on the user's
+  screen.
+
 ## 11. Deliberate cuts (do NOT implement in ts/ either)
 
 - DB/persistence (message trees, leaf advancement, statuses) — the library
