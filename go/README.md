@@ -153,6 +153,48 @@ alongside the error. Both dialects are safe for concurrent use.
 typed core fields always win; the library never interprets, gates, or filters
 what you put there.
 
+### Which dialect an endpoint speaks
+
+```go
+type Dialect string // DialectAuto (""), DialectOpenAI, DialectAnthropic
+
+func (d Dialect) Valid() bool
+func (d Dialect) Label() string          // "detect" / "openai-compatible" / "anthropic messages"
+func Dialects() []Dialect                // every dialect, default first
+
+func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error)
+func DialectOfModelList(body []byte) Dialect
+```
+
+Picking a provider constructor means knowing which protocol an endpoint
+speaks, and a hostname is a guess about a server that is available to ask.
+The two dialects answer the same question — "what models do you have?" —
+with structurally different documents:
+
+```
+OpenAI:    {"object":"list","data":[{"id":"gpt-x","object":"model",...}]}
+Anthropic: {"data":[{"type":"model","id":"claude-x",...}],"has_more":false}
+```
+
+`DetectDialect` does one `GET /v1/models` (both credential forms on the
+request, since which server is answering is the very thing in question) and
+returns what the shape said. It returns `DialectAuto` **with an error** when
+the answer is not established — never a guess dressed as a finding, because a
+wrong dialect does not degrade, it breaks chat outright. `DialectOfModelList`
+is the same shape test over a body you already have, so a host that fetches
+model lists anyway pays no extra request; going through it is what keeps the
+rule declared once.
+
+The envelope is checked before the items, so a list with no models at all
+still identifies its server.
+
+What this cannot settle, and why a host should keep an override: it reads the
+MODELS endpoint and infers the CHAT endpoint from it. A gateway may serve those
+independently, and proving the chat dialect means posting to it — spending
+tokens, or deliberately sending a malformed request to read the error shape
+back. `Dialects()` and `Label()` exist so that override's UI does not carry its
+own copy of the vocabulary.
+
 ### Timings
 
 llama.cpp-style upstreams (llama.cpp, ollama) attach a `timings` object to

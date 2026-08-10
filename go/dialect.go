@@ -114,7 +114,7 @@ func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return DialectAuto, fmt.Errorf("detecting the dialect: the model list answered %d", resp.StatusCode)
 	}
-	d := dialectOfModelList(body)
+	d := DialectOfModelList(body)
 	if d == DialectAuto {
 		return DialectAuto, fmt.Errorf("detecting the dialect: the model list matches neither dialect")
 	}
@@ -125,10 +125,15 @@ func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
 // not the document this is trying to recognize.
 const detectMaxBytes = 1 << 20
 
-// dialectOfModelList reads the structural tell out of a model-list document.
-// The ENVELOPE is checked before the items, because a list with no models at
-// all still identifies its server.
-func dialectOfModelList(body []byte) Dialect {
+// DialectOfModelList reads the structural tell out of a model-list document,
+// answering DialectAuto when it matches neither. The ENVELOPE is checked before
+// the items, because a list with no models at all still identifies its server.
+//
+// It is exported for the host that fetches model lists of its own: reading the
+// tell off a response it was already going to make costs no request, and going
+// through this function is what stops the rule from being declared a second
+// time somewhere it can drift.
+func DialectOfModelList(body []byte) Dialect {
 	var doc struct {
 		Object  string `json:"object"`
 		HasMore *bool  `json:"has_more"`

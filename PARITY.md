@@ -941,87 +941,86 @@ literals in `files_decl.go`.
   filename glob (*.go) or a plain substring of the name or path.` /
   `grep requires "pattern": the text to find inside the files.`
 
-### 10d. The filesystem tools (`NewFileTools(FileToolsConfig)`)
+### 10e. The GitHub module (`NewGitHub` + `NewRepoTools`)
 
-Config: `folders` (map from mount name — the leading path segment, no
-slash — to a `Folder`), `mountsBlurb` (appended to EVERY description,
-prefixed with one space when it lacks one), `unavailable(mount) => string`,
-`guard(path) => [blocked, reason]`. An empty/all-nil `folders` returns NO
-tools, not tools that can only fail.
+The client is a separate value from the tools because several consumers
+share it — the tools, a `/repos` folder for the file tools, a
+credential-test button — and they must share one credential order and one
+winning-token cache.
 
-Seven tools, names exactly `list_dir`, `read_file`, `find_files`, `grep`,
-`write_file`, `edit_file`, `delete_file`. The first four are `readonly`
-TRUE, the three writes FALSE (so a sub-agent's default read-only toolset
-excludes them); `needsApproval` is false on all seven — gating a write is
-the host's call, made by wrapping. Descriptions and schemas: the Go
-literals in `files_decl.go`.
+`GitHubConfig`: `baseURL` (default `https://api.github.com`), `tokens`
+(rotated), `writeTokens`, `cache` (a `RepoKeyCache`: `get(key)`/`set(key,
+credentialID)`), `httpClient`, `userAgent`. `ModelWriteTokens(tokens)`
+filters to the ones the user flagged model-writable — the host decides who
+is asking, the library never guesses.
 
-- **`Folder`**: `display(path)`, `list(path)`, `read(path)`,
-  `find(path, pattern, limit)`, `grep(path, query)`. Every method receives
-  the WHOLE virtual path as the model wrote it — the mount's grammar
-  (`/repos/<org>/<repo>@<ref>/<path>`) is the folder's business, never the
-  tool layer's. `WritableFolder` adds `writable(path) => [ok, why]`,
-  `create`, `replace`, `remove`, each returning the model-facing note.
-  `ReadOnlyExplainer.readOnlyReason(path)` lets a read-only folder name the
-  writable route.
-- **Resolution order** (`resolve`): blank path ⇒ `<tool> requires "path".`;
-  then `guard` (its reason verbatim, no tool prefix); then the mount, which
-  is `MountOf(path)` — the leading segment up to the first `/` **or `@`**,
-  so a ref suffix stays part of the path. An unmounted name ⇒
-  `<tool>: ` + `unavailable(mount)`, falling back to
-  `/<mount> is not available in this conversation.`
-- **Write routing**: a folder that is not writable ⇒ `<tool>: ` +
-  `readOnlyReason(path)` or `<display> is read-only.`; a writable folder
-  refusing THIS path ⇒ `<tool>: <why>`.
-- **Every failure is a recoverable result** (`isError` true, no thrown
-  error): bad JSON ⇒ `invalid <tool> arguments: <err>`; a folder error ⇒
-  `<tool>: <err>`. A bad path is something the model corrects, never
-  something that ends a turn.
-- **Caps** — `find` default 20 / max 100, `grep` default 30 / max 100,
-  listing 1000 entries; a non-positive `limit` takes the default, then it
-  is clamped. **Every cap that bites is announced**: find at its limit adds
-  ` (first <n>; raise limit or narrow the pattern for more)`; grep adds
-  `(stopped at <n> matching lines — more exist. Narrow the path or "glob",
-  or raise "limit" to at most 100.)`; a truncated listing adds
-  `(listing truncated; narrow the path or use find_files)`.
-- **`read_file`'s window** (`SliceLines`, 1-based inclusive `offset`, so a
-  grep line number goes straight in): no offset and no limit ⇒ the whole
-  file, no note. Otherwise the header gains `(lines <a>-<b> of <total>)`,
-  plus `; <n> more follow — re-read with offset <b+1>` when more remain;
-  an offset past the end ⇒ `(this file has <n> lines; line <o> is past its
-  end)` with an empty body. A trailing newline is not a line. A folder's own
-  `truncatedNote` is a SEPARATE header line from the window note — merging
-  them would misstate what the line numbers are relative to.
-- **Listing rendering**: canonical path, optional `  (<note>)`, then
-  directories before files, each sorted by name; `dir   <name>/`, else
-  `file  <name> (<HumanSize>)`, with `kind` overriding the type column for
-  symlinks/submodules (and suppressing the size), and `  <note>` appended.
-  Empty ⇒ `(empty directory)`.
-- **`grep`'s empty result is a REAL NEGATIVE** and must say so, verbatim:
-  `grep "<pattern>" in <where>: no matches.` then
-  `Every line of every file in scope was searched, so the text is genuinely
-  absent from it — this is a real negative, not a search that gave up.` A
-  `GrepResult.note` (partial coverage) is appended after it — that is the
-  only thing allowed to qualify the claim. Hits render grouped by file:
-  `grep "<p>" in <where>[ (<globs>)]: <n> matching line(s) in <m> file(s)`,
-  then per file a blank line, the FULL virtual path, and `%7d: <text>` per
-  hit — so every hit feeds straight back into `read_file`'s `offset`.
-- **Scope is the path and nothing else**, for both `find_files` and `grep`,
-  and **a single FILE is a scope** (`WithinScope`): rendering one as a
-  directory makes every file-scoped search answer "no matches" for text
-  right there. A path the mount does not hold is an ERROR, never an empty
-  result.
-- **`MatchesPattern`**: a pattern with `*?[` is glob-matched against the
-  base name and then the full path; anything else is a case-insensitive
-  substring of the path. `SplitGlobs` splits `glob` on commas and trims.
-  Both exported, so a folder filters by the same rule the description
-  promises.
-- **`edit_file` guards its own contract**: an empty `old_text` ⇒
-  `edit_file requires "old_text": the exact existing text to replace,
-  occurring exactly once in the file. To add a brand-new file use
-  write_file.` A blank `pattern` ⇒ `find_files requires "pattern": a
-  filename glob (*.go) or a plain substring of the name or path.` /
-  `grep requires "pattern": the text to find inside the files.`
+`RepoToolsConfig`: `gitHub` (**nil ⇒ NO tools**, never tools that can only
+fail) and `blocked(org, repo) => ToolResult | null`, which vetoes a WRITE
+only. Reads are never asked: history, pull requests and CI are not things a
+working copy holds a version of, and gating them left a checked-out
+repository's own CI unreachable.
+
+Three tools, named exactly `repo_read`, `repo_file_write`,
+`repo_pr_create`. `repo_read` is readonly TRUE and `needsApproval` false;
+the two writes are readonly FALSE and **declare `needsApproval` TRUE** —
+they reach GitHub and no undo exists.
+
+- **`repo_read`'s `what` is one declaration**, the ordered list `commits,
+  commit, prs, pr, issues, issue, status, check_run`. The handler table, the
+  schema enum and the "must be one of" error all derive from that one array,
+  so a read cannot exist in one and be missing from another.
+- **The reads that became file operations redirect by name**: `tree` ⇒
+  `list_dir`, `file` ⇒ `read_file`, `filenames` ⇒ `find_files`, each with an
+  example call on `/repos/<org>/<repo>/...`. A model calling the old name is
+  pointed at the new tool, never told the `what` is merely unknown.
+- **Credential order for a READ**: the cached winner for this repo, then
+  every token in order, then anonymously (so a public repository works with
+  no credential). A success calls `remember(key, credentialID)`.
+- **A failed read reports the MOST INFORMATIVE attempt**, never the
+  anonymous 401 — whose only content is that no credential was sent.
+  `MoreInformativeAuthFailure` picks it: a 403 or 404 seen by a real token
+  beats a 401 seen by none. This is why a spent rate limit stopped reading
+  as a permanent auth problem.
+- **A WRITE uses `writeTokens` only and never falls through to anonymous.**
+  When every write credential fails, it **re-reads the repository before
+  blaming them**: a 404 on a named object with the repository readable means
+  the OBJECT is gone, not the credential.
+- Caps: `RepoFileMaxRunes` and `RepoDiffMaxRunes` 200_000, one PR/issue body
+  20_000, one comment 5_000; list reads default `per_page` 10, hard cap 30.
+  Every cap that bites is announced in the rendered result.
+- `TestToken(...)` probes ONE credential against `/user` and explains a
+  failure through the same machinery, so a host's "test this token" button
+  is not a second implementation of the diagnosis.
+
+### 10f. Dialect detection (`DetectDialect` / `DialectOfModelList`)
+
+`Dialect` is `""` (auto), `"openai"`, `"anthropic"`, with `valid()`,
+`label()` (`detect` / `openai-compatible` / `anthropic messages`) and
+`dialects()` returning all three, default first. The labels live here so a
+host's settings UI does not carry a second copy of the vocabulary.
+
+`DetectDialect(ctx, providerConfig)` does one `GET {baseURL}/v1/models`
+carrying **both** credential forms (`Authorization: Bearer` AND `x-api-key`
+plus `anthropic-version`), because which server is answering is the very
+thing being established, and each dialect ignores the other's header. It
+returns:
+
+- `DialectOpenAI` when the envelope has `"object": "list"`;
+- `DialectAnthropic` when the envelope has `has_more` (present at all,
+  either value);
+- otherwise, the first item's `type == "model"` ⇒ Anthropic, `object ==
+  "model"` ⇒ OpenAI.
+
+The ENVELOPE is checked before the items, so an EMPTY list still identifies
+its server. Anything else — a non-2xx, a body that is not JSON, a document
+of neither shape, a missing `baseURL` — is `DialectAuto` **with an error**,
+never a guess: a wrong dialect does not degrade, it breaks chat outright.
+The read is capped at 1 MiB.
+
+`DialectOfModelList(body)` is the same shape test over bytes the caller
+already has, exported so a host that fetches model lists anyway pays no
+extra request — and so the rule is declared once rather than reimplemented
+against a decoded struct.
 
 ## 11. Deliberate cuts (do NOT implement in ts/ either)
 
