@@ -163,3 +163,8 @@ func RepoPath(org, repo, inner string) string {
 	}
 	return p
 }
+
+// TokenCount is how many tokens this client will try. A failure explanation
+// reads differently when none is configured than when three were refused, and
+// only the client knows which.
+func (e *GitHub) TokenCount() int { return len(e.tokens) }
