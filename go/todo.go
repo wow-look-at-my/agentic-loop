@@ -87,6 +87,21 @@ type TodoConfig struct {
 	// A nil Write refuses every call: a tool that silently accepts a plan
 	// nobody keeps is worse than one that says it cannot.
 	Write func(ctx context.Context, todos []Todo) error
+
+	// Initial is the list this toolset starts holding — what Write persisted
+	// on an earlier run, handed back so the model can go on addressing those
+	// tasks by the ids it was already given.
+	//
+	// A host that keeps the list across runs MUST pass it. The list is
+	// mutated in memory and Write receives the whole of it, so a toolset that
+	// starts empty does not merely forget the earlier tasks: the first
+	// mutation of a new run persists a list containing only that one task, and
+	// everything the previous run wrote is gone. Nothing in the exchange looks
+	// like a failure.
+	//
+	// Ids are taken as given and never reused, so the next task minted here
+	// cannot collide with one already on the list.
+	Initial []Todo
 }
 
 // todoStore is the in-memory task list one toolset mutates, plus the minting
@@ -122,7 +137,14 @@ const (
 // user, and a sub-agent inheriting them would overwrite its parent's plan;
 // granting them to one is the caller's explicit choice (allowed_tools).
 func NewTodoTools(cfg TodoConfig) Tools {
-	store := &todoStore{next: 1}
+	store := &todoStore{items: append([]Todo(nil), cfg.Initial...), next: 1}
+	// Mint above every id already in hand, so a restored list and a task added
+	// to it can never share an id — which resolve would then refuse to act on.
+	for _, t := range store.items {
+		if t.ID >= store.next {
+			store.next = t.ID + 1
+		}
+	}
 	return Tools{
 		&todoTool{kind: todoKindAdd, cfg: cfg, store: store},
 		&todoTool{kind: todoKindEdit, cfg: cfg, store: store},
