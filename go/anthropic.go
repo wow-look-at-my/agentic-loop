@@ -213,6 +213,15 @@ func anAssistantContent(m Message) any {
 			blocks = append(blocks, map[string]any{"type": "redacted_thinking", "data": tb.Redacted})
 			continue
 		}
+		if tb.Signature == "" {
+			// Not replayable, so not replayed. The signature is what makes a
+			// thinking block the model's own; Anthropic rejects one without a
+			// valid signature, so sending it would fail the whole turn rather
+			// than lose one block. A caller whose transcript carries text-only
+			// reasoning -- from another dialect, or from storage that kept the
+			// text and dropped the signature -- must not have every turn 400.
+			continue
+		}
 		blocks = append(blocks, map[string]any{"type": "thinking", "thinking": tb.Text, "signature": tb.Signature})
 	}
 	if m.Content != "" {
