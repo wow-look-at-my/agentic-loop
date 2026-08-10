@@ -156,7 +156,7 @@ func (e *repoTools) runWrite(ctx context.Context, toolName, cacheKey string, att
 		}
 		var auth GitHubAuthError
 		if errors.As(err, &auth) {
-			bestAuth = moreInformativeAuth(bestAuth, auth)
+			bestAuth = MoreInformativeAuthFailure(bestAuth, auth)
 			continue // this credential may simply lack access; try the next
 		}
 		var fatal GitHubFatalError

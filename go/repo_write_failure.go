@@ -16,7 +16,7 @@ import (
 // repository that none of their PATs could write to it, and sent them to fix a
 // setting that was already correct. See docs/tools/repo-tools.md.
 
-// moreInformativeAuth folds one credential's failure into the best failure so
+// MoreInformativeAuthFailure folds one credential's failure into the best failure so
 // far, so an exhausted rotation reports what it established rather than
 // whichever credential happens to be configured last. The read side already
 // works this way (failureRank); a write rotation kept the LAST attempt, which
@@ -26,7 +26,7 @@ import (
 // point only by a 404 that names an object, so one later token rejecting its
 // own credentials erased the finding and put the push back on the
 // write-access guess this file exists to retire.
-func moreInformativeAuth(best, next GitHubAuthError) GitHubAuthError {
+func MoreInformativeAuthFailure(best, next GitHubAuthError) GitHubAuthError {
 	if best.status == 0 {
 		return next
 	}
