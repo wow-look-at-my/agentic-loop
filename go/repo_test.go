@@ -88,4 +88,3 @@ func TestRepoReadWhatValidation(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, `repo_read what=commits requires both "org" and "repo"`)
 }
-

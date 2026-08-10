@@ -26,7 +26,6 @@ import (
 //     only a token that completed the write is cached — so a read-only winner
 //     discovered by the read tools can never poison the cache.
 const (
-
 	repoFileWriteDescription = "Creates a single NEW file in a GitHub repository as a new commit on the given branch, " +
 		"optionally creating the branch first (create_branch=true, from create_branch_from or the default branch). " +
 		"CREATE-ONLY: it refuses to overwrite a file that already exists — to change an existing file, ask the user to pull the pull request (or open one for the branch) into a conversation workspace from the files pane, then edit it with workspace_edit's replace. " +

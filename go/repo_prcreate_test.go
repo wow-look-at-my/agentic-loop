@@ -122,4 +122,3 @@ func TestRepoPRCreateArgErrors(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, `"head"`)
 }
-
