@@ -126,7 +126,8 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	assert.Contains(t, res.Content, "CI: failure (https://example.com/run/77)")
 	// GitHub's 403 names a permission a PAT cannot be granted; the report must
 	// not leave that standing as an instruction.
-	assert.Contains(t, res.Content, "cannot be granted \"Checks\" at all")
+	assert.Contains(t, res.Content, "a fine-grained personal access token cannot")
+	assert.Contains(t, res.Content, "https://docs.github.com/en/rest/checks/runs")
 	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
 	assert.Contains(t, res.Content, "step 2 failed: go-toolchain (failure)")
 	// A passing job names no steps: the reader is after what broke.

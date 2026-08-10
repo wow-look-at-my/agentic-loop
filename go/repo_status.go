@@ -184,15 +184,16 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 
 // checksPermissionCaveat answers the instruction GitHub's own 403 gives here.
 // The Checks API replies X-Accepted-GitHub-Permissions: checks=read, which the
-// failure describer quotes verbatim as "It needs the checks=read permission" —
-// correct for a GitHub App and impossible for a fine-grained PAT, whose
-// repository-permission list has no "Checks" entry to grant. Left alone it
-// sends the reader to look for a setting that is not there.
+// failure describer quotes verbatim as "It needs the checks=read permission".
+// That is actionable for a GitHub App installation and impossible for a
+// fine-grained PAT, whose repository-permission list has no "Checks" entry to
+// grant — so left alone it sends a token-holding reader to look for a setting
+// that is not there.
 func checksPermissionCaveat(res GHResponse) string {
 	if res.status != 403 || !strings.Contains(res.header.Get("X-Accepted-GitHub-Permissions"), "checks") {
 		return ""
 	}
-	return " That permission is a GitHub App one: a fine-grained personal access token cannot be granted \"Checks\" at all, so no token setting fixes this. The workflow runs below are the same runs read through the actions permission, which a token can hold."
+	return " A GitHub App installation can hold that permission; a fine-grained personal access token cannot — its repository-permission list has no \"Checks\" entry to grant (https://docs.github.com/en/rest/checks/runs). So no token setting fixes this. The workflow runs below are those same runs read through the actions permission, which a token can hold."
 }
 
 // errStr is an error whose text is exactly the message given: the failure
