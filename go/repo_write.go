@@ -65,11 +65,11 @@ func (a GitHubAuthError) Error() string {
 	return fmt.Sprintf("could not %s: status %d", a.what, a.status)
 }
 
-// classifyObjectRead is classifyWriteStatus for a step that reads ONE named
+// classifyObjectRead is ClassifyWriteStatus for a step that reads ONE named
 // git object, recording that object so an exhausted rotation can report a
 // missing commit as a missing commit.
 func classifyObjectRead(what, object string, res GHResponse) error {
-	err := classifyWriteStatus(what, res)
+	err := ClassifyWriteStatus(what, res)
 	var auth GitHubAuthError
 	if errors.As(err, &auth) {
 		auth.object = object
@@ -85,9 +85,9 @@ type GitHubFatalError struct{ msg string }
 
 func (f GitHubFatalError) Error() string { return f.msg }
 
-// classifyWriteStatus turns a non-2xx write-flow response into a GitHubAuthError
+// ClassifyWriteStatus turns a non-2xx write-flow response into a GitHubAuthError
 // (retry with the next credential) or a GitHubFatalError carrying GitHub's own message.
-func classifyWriteStatus(what string, res GHResponse) error {
+func ClassifyWriteStatus(what string, res GHResponse) error {
 	switch res.status {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
 		return GitHubAuthError{status: res.status, what: what}
@@ -182,7 +182,7 @@ func (e *repoTools) repoMeta(ctx context.Context, token, org, repo string) (ghRe
 		return ghRepoMeta{}, err
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ghRepoMeta{}, classifyWriteStatus("access repository "+org+"/"+repo, res)
+		return ghRepoMeta{}, ClassifyWriteStatus("access repository "+org+"/"+repo, res)
 	}
 	var meta ghRepoMeta
 	if uerr := json.Unmarshal(res.body, &meta); uerr != nil {
@@ -212,7 +212,7 @@ func (e *repoTools) resolveRefSHA(ctx context.Context, token, org, repo, ref str
 		return "", GitHubFatalError{msg: fmt.Sprintf("base ref %q does not exist in %s/%s — pass an existing branch, tag, or SHA as create_branch_from (or omit it to use the default branch)", ref, org, repo)}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return "", classifyWriteStatus("resolve base ref "+ref, res)
+		return "", ClassifyWriteStatus("resolve base ref "+ref, res)
 	}
 	var out struct {
 		SHA string `json:"sha"`
@@ -319,7 +319,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 		branchBaseSHA = sha
 		*createdFrom = base
 	case res.status < 200 || res.status >= 300:
-		return "", classifyWriteStatus("look up branch "+in.Branch, res)
+		return "", ClassifyWriteStatus("look up branch "+in.Branch, res)
 	}
 
 	// CREATE-ONLY gate: the path must not exist on the ref the content would
@@ -342,7 +342,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 	case fres.status == http.StatusNotFound:
 		// Genuinely new — proceed.
 	default:
-		return "", classifyWriteStatus("check the existing file "+in.Path, fres)
+		return "", ClassifyWriteStatus("check the existing file "+in.Path, fres)
 	}
 
 	if needBranch {
@@ -352,7 +352,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 			return "", cerr
 		}
 		if cres.status < 200 || cres.status >= 300 {
-			return "", classifyWriteStatus("create branch "+in.Branch, cres)
+			return "", ClassifyWriteStatus("create branch "+in.Branch, cres)
 		}
 		*branchCreated = true
 	}
@@ -368,7 +368,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 		return "", err
 	}
 	if pres.status < 200 || pres.status >= 300 {
-		return "", classifyWriteStatus("write "+in.Path, pres)
+		return "", ClassifyWriteStatus("write "+in.Path, pres)
 	}
 	var out struct {
 		Commit struct {
@@ -456,7 +456,7 @@ func (e *repoTools) tryPRCreate(ctx context.Context, token string, in repoPRCrea
 		return "", err
 	}
 	if res.status < 200 || res.status >= 300 {
-		return "", classifyWriteStatus("create pull request", res)
+		return "", ClassifyWriteStatus("create pull request", res)
 	}
 	var pr struct {
 		Number  int    `json:"number"`
@@ -470,3 +470,8 @@ func (e *repoTools) tryPRCreate(ctx context.Context, token string, in repoPRCrea
 	}
 	return fmt.Sprintf("created %s #%d in %s/%s: %s\n%s -> %s\n%s", kind, pr.Number, in.Org, in.Repo, in.Title, in.Head, base, pr.HTMLURL), nil
 }
+
+// NewGitHubFatalError is a write failure that must NOT be retried with another
+// credential: the request was understood and refused on its merits, so trying
+// the next token only repeats it.
+func NewGitHubFatalError(msg string) error { return GitHubFatalError{msg: msg} }
