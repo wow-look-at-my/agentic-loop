@@ -19,7 +19,9 @@ redesign — check these when a behavior question comes up):
   param-strip retry, the SSE scanner and its buffer sizes), the loop
   semantics (RunSubagent's wrap-up fallback — but NOT its turn cap, which
   this library deliberately dropped, see Hard rules;
-  Run's approval flow and cancel/approval finalization), and the built-in
+  Run's approval flow and cancel/approval finalization), the filesystem
+  tools (`internal/tools/fs*.go`: the seven tools' names, descriptions,
+  schemas, caps and rendering), and the built-in
   tools — `run_subagent`
   (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
   `context.go`/`summary.go`: schema, share_context modes, allowed_tools
@@ -126,15 +128,24 @@ side of that line it falls on — do not put it on both.
   `tool execution failed: ...`, the wrap-up instruction, the stuck nudge
   (`stuckNudgeInstruction`; `StuckNudgeAt`/`StuckFailAt` are constants, not
   knobs), the compaction
-  request text, the param-strip regexes, the overflow regex, and the three
+  request text, the param-strip regexes, the overflow regex, and the
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
   and allowed_tools error texts, `SubagentCutOffNote`,
   `SubagentNoReportText`, `SubagentLaunchReceipt` and the
   `FormatSubagentDelivery` text, the context-summary and web-summary
   prompts, the web_fetch validation/cap/result texts, the todo_write
-  description/schema/teaching errors and `RenderTodos`) are pinned by tests
-  and by PARITY.md. Do not "improve" them.
+  description/schema/teaching errors and `RenderTodos`, and every word the
+  seven file tools render — descriptions, schemas, the cap announcements,
+  and grep's real-negative sentence) are pinned by tests and by PARITY.md.
+  Do not "improve" them.
+- **A file tool's rendering IS the tool.** A cap that bites is announced
+  (truncated listing, `find_files` at its limit, `grep` at `MaxHits`) and an
+  empty `grep` states that every line in scope was read, because a partial
+  result that reads as complete is worse than no result. That is also why a
+  scope the mount does not hold is an ERROR rather than an empty result, and
+  why a single FILE is a scope (`WithinScope`) — treating one as a directory
+  made every file-scoped search answer "no matches" for text right there.
 - **A sub-agent's report is what it ANSWERED, never what it was mid-way
   through saying.** A backend that fails to parse a model's tool-call
   template makes the model emit the call as text, so the run ends on an

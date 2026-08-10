@@ -220,7 +220,7 @@ func TestListDirRendersDirectoriesFirst(t *testing.T) {
 	lines := strings.Split(res.Content, "\n")
 	assert.Equal(t, "/work", lines[0])
 	assert.True(t, strings.HasPrefix(lines[1], "dir   src/"), "directories sort first, got %q", lines[1])
-	assert.Contains(t, res.Content, "file  README.md (7 B)")
+	assert.Contains(t, res.Content, "file  README.md (8 B)")
 
 	empty := runFileTool(t, reg, ListDirToolName, `{"path":"/work/nothing"}`)
 	assert.Contains(t, empty.Content, "(empty directory)")

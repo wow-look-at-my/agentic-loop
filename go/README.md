@@ -601,3 +601,45 @@ and size and reported as such, never rendered as a diff.
 
 `UnifiedDiff`/`CountLineChanges`/`HumanSize` are exported for hosts rendering
 their own changes with the same words.
+
+### Filesystem tools (optional)
+
+`NewFileTools(FileToolsConfig)` returns the seven-tool file vocabulary —
+`list_dir`, `read_file`, `find_files`, `grep`, `write_file`, `edit_file`,
+`delete_file` — over whatever a host mounts. The library owns what a file tool
+IS: the names, the model-facing descriptions, the argument schemas, the caps
+and every word of the rendering. A host owns what is behind a mount, and
+nothing about its storage reaches here. Mount nothing and you get no tools at
+all, rather than tools that can only fail.
+
+A host mounts `Folder`s under virtual prefixes:
+
+```go
+tools := agentic.NewFileTools(agentic.FileToolsConfig{
+	Folders: map[string]agentic.Folder{
+		"repos":     repoFolder,      // /repos/<org>/<repo>[@<ref>]/<path>
+		"workspace": workspaceFolder, // an agentic.WritableFolder
+	},
+	MountsBlurb: "/repos is read-only; /workspace is editable.",
+})
+```
+
+- **`Folder`** — `Display`/`List`/`Read`/`Find`/`Grep`. Every method receives
+  the WHOLE virtual path as the model wrote it, because only the folder knows
+  its own grammar: `/repos/<org>/<repo>@<ref>/<path>` is the repository host's
+  business, not the tool layer's.
+- **`WritableFolder`** adds `Writable`/`Create`/`Replace`/`Remove`. A folder
+  that is not one gets the three write tools' refusals for free, and a
+  `ReadOnlyExplainer` lets it say *why* a particular path is read-only.
+- **`PathGuard`** blocks a path before any folder sees it, with the reason the
+  model is shown — how a host redirects `/repos` writes at an attached
+  workspace.
+
+Two properties are the module's whole point, and a host cannot opt out of
+either. **A cap that bites is announced**: a truncated listing, a `find_files`
+that stopped at its limit, a `grep` that hit `MaxHits` all say so, because a
+partial result that reads as complete is worse than no result. And **an empty
+`grep` is a real negative**: every line in scope was read, so no matches means
+the text is not there — which is why a scope the mount does not hold is an
+error rather than an empty result, and why `GrepResult.Note` exists for a
+folder that could only cover part of what the path named.
