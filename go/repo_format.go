@@ -68,9 +68,9 @@ func describeResourceFailure(op, what string, res GHResponse, numTokens int) str
 	return explainFailure(op, what, res, numTokens, time.Now())
 }
 
-// describeOwnerFailure explains why an owner-level listing (/repos/<owner>)
+// DescribeOwnerFailure explains why an owner-level listing (/repos/<owner>)
 // could not be produced.
-func describeOwnerFailure(owner string, res GHResponse, numTokens int) string {
+func DescribeOwnerFailure(owner string, res GHResponse, numTokens int) string {
 	return explainFailure("list repositories under", "/repos/"+owner, res, numTokens, time.Now())
 }
 

@@ -122,12 +122,12 @@ func (e *GitHub) BaseURL() string { return e.base }
 
 // Credentials is the order a read tries: the cached winner for cacheKey first
 // (an empty key skips the cache), then every configured token, then an
-// unauthenticated attempt unless noAnonymous drops it. Exported because a host
+// unauthenticated attempt unless NoAnonymous drops it. Exported because a host
 // doing its own fetching -- a git clone, say -- must offer the same
 // credentials in the same order, or it reaches a different set of
 // repositories than the tools do.
-func (e *GitHub) Credentials(cacheKey string, noAnonymous bool) []Credential {
-	order := e.tokenOrder(cacheKey, noAnonymous)
+func (e *GitHub) Credentials(cacheKey string, NoAnonymous bool) []Credential {
+	order := e.tokenOrder(cacheKey, NoAnonymous)
 	out := make([]Credential, 0, len(order))
 	for _, a := range order {
 		out = append(out, Credential{ID: a.id, Name: a.name, Token: a.token})

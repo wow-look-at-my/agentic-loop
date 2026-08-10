@@ -47,14 +47,14 @@ func (r GHResponse) Truncated() bool { return r.truncated }
 
 // FetchOptions tunes one repo fetch.
 type FetchOptions struct {
-	// noAnonymous drops the unauthenticated attempt that makes public
+	// NoAnonymous drops the unauthenticated attempt that makes public
 	// resources readable without a PAT. Endpoints github.com never serves
 	// anonymously (code search) set it, so a token's real failure — a rate
 	// limit, say — is what the model is told about, instead of the anonymous
 	// attempt's inevitable "Requires authentication".
-	noAnonymous bool
-	// maxBytes overrides the per-response read cap (default GitHubMaxResponseBytes).
-	maxBytes int64
+	NoAnonymous bool
+	// MaxBytes overrides the per-response read cap (default GitHubMaxResponseBytes).
+	MaxBytes int64
 }
 
 // Fetch performs a GET against the contents endpoint for org/repo/inner. It is
@@ -85,7 +85,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 	var best GHResponse
 	bestRank := -1
 	var lastErr error
-	for _, att := range e.tokenOrder(cacheKey, opt.noAnonymous) {
+	for _, att := range e.tokenOrder(cacheKey, opt.NoAnonymous) {
 		res, err := e.doGetOpts(ctx, target, att.token, accept, opt)
 		if err != nil {
 			lastErr = err
@@ -120,10 +120,10 @@ type tokenAttempt struct {
 // tokenOrder is the credential order every repo read tries: the cached winner
 // for cacheKey first (if any; an empty cacheKey skips the cache), then every
 // configured token, then an unauthenticated attempt (so public resources work
-// without a PAT) unless noAnonymous drops it. Duplicates are dropped so each
+// without a PAT) unless NoAnonymous drops it. Duplicates are dropped so each
 // distinct credential is tried once. Writes use writeTokenOrder
 // (repo_write.go) instead, which never falls through to unauthenticated.
-func (e *GitHub) tokenOrder(cacheKey string, noAnonymous bool) []tokenAttempt {
+func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := map[string]bool{}
 	add := func(id, name, token string) {
@@ -145,7 +145,7 @@ func (e *GitHub) tokenOrder(cacheKey string, noAnonymous bool) []tokenAttempt {
 	for _, t := range e.tokens {
 		add(t.ID, t.Name, t.Token)
 	}
-	if !noAnonymous {
+	if !NoAnonymous {
 		add("", "", "") // unauthenticated fallback (public repositories)
 	}
 	return order
@@ -216,12 +216,12 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 	if best.status == 0 && lastErr != nil {
 		return nil, false, GHResponse{}, lastErr
 	}
-	return nil, false, best, errOwnerNotOK
+	return nil, false, best, ErrOwnerListing
 }
 
-// errOwnerNotOK signals that no credential yielded a 2xx owner listing; the
+// ErrOwnerListing signals that no credential yielded a 2xx owner listing; the
 // returned GHResponse carries the last status so the caller can explain it.
-var errOwnerNotOK = fmt.Errorf("owner listing returned no successful response")
+var ErrOwnerListing = fmt.Errorf("owner listing returned no successful response")
 
 // collectOwnerRepos parses the first page of an owner's repositories and follows
 // pagination (up to ownerRepoMaxPages full pages) using the credential that
@@ -266,10 +266,10 @@ func (e *GitHub) doGet(ctx context.Context, target, token, accept string) (GHRes
 
 // doGetOpts is doGet honouring a per-call response cap.
 func (e *GitHub) doGetOpts(ctx context.Context, target, token, accept string, opt FetchOptions) (GHResponse, error) {
-	if opt.maxBytes <= 0 {
+	if opt.MaxBytes <= 0 {
 		return e.doGet(ctx, target, token, accept)
 	}
-	return e.doRequestCapped(ctx, http.MethodGet, target, token, accept, nil, opt.maxBytes)
+	return e.doRequestCapped(ctx, http.MethodGet, target, token, accept, nil, opt.MaxBytes)
 }
 
 // doRequest performs one GitHub API call with a single credential. A non-nil
@@ -278,11 +278,11 @@ func (e *GitHub) doRequest(ctx context.Context, method, target, token, accept st
 	return e.doRequestCapped(ctx, method, target, token, accept, body, GitHubMaxResponseBytes)
 }
 
-// doRequestCapped is doRequest reading at most maxBytes of the response body.
+// doRequestCapped is doRequest reading at most MaxBytes of the response body.
 // The git-tree reads raise the cap: the default file cap severs a large
 // repository's tree mid-JSON, which surfaced as an unexplained decode error
 // rather than as the size problem it is.
-func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, accept string, body []byte, maxBytes int64) (GHResponse, error) {
+func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, accept string, body []byte, MaxBytes int64) (GHResponse, error) {
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
@@ -304,7 +304,7 @@ func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, acc
 		return GHResponse{}, err
 	}
 	defer resp.Body.Close()
-	data, truncated, err := readCapped(resp.Body, maxBytes)
+	data, truncated, err := readCapped(resp.Body, MaxBytes)
 	if err != nil {
 		return GHResponse{}, err
 	}
