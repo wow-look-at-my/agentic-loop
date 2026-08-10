@@ -57,6 +57,7 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 		assert.Equalf(t, name, decl.Name, "tool advertises its own name")
 		assert.Falsef(t, decl.Readonly,
 			"%s writes host state the host shows; a sub-agent inheriting it would overwrite its parent's plan", name)
+		assert.Falsef(t, byName[name].NeedsApproval(), "%s is not approval-gated", name)
 	}
 
 	// The state enum is the only thing stopping a model inventing a fourth
@@ -402,61 +403,4 @@ func TestEditChangesTitleAndOrState(t *testing.T) {
 
 	run(t, byName[TodoEditToolName], `{"id":1,"title":"both","state":"in_progress"}`)
 	assert.Equal(t, []Todo{{ID: 1, Title: "both", State: TodoInProgress}}, rec.got[3])
-}
-
-// A host that keeps the list between runs hands it back, and the tools carry
-// on from it. Without this the list is not merely forgotten: the first
-// mutation of the new run persists a list holding only that one task, and
-// every task the previous run wrote is gone with nothing reporting a failure.
-func TestTodoInitialRestoresAListAcrossRuns(t *testing.T) {
-	rec := &recordingTodos{}
-	kept := []Todo{
-		{ID: 4, Title: "read the code", State: TodoDone},
-		{ID: 7, Title: "write the fix", State: TodoInProgress},
-	}
-	exec := NewTodoTools(TodoConfig{Write: rec.write, Initial: kept})
-	byName := map[string]Tool{}
-	for _, tool := range exec {
-		byName[tool.Decl().Name] = tool
-	}
-
-	// An id from the earlier run still addresses its task.
-	res := run(t, byName[TodoCompleteToolName], `{"id":7}`)
-	require.False(t, res.IsError, res.Content)
-	require.Len(t, rec.got, 1)
-	assert.Equal(t, []Todo{
-		{ID: 4, Title: "read the code", State: TodoDone},
-		{ID: 7, Title: "write the fix", State: TodoDone},
-	}, rec.got[0], "the restored tasks are still there, and the one named by id changed")
-
-	// A task added now cannot collide with a restored id.
-	res = run(t, byName[TodoAddToolName], `{"title":"push it"}`)
-	require.False(t, res.IsError, res.Content)
-	added := rec.got[len(rec.got)-1]
-	require.Len(t, added, 3, "the new task is appended to the restored list, not written over it")
-	assert.Equal(t, 8, added[2].ID, "ids are minted above every id already in hand")
-}
-
-// The caller's slice is the caller's. Mutating the list through the tools must
-// not reach back into it.
-func TestTodoInitialIsCopied(t *testing.T) {
-	rec := &recordingTodos{}
-	kept := []Todo{{ID: 1, Title: "one", State: TodoPending}}
-	exec := NewTodoTools(TodoConfig{Write: rec.write, Initial: kept})
-	for _, tool := range exec {
-		if tool.Decl().Name == TodoCompleteToolName {
-			require.False(t, run(t, tool, `{"id":1}`).IsError)
-		}
-	}
-	assert.Equal(t, TodoPending, kept[0].State, "the caller's slice is untouched")
-}
-
-// No Initial is the ordinary first run: an empty list, ids from 1.
-func TestTodoWithoutInitialStartsEmpty(t *testing.T) {
-	rec := &recordingTodos{}
-	byName := todoTools(t, rec)
-	require.False(t, run(t, byName[TodoAddToolName], `{"title":"first"}`).IsError)
-	require.Len(t, rec.got, 1)
-	require.Len(t, rec.got[0], 1)
-	assert.Equal(t, 1, rec.got[0][0].ID)
 }

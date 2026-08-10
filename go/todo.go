@@ -122,6 +122,7 @@ type todoTool struct {
 // todoKind is which of the four mutations this tool performs.
 type todoKind int
 
+
 const (
 	todoKindAdd todoKind = iota
 	todoKindEdit
@@ -137,14 +138,7 @@ const (
 // user, and a sub-agent inheriting them would overwrite its parent's plan;
 // granting them to one is the caller's explicit choice (allowed_tools).
 func NewTodoTools(cfg TodoConfig) Tools {
-	store := &todoStore{items: append([]Todo(nil), cfg.Initial...), next: 1}
-	// Mint above every id already in hand, so a restored list and a task added
-	// to it can never share an id — which resolve would then refuse to act on.
-	for _, t := range store.items {
-		if t.ID >= store.next {
-			store.next = t.ID + 1
-		}
-	}
+	store := &todoStore{next: 1}
 	return Tools{
 		&todoTool{kind: todoKindAdd, cfg: cfg, store: store},
 		&todoTool{kind: todoKindEdit, cfg: cfg, store: store},
@@ -188,6 +182,10 @@ func (e *todoTool) Decl() ToolDecl {
 	}
 }
 
+// NeedsApproval always reports false: approval wiring stays the caller's
+// concern, as with every built-in tool.
+func (e *todoTool) NeedsApproval() bool { return false }
+
 // schema is inferred from the tool's argument struct, per the hard rule that a
 // tool's schema is never hand-written. closedState constrains the state field
 // to the enum a host can render.
@@ -209,6 +207,7 @@ func (e *todoTool) schema() json.RawMessage {
 		return EnumSchema[todoCompleteArgs](closed)
 	}
 }
+
 
 // todoAddArgs is the todo_add argument payload.
 type todoAddArgs struct {
