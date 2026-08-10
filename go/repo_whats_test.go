@@ -19,6 +19,7 @@ var repoReadArgValues = map[string]any{
 	"org": "octo", "repo": "hello", "path": "src", "ref": "main",
 	"sha": "abc123def456", "number": 7, "id": 42,
 	"state": "all", "labels": "bug", "per_page": 5, "include_diff": true,
+	"job_id": 4242, "offset": 1, "limit": 5,
 }
 
 // respondAnyRepoRead answers every endpoint the reads touch with a
