@@ -179,7 +179,6 @@ func scalarType(t reflect.Type) string {
 	return ""
 }
 
-
 // mustJSON encodes a value that cannot fail to encode (a string or a string
 // slice), so the schema builder stays an expression rather than an error path.
 func mustJSON(v any) []byte {
