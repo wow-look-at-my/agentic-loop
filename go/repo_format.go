@@ -59,12 +59,12 @@ func IsDirectoryListing(body []byte, ctype string) bool {
 // message naming the distinct cause (rate limit with its wait, no-token
 // access, missing credential, ...). See explainFailure in repo_failure.go.
 func DescribeGitHubFailure(op, org, repo, inner string, res GHResponse, numTokens int) string {
-	return describeResourceFailure(op, RepoPath(org, repo, inner), res, numTokens)
+	return DescribeResourceFailure(op, RepoPath(org, repo, inner), res, numTokens)
 }
 
-// describeResourceFailure is DescribeGitHubFailure for an arbitrary named resource
+// DescribeResourceFailure is DescribeGitHubFailure for an arbitrary named resource
 // (a PR, an issue, a commit, ...) instead of a contents path.
-func describeResourceFailure(op, what string, res GHResponse, numTokens int) string {
+func DescribeResourceFailure(op, what string, res GHResponse, numTokens int) string {
 	return explainFailure(op, what, res, numTokens, time.Now())
 }
 
@@ -163,8 +163,8 @@ func shortSHA(sha string) string {
 	return sha
 }
 
-// cappedText rune-caps s, appending an explicit truncation note when trimmed.
-func cappedText(s string, max int) string {
+// CappedText rune-caps s, appending an explicit truncation note when trimmed.
+func CappedText(s string, max int) string {
 	out, truncated := TruncateRunes(s, max)
 	if truncated {
 		out += fmt.Sprintf("\n(truncated to %d characters)", max)

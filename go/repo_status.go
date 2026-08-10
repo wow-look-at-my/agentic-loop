@@ -128,20 +128,20 @@ func (e *repoTools) statusRead(ctx context.Context, in repoReadArgs) ToolResult 
 func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (string, GHResponse, error) {
 	resource := RepoPath(org, repo, "") + "@" + ref
 
-	statusTarget := fmt.Sprintf("%s/commits/%s/status", e.repoURL(org, repo), escapeSegments(ref))
+	statusTarget := fmt.Sprintf("%s/commits/%s/status", e.repoURL(org, repo), EscapeSegments(ref))
 	statusRes, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), statusTarget, "application/vnd.github+json")
 	if err != nil {
 		return "", GHResponse{}, fmt.Errorf("reading the CI status of %s failed: %w", resource, err)
 	}
 	if statusRes.status < 200 || statusRes.status >= 300 {
-		return "", GHResponse{}, errStr(describeResourceFailure("read the CI status of", resource, statusRes, len(e.gh.tokens)))
+		return "", GHResponse{}, errStr(DescribeResourceFailure("read the CI status of", resource, statusRes, len(e.gh.tokens)))
 	}
 	var combined ghCombinedStatus
 	if uerr := json.Unmarshal(statusRes.body, &combined); uerr != nil {
 		return "", GHResponse{}, fmt.Errorf("could not parse GitHub's status response for %s: %w", resource, uerr)
 	}
 
-	checksTarget := fmt.Sprintf("%s/commits/%s/check-runs", e.repoURL(org, repo), escapeSegments(ref))
+	checksTarget := fmt.Sprintf("%s/commits/%s/check-runs", e.repoURL(org, repo), EscapeSegments(ref))
 	checksRes, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), checksTarget, "application/vnd.github+json")
 	var checks ghCheckRunsResponse
 	var checksNote string
@@ -149,7 +149,7 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 	case err != nil:
 		checksNote = "the request failed: " + err.Error()
 	case checksRes.status < 200 || checksRes.status >= 300:
-		checksNote = describeResourceFailure("read the check runs of", resource, checksRes, len(e.gh.tokens))
+		checksNote = DescribeResourceFailure("read the check runs of", resource, checksRes, len(e.gh.tokens))
 	default:
 		if uerr := json.Unmarshal(checksRes.body, &checks); uerr != nil {
 			checksNote = "could not parse GitHub's check-runs response: " + uerr.Error()
@@ -200,7 +200,7 @@ func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int6
 		return ghCheckRun{}, err
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ghCheckRun{}, errStr(describeResourceFailure("read", fmt.Sprintf("check run %d of %s", id, RepoPath(org, repo, "")), res, len(e.gh.tokens)))
+		return ghCheckRun{}, errStr(DescribeResourceFailure("read", fmt.Sprintf("check run %d of %s", id, RepoPath(org, repo, "")), res, len(e.gh.tokens)))
 	}
 	var c ghCheckRun
 	if err := json.Unmarshal(res.body, &c); err != nil {
@@ -339,7 +339,7 @@ func (e *repoTools) fetchAnnotations(ctx context.Context, org, repo string, id i
 		return nil, "the request failed: " + err.Error()
 	}
 	if res.status < 200 || res.status >= 300 {
-		return nil, describeResourceFailure("read the annotations of", fmt.Sprintf("check run %d of %s", id, RepoPath(org, repo, "")), res, len(e.gh.tokens))
+		return nil, DescribeResourceFailure("read the annotations of", fmt.Sprintf("check run %d of %s", id, RepoPath(org, repo, "")), res, len(e.gh.tokens))
 	}
 	var out []ghAnnotation
 	if err := json.Unmarshal(res.body, &out); err != nil {

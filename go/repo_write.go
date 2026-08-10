@@ -191,7 +191,11 @@ func (e *repoTools) repoMeta(ctx context.Context, token, org, repo string) (ghRe
 	return meta, nil
 }
 
-func (e *repoTools) repoURL(org, repo string) string {
+func (e *repoTools) repoURL(org, repo string) string { return e.gh.RepoURL(org, repo) }
+
+// RepoURL is the API root of one repository, which a host composing its own
+// endpoint (a ref update, a blob write) builds on.
+func (e *GitHub) RepoURL(org, repo string) string {
 	return e.gh.base + "/repos/" + url.PathEscape(org) + "/" + url.PathEscape(repo)
 }
 
@@ -283,7 +287,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 
 	// Does the branch exist? The repo probe above succeeded with this token, so
 	// a 404 here means the branch really is missing (not an access problem).
-	res, err := e.gh.doGet(ctx, repoURL+"/git/ref/"+escapeSegments("heads/"+in.Branch), token, "application/vnd.github+json")
+	res, err := e.gh.doGet(ctx, repoURL+"/git/ref/"+EscapeSegments("heads/"+in.Branch), token, "application/vnd.github+json")
 	if err != nil {
 		return "", err
 	}
@@ -320,7 +324,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 
 	// CREATE-ONLY gate: the path must not exist on the ref the content would
 	// come from (2xx = it does; 404 = genuinely new).
-	contentsURL := repoURL + "/contents/" + escapeSegments(in.Path)
+	contentsURL := repoURL + "/contents/" + EscapeSegments(in.Path)
 	fres, err := e.gh.doGet(ctx, contentsURL+"?ref="+url.QueryEscape(checkRef), token, "application/vnd.github+json")
 	if err != nil {
 		return "", err

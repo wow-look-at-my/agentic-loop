@@ -121,7 +121,7 @@ func TestRepoStatusRequiresOrgRepo(t *testing.T) {
 }
 
 // A branch name containing "/" (a common convention) must survive in the
-// URL literally, not as %2F — escapeSegments is what the rest of this
+// URL literally, not as %2F — EscapeSegments is what the rest of this
 // package already relies on for the same reason.
 func TestRepoStatusRefWithSlashIsNotPercentEncoded(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {

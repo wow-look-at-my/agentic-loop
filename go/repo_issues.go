@@ -69,7 +69,7 @@ func (e *repoTools) issueList(ctx context.Context, in repoReadArgs) ToolResult {
 		return ToolResult{Content: "repo_read what=issues request failed: " + ferr.Error(), IsError: true}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ToolResult{Content: describeResourceFailure("list issues of", RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
+		return ToolResult{Content: DescribeResourceFailure("list issues of", RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
 	}
 	var issues []ghIssue
 	if uerr := json.Unmarshal(res.body, &issues); uerr != nil {
@@ -123,7 +123,7 @@ func (e *repoTools) issueRead(ctx context.Context, in repoReadArgs) ToolResult {
 		return ToolResult{Content: "repo_read what=issue request failed: " + err.Error(), IsError: true}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ToolResult{Content: describeResourceFailure("read", what, res, len(e.gh.tokens)), IsError: true}
+		return ToolResult{Content: DescribeResourceFailure("read", what, res, len(e.gh.tokens)), IsError: true}
 	}
 	var is ghIssue
 	if uerr := json.Unmarshal(res.body, &is); uerr != nil {
@@ -168,7 +168,7 @@ func formatIssue(org, repo string, is ghIssue, comments []ghIssueComment, commen
 	}
 	b.WriteString("\n")
 	if body := strings.TrimSpace(is.Body); body != "" {
-		b.WriteString(cappedText(body, repoBodyMaxRunes) + "\n")
+		b.WriteString(CappedText(body, repoBodyMaxRunes) + "\n")
 	} else {
 		b.WriteString("(no description)\n")
 	}
@@ -188,7 +188,7 @@ func formatIssue(org, repo string, is ghIssue, comments []ghIssueComment, commen
 		}
 		b.WriteString("):\n")
 		for _, c := range shown {
-			fmt.Fprintf(&b, "\n--- %s (%s)\n%s\n", c.User.Login, c.CreatedAt, cappedText(strings.TrimSpace(c.Body), repoCommentMaxRunes))
+			fmt.Fprintf(&b, "\n--- %s (%s)\n%s\n", c.User.Login, c.CreatedAt, CappedText(strings.TrimSpace(c.Body), repoCommentMaxRunes))
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")

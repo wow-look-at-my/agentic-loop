@@ -46,7 +46,7 @@ func (e *repoTools) commitList(ctx context.Context, in repoReadArgs) ToolResult 
 		return ToolResult{Content: "repo_read what=commits request failed: " + err.Error(), IsError: true}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ToolResult{Content: describeResourceFailure("list commits of", RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
+		return ToolResult{Content: DescribeResourceFailure("list commits of", RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
 	}
 	var commits []ghCommitEntry
 	if uerr := json.Unmarshal(res.body, &commits); uerr != nil {
@@ -111,7 +111,7 @@ func (e *repoTools) commitRead(ctx context.Context, in repoReadArgs) ToolResult 
 		return ToolResult{Content: "repo_read what=commit request failed: " + err.Error(), IsError: true}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ToolResult{Content: describeResourceFailure("read", "commit "+sha+" of "+RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
+		return ToolResult{Content: DescribeResourceFailure("read", "commit "+sha+" of "+RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
 	}
 	diff, truncated := TruncateRunes(string(res.body), RepoDiffMaxRunes)
 	header := fmt.Sprintf("commit %s of %s", sha, RepoPath(in.Org, in.Repo, ""))

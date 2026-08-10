@@ -59,7 +59,7 @@ func (e *repoTools) prList(ctx context.Context, in repoReadArgs) ToolResult {
 		return ToolResult{Content: "repo_read what=prs request failed: " + ferr.Error(), IsError: true}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ToolResult{Content: describeResourceFailure("list pull requests of", RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
+		return ToolResult{Content: DescribeResourceFailure("list pull requests of", RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
 	}
 	var pulls []ghPull
 	if uerr := json.Unmarshal(res.body, &pulls); uerr != nil {
@@ -103,7 +103,7 @@ func (e *repoTools) prRead(ctx context.Context, in repoReadArgs) ToolResult {
 		return ToolResult{Content: "repo_read what=pr request failed: " + err.Error(), IsError: true}
 	}
 	if res.status < 200 || res.status >= 300 {
-		return ToolResult{Content: describeResourceFailure("read", what, res, len(e.gh.tokens)), IsError: true}
+		return ToolResult{Content: DescribeResourceFailure("read", what, res, len(e.gh.tokens)), IsError: true}
 	}
 	var pr ghPull
 	if uerr := json.Unmarshal(res.body, &pr); uerr != nil {
@@ -159,7 +159,7 @@ func formatPR(org, repo string, pr ghPull, files []ghPRFile, filesErr, diff, dif
 	}
 	b.WriteString("\n")
 	if body := strings.TrimSpace(pr.Body); body != "" {
-		b.WriteString(cappedText(body, repoBodyMaxRunes) + "\n")
+		b.WriteString(CappedText(body, repoBodyMaxRunes) + "\n")
 	} else {
 		b.WriteString("(no description)\n")
 	}

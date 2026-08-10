@@ -171,7 +171,7 @@ func findToken(list []GitHubToken, id string) (GitHubToken, bool) {
 func (e *GitHub) contentsURL(org, repo, inner, ref string) string {
 	u := e.base + "/repos/" + url.PathEscape(org) + "/" + url.PathEscape(repo) + "/contents"
 	if inner != "" {
-		u += "/" + escapeSegments(inner)
+		u += "/" + EscapeSegments(inner)
 	}
 	if ref = strings.TrimSpace(ref); ref != "" {
 		u += "?ref=" + url.QueryEscape(ref)
@@ -317,7 +317,7 @@ func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, acc
 	}, nil
 }
 
-func escapeSegments(p string) string {
+func EscapeSegments(p string) string {
 	parts := strings.Split(p, "/")
 	for i, s := range parts {
 		parts[i] = url.PathEscape(s)
