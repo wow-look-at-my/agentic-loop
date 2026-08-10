@@ -621,6 +621,9 @@ tools := agentic.NewFileTools(agentic.FileToolsConfig{
 		"workspace": workspaceFolder, // an agentic.WritableFolder
 	},
 	MountsBlurb: "/repos is read-only; /workspace is editable.",
+	Notes: map[string]string{ // appended to ONE tool's description
+		agentic.WriteFileToolName: "Writes stage locally until the user pushes.",
+	},
 })
 ```
 

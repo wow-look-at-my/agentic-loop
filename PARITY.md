@@ -860,10 +860,12 @@ Config: `write: (todos) => void | error` — the host's store. A nil/absent
 ### 10d. The filesystem tools (`NewFileTools(FileToolsConfig)`)
 
 Config: `folders` (map from mount name — the leading path segment, no
-slash — to a `Folder`), `mountsBlurb` (appended to EVERY description,
-prefixed with one space when it lacks one), `unavailable(mount) => string`,
-`guard(path) => [blocked, reason]`. An empty/all-nil `folders` returns NO
-tools, not tools that can only fail.
+slash — to a `Folder`), `mountsBlurb` (appended to EVERY description),
+`notes` (keyed by tool name, appended to THAT tool's description only —
+a write's staging warning has no business in every read), `unavailable(mount)
+=> string`, `guard(path) => [blocked, reason]`. Each addendum is trimmed and
+joined with one space, and an empty one contributes nothing. An empty/all-nil
+`folders` returns NO tools, not tools that can only fail.
 
 Seven tools, names exactly `list_dir`, `read_file`, `find_files`, `grep`,
 `write_file`, `edit_file`, `delete_file`. The first four are `readonly`
