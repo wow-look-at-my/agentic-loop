@@ -34,7 +34,7 @@ if err != nil { /* misconfiguration */ }
 
 res, err := agentic.Run(ctx, agentic.Config{
 	Provider: agentic.NewParamStripper(provider),
-	Tools:    myExecutor, // a ToolExecutor, or nil for tool-less
+	Tools:    myTools,   // an agentic.Tools slice; empty for tool-less
 	Events: agentic.Events{
 		StreamEvents: agentic.StreamEvents{
 			OnText: func(s string) error { fmt.Print(s); return nil },
@@ -64,7 +64,7 @@ provider, err := agentic.NewAnthropicProvider(agentic.AnthropicConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myExecutor},
+res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
 	agentic.Request{
 		Model:     "your-model-id",
 		System:    "You are a helpful assistant.",
@@ -177,15 +177,27 @@ dialect has no equivalent and never fires it.
 ### Tools and approval
 
 ```go
-type ToolExecutor interface {
-	Tools() []Tool
-	Execute(ctx context.Context, call ToolCall) (ToolResult, error)
-	NeedsApproval(name string) bool
+type Tool interface {
+	Decl() ToolDecl
+	Execute(ctx context.Context, args json.RawMessage) (ToolResult, error)
+	NeedsApproval() bool
 }
+type Tools []Tool // the flat set one run offers
 type Approver interface {
 	Ask(ctx context.Context, call ToolCall) (bool, error)
 }
 ```
+
+A tool is an individual thing, and nothing groups them. Every tool a run
+offers -- a built-in below, or one a host discovered on an MCP server -- is one
+`Tool` in a flat `Tools` slice that `Config.Tools` takes; the loop resolves a
+requested name against it and can no more tell the kinds apart than the model
+can. There is no executor and no routing table. Concatenating two sources is
+`append`, and the first tool to claim a name answers it.
+
+The id of the call being answered is NOT an argument -- almost no tool wants
+it. `Run` puts it on the context, and the one built-in that needs it (the
+sub-agent tool, to stamp its telemetry) reads it back with `ToolCallID(ctx)`.
 
 A `ToolResult` is `Content` (the text the MODEL is fed), `IsError`, and
 `Parts []ToolContentPart` — structured content for the HOST: images, audio,
@@ -194,28 +206,36 @@ model, so a result can hand a front end a megabyte of image while costing the
 context only what `Content` says. `Run` passes the whole result to
 `Events.OnToolResult`; nothing else in the loop reads them.
 
-Combinators mirror the source application's semantics:
+Restricting a toolset is filtering a slice, so `Tools` carries the four
+helpers the loop and the sub-agent tool need:
 
-- `NewComposite(execs...)` — one deterministic tool list across executors;
-  first registration of a name wins; unknown calls become recoverable
-  `unknown tool: <name>` results. Returns nil when no tools remain.
-- `ReadonlyView(e)` — only tools with `Tool.Readonly`; anything else is
-  refused. The toolset to hand a sub-agent.
-- `SubsetView(e, names)` — only the explicitly named tools.
+- `Decls()` / `Names()` — the advertised declarations and names, in order.
+  An unnamed tool is skipped rather than sent to a provider that rejects it.
+- `Find(name)` — resolve a requested name; a miss is the loop's recoverable
+  `unknown tool: <name>` result.
+- `Readonly()` — the tools with `ToolDecl.Readonly`. The toolset to hand a
+  sub-agent: a mutating tool is ABSENT from it, not merely refused by it.
+- `Subset(names)` — the named tools, in the registry's order (the advertised
+  list is part of the prompt-cache prefix, so it must not depend on the
+  caller's argument order).
+
+`NewTool(decl, run)` is the shorthand for a plain function tool; a host that
+gates a tool implements `Tool` itself, since only it knows its own settings.
 
 ### Built-in tools (the plugin pattern)
 
-The `ToolExecutor` seam **is** the plugin interface: a "plugin" is nothing
-more than a value implementing it, composed into your toolset with
-`NewComposite`. The library ships the optional executors below; callers who
-don't compose them are unaffected.
+The `Tool` seam **is** the plugin interface: a "plugin" is nothing more than a
+value implementing it, appended to your toolset. The library ships the optional
+tools below; callers who don't append them are unaffected.
 
 ```go
-tools := agentic.NewComposite(
-	myExecutor,
-	agentic.NewWebFetchExecutor(agentic.WebFetchConfig{Provider: provider, Model: model}),
+tools := append(agentic.Tools{},
+	myTools...,
 )
-tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.SubagentConfig{
+tools = append(tools,
+	agentic.NewWebFetchTool(agentic.WebFetchConfig{Provider: provider, Model: model}),
+)
+tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
 	Provider: provider, Model: model,
 	Tools: tools,                 // the FULL parent toolset — grants select from it
 	Gate:  agentic.NewGate(1),    // serialize sub-agents (the source app's choice)
@@ -223,11 +243,11 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
 }))
 ```
 
-- **`NewSubagentExecutor(SubagentConfig)`** — the `run_subagent` tool: the
+- **`NewSubagentTool(SubagentConfig)`** — the `run_subagent` tool: the
   model offloads a focused task to a sub-agent running its own in-memory
   loop (this package's `Run`) and gets back only the distilled final report.
   By default the sub-agent sees only the read-only subset
-  (`ReadonlyView(cfg.Tools)`); the orchestrator can pin it to — and thereby
+  (`cfg.Tools.Readonly()`); the orchestrator can pin it to — and thereby
   explicitly grant, including non-read-only tools — an exact set via the
   `allowed_tools` argument (exact advertised names, with an unambiguous
   bare-name fallback for `server__tool` prefixes; `run_subagent` itself is
@@ -254,7 +274,7 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
   at the envelope and returned as an error result carrying
   `SubagentCutOffNote`, or `SubagentNoReportText` when nothing usable
   survives.
-- **`NewWebFetchExecutor(WebFetchConfig)`** — the `web_fetch` tool: one
+- **`NewWebFetchTool(WebFetchConfig)`** — the `web_fetch` tool: one
   unauthenticated, plain HTTP GET (http/https only, userinfo rejected, 5 MiB
   body cap, 45 s default client timeout), cleaned to readable text (built-in
   HTML cleanup, or an optional Apache Tika server via `TikaURL` with silent
@@ -266,7 +286,7 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
   fetch (the source application used it to redirect fetches of its
   workspace repository); the library ships the hook, not the policy. The
   tool is `Readonly`, so a sub-agent's default toolset includes it.
-- **`NewTodoExecutor(TodoConfig)`** — the `todo_write` tool: the model's own
+- **`NewTodoTool(TodoConfig)`** — the `todo_write` tool: the model's own
   task list, so a long job is legible to the user while it runs. Every call
   REPLACES the list whole, so a task carries no id to track across turns and
   ordering never has to be reconciled; `TodoConfig.Write(ctx, []Todo)` is
@@ -282,8 +302,8 @@ tools = agentic.NewComposite(tools, agentic.NewSubagentExecutor(agentic.Subagent
   reported as stored. NOT `Readonly` — it writes state the host shows, and a
   sub-agent inheriting it would overwrite its parent's plan.
 
-No built-in executor is approval-gated (`NeedsApproval` is always false) —
-approval wiring stays the caller's concern; wrap the executor if launching
+No built-in tool is approval-gated (`NeedsApproval` is always false) —
+approval wiring stays the caller's concern; wrap the tool if launching
 sub-agents, fetching, or writing the task list should be gated.
 
 The two model-calling built-ins use the `Provider` you hand them exactly as given — the
@@ -319,7 +339,7 @@ requested tools, feed the results back, repeat. Key behaviors:
 - **Tool failures never abort the loop.** An `Execute` error becomes a
   `tool execution failed: ...` error result; a denied approval records
   exactly `DeniedMessage` ("The user denied permission to run this tool.");
-  a hallucinated call with no executor gets `unknown tool: ...`. In every
+  a call to a name the run does not offer gets `unknown tool: ...`. In every
   case the loop continues so the model can react.
 - **Callbacks can abort.** `Events.OnToolCall`/`OnToolResult` (like the
   stream callbacks) return an error; a non-nil return ends the run the way a

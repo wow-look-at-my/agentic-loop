@@ -83,7 +83,7 @@ type Todo struct {
 	State TodoState `json:"state"`
 }
 
-// TodoConfig configures NewTodoExecutor.
+// TodoConfig configures NewTodoTool.
 type TodoConfig struct {
 	// Write receives the run's whole new task list, already validated, and
 	// persists (or displays) it however the host wants. A non-nil error is
@@ -95,31 +95,31 @@ type TodoConfig struct {
 	Write func(ctx context.Context, todos []Todo) error
 }
 
-// todoExecutor implements todo_write.
-type todoExecutor struct {
+// todoTool implements todo_write.
+type todoTool struct {
 	cfg TodoConfig
 }
 
-// NewTodoExecutor builds the todo_write tool executor: the model's own task
-// list, replaced whole on every call and handed to the host to keep.
+// NewTodoTool builds the todo_write tool: the model's own task list, replaced
+// whole on every call and handed to the host to keep.
 //
 // The tool is NOT read-only. It writes state the host owns and shows to the
 // user, and a sub-agent inheriting it would overwrite its parent's plan with
 // its own; granting it to one is the caller's explicit choice (allowed_tools).
-func NewTodoExecutor(cfg TodoConfig) ToolExecutor { return &todoExecutor{cfg: cfg} }
+func NewTodoTool(cfg TodoConfig) Tool { return &todoTool{cfg: cfg} }
 
-// Tools advertises todo_write.
-func (e *todoExecutor) Tools() []Tool {
-	return []Tool{{
+// Decl advertises todo_write.
+func (e *todoTool) Decl() ToolDecl {
+	return ToolDecl{
 		Name:        TodoWriteToolName,
 		Description: todoWriteDescription,
 		InputSchema: todoWriteSchema,
-	}}
+	}
 }
 
 // NeedsApproval always reports false: approval wiring stays the caller's
-// concern, as with every built-in executor.
-func (e *todoExecutor) NeedsApproval(string) bool { return false }
+// concern, as with every built-in tool.
+func (e *todoTool) NeedsApproval() bool { return false }
 
 // todoWriteArgs is the todo_write argument payload.
 type todoWriteArgs struct {
@@ -129,16 +129,13 @@ type todoWriteArgs struct {
 // Execute validates the list and hands it to the host. Every failure —
 // unparseable arguments, an unusable task, a store that refused — is a
 // recoverable error tool result, never a Go error.
-func (e *todoExecutor) Execute(ctx context.Context, call ToolCall) (ToolResult, error) {
-	if call.Name != TodoWriteToolName {
-		return ToolResult{Content: "unknown tool: " + call.Name, IsError: true}, nil
-	}
+func (e *todoTool) Execute(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	if e.cfg.Write == nil {
 		return ToolResult{Content: "the task list is unavailable: this run has nowhere to keep it", IsError: true}, nil
 	}
 	var in todoWriteArgs
-	if len(call.Arguments) > 0 {
-		if err := json.Unmarshal([]byte(call.Arguments), &in); err != nil {
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &in); err != nil {
 			return ToolResult{Content: "invalid todo_write arguments: " + err.Error(), IsError: true}, nil
 		}
 	}

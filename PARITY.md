@@ -21,7 +21,7 @@ distilled, dependency-free extraction.
 | `ThinkingBlock` | `text`, `signature`, `redacted` | `redacted` holds an opaque `redacted_thinking` payload; when set, the other two are empty. |
 | `ToolCall` | `id`, `name`, `arguments` | `arguments` is the RAW JSON object **text** (OpenAI: concatenated streamed fragments; Anthropic: accumulated `input_json_delta.partial_json`). |
 | `Message` | `role`, `content`, `thinking[]`, `toolCalls[]`, `toolCallID`, `toolIsError` | thinking/toolCalls assistant-only; toolCallID/toolIsError tool-only. |
-| `Tool` | `name`, `description`, `inputSchema`, `readonly` | nil/absent schema marshals as `{"type":"object"}`. `readonly` is never sent to the upstream. |
+| `ToolDecl` | `name`, `description`, `inputSchema`, `readonly` | nil/absent schema marshals as `{"type":"object"}`. `readonly` is never sent to the upstream. |
 | `ToolContentPart` | `type`, `text?`, `data?`, `mimeType?`, `uri?`, `name?`, `description?` | An MCP content block, or a block a tool and its host agree on. JSON wire names: `type`, `text`, `data`, `mime_type`, `uri`, `name`, `description` (everything but `type` omitted when empty). |
 | `ToolResult` | `content`, `parts[]`, `isError` | `content` is what the MODEL is fed. `parts` is structured content for the HOST to render (images, audio, files, a tool's own block) and is **never** sent to the model, so a result can carry a megabyte of image at no context cost. `Run` passes the whole result to `Events.OnToolResult`; nothing else in the loop reads `parts`. |
 | `Usage` | `promptTokens`, `completionTokens`, `totalTokens`, `cacheReadTokens?`, `cacheWriteTokens?` | The two cache fields are **tri-state**: absent/undefined = provider reported no cache info; a number (including 0) = a real report. Never zero-fill, never estimate. |
@@ -32,9 +32,9 @@ distilled, dependency-free extraction.
 | `Result` | `messages`, `final`, `usages[]`, `turns` | `usages` = one entry per model call IN ORDER, never summed (successive prompts overlap; summing double-counts the shared prefix). |
 
 Seams (interfaces): `Provider.complete(req, events) -> Completion`
-(streaming under the hood), `ToolExecutor {tools(), execute(call),
-needsApproval(name)}`, `Approver {ask(call) -> boolean}` (throw = decision
-never arrived).
+(streaming under the hood), `Tool {decl(), execute(args), needsApproval()}`
+-- ONE tool, and a run's toolset is a flat ordered list of them --
+`Approver {ask(call) -> boolean}` (throw = decision never arrived).
 
 **Provider construction is one factory function per dialect over a shared
 config base.** The dialect implementations are internal — NOT exported, no
@@ -104,20 +104,30 @@ the loop owns WHAT calls to make and what to do with results. Hence retry
 (§6) and the param stripper (§7) are BOTH provider-side, and neither the
 loop config nor the sub-agent config carries a retry policy.
 
-## 2. Executor combinators
+## 2. The toolset
 
-- **Composite**: skip nil executors and empty tool names; **first
-  registration of a name wins**; advertised order = iteration order across
-  executors; zero tools ⇒ the combinator itself is nil/absent ("no tools").
-  Unknown call ⇒ recoverable error result `unknown tool: <name>` (never a
-  thrown error). `needsApproval` routes to the owning executor; unknown ⇒
-  false.
-- **ReadonlyView**: only `readonly` tools; nil inner or zero survivors ⇒
-  nil. Refusal text: `tool not available to subagent (read-only tools
-  only): <name>`. `needsApproval` = allowed && inner's flag.
-- **SubsetView(names)**: only named tools; nil inner / empty names / no
-  matches ⇒ nil. Refusal text: `tool not in the sub-agent's allowed set:
-  <name>`.
+A tool is an individual thing and nothing groups them: a run's toolset is a
+flat ordered list of `Tool`, and restricting it is filtering that list. There
+is NO executor, no composite, and no view wrapper -- a port that reintroduces
+one has diverged.
+
+- **Concatenation** is list append. **First tool to claim a name answers it**;
+  advertised order = list order (it is part of the prompt-cache prefix).
+- **decls()/names()**: skip tools with an empty name -- a provider rejects
+  them, and one malformed entry must not fail every turn.
+- **find(name)**: a miss is NOT an error here; the loop answers it with the
+  recoverable result `unknown tool: <name>` (never a thrown error).
+- **readonly()**: the `readonly` tools. The sub-agent default toolset: a
+  mutating tool is ABSENT from it, not refused by it.
+- **subset(names)**: the named tools, in the LIST's order, not the caller's.
+- The call id being answered is not an `execute` argument: it rides the
+  ambient context (`withToolCallID` / `toolCallID`), which `run` sets around
+  every execute. Only the sub-agent tool reads it.
+- **Sub-agent refusal texts** stay contract, now produced by the loop's
+  unknown-tool text for a sub-run: `tool not available to subagent
+  (read-only tools only): <name>` when the sub-agent got the default
+  read-only set, `tool not in the sub-agent's allowed set: <name>` when
+  `allowed_tools` pinned it.
 
 ## 3. OpenAI dialect
 
@@ -404,7 +414,7 @@ TRUE.
   retrying and surfaces THAT error in place of the upstream's. No event
   fires for an attempt that succeeds, or for a failure that is not retried.
 - **The loop has NO retry knob.** `Run`'s config MUST NOT carry a retry
-  policy, and neither must the sub-agent executor's config; both inherit
+  policy, and neither must the sub-agent tool's config; both inherit
   whatever the Provider does. A retried call counts as ONE turn, trivially,
   because the loop only sees the outcome. A custom Provider implementation
   owns its own retry.
@@ -458,7 +468,7 @@ gone there is nothing left to diverge on.
   not-progressing) and the caller's cancellation context. A port MUST NOT
   reintroduce a cap.
 - Each turn advertises `tools.tools()`; `request.tools` is ignored and
-  overwritten (nil executor ⇒ no tools advertised). **Every** turn carries
+  overwritten (an empty toolset ⇒ no tools advertised). **Every** turn carries
   them — there is no final turn that withholds tools, because there is no
   final turn.
 - Continue looping while the turn produced tool calls. Per call, in order:
@@ -473,7 +483,7 @@ gone there is nothing left to diverge on.
      that assistant message's toolCalls (content/thinking preserved),
      return the partial Result together with the error — the transcript
      stays replayable with no orphans;
-  3. execute; an executor throw/error becomes
+  3. execute; a tool throw/error becomes
      `tool execution failed: <message>` with isError (the loop NEVER
      aborts on tool failure);
   4. fire OnToolResult — a thrown/returned error ⇒ the same batch-clearing
@@ -501,7 +511,7 @@ gone there is nothing left to diverge on.
 - Internal turn hook: the loop exposes a package-internal per-turn hook
   (1-based turn number, fired as each NUMBERED turn begins; the stall
   wrap-up call is not a numbered turn). It is not public API — it exists
-  solely so the built-in subagent executor (§10) can emit its `turn`
+  solely so the built-in subagent tool (§10) can emit its `turn`
   activity at exactly the source's emission points. The port needs an
   equivalent internal seam.
 - **Public per-turn hooks** (in addition to the internal seam, which stays
@@ -515,7 +525,7 @@ gone there is nothing left to diverge on.
   return aborts the run like any other callback error: onTurnBegin aborts
   before the call (nothing counted), onTurnEnd after it (the completed data
   is kept, finalized like a mid-stream break).
-- With a nil executor, a hallucinated call gets the teaching result
+- With an empty toolset, a hallucinated call gets the teaching result
   `unknown tool: <name>` and the loop continues (deviation from the source
   subagent, which ended the loop; the teaching behavior is deliberate).
 - **Retry** is NOT the loop's concern (see §6): the Provider re-attempts
@@ -529,7 +539,7 @@ gone there is nothing left to diverge on.
   assistant message is appended with any dangling (capped last turn)
   toolCalls cleared.
 - **Stall fallback** (content empty at loop end):
-  - with an executor: one extra TOOL-LESS wrap-up call on transcript +
+  - with tools: one extra TOOL-LESS wrap-up call on transcript +
     user(wrapUpInstruction). The stalling turn's assistant message is NOT
     in that request (it was never appended — only the tool branch
     appends), so the wrap-up cannot be rejected for an unanswered tool
@@ -598,14 +608,14 @@ gone there is nothing left to diverge on.
   ignores the field you changed — check its schema before trying a third
   phrasing.`
 
-## 10. Built-in tool executors (plugins)
+## 10. Built-in tools (plugins)
 
-The `ToolExecutor` seam IS the plugin interface: the built-ins are ordinary
-executors composed via the Composite; callers who don't use them see zero
-behavior change. Both are ports from the source application; the strings
-below are contract.
+The `Tool` seam IS the plugin interface: the built-ins are ordinary tools
+appended to a host's list; callers who don't append them see zero behavior
+change. They are ports from the source application; the strings below are
+contract.
 
-Both executors use `config.provider` exactly as given — never wrapped
+They use `config.provider` exactly as given — never wrapped
 implicitly. The source application routed every one of these model calls
 (the sub-agent's nested loop, the context-summary briefing, and the web
 summary) through its param-strip recovery layer (§7), so a caller/port
@@ -613,21 +623,21 @@ reproduces the source exactly by handing the built-ins a
 param-stripper-wrapped Provider — the same wrapped value given to the
 loop's own config.
 
-### 10a. run_subagent (`NewSubagentExecutor(SubagentConfig)`)
+### 10a. run_subagent (`NewSubagentTool(SubagentConfig)`)
 
 Config: `provider`, `model`, `maxTokens`, `extra`, `tools` (the parent's
-FULL executor; there is deliberately NO retry field — see §6), `parentSystem` +
+FULL toolset; there is deliberately NO retry field — see §6), `parentSystem` +
 `parentMessages` (the share_context source), `gate?`, `systemPrompt?` (empty ⇒
 `DefaultSubagentSystemPrompt`), `onActivity?`.
 
-- Tool name exactly `run_subagent`; `readonly` FALSE (so ReadonlyView drops
+- Tool name exactly `run_subagent`; `readonly` FALSE (so readonly() drops
   it from any sub-agent's default toolset) and the tool is excluded from
   its own grantable set — a sub-agent can never spawn another.
   `needsApproval` is always false (approval wiring is the caller's).
-- **Default sub toolset** = `ReadonlyView(tools)`. **`allowed_tools`**
+- **Default sub toolset** = `tools.readonly()`. **`allowed_tools`**
   selects from the FULL grantable set (every parent tool except
   run_subagent, empty names skipped), so naming a non-read-only tool
-  explicitly GRANTS it (`SubsetView` over the full executor). Matching:
+  explicitly GRANTS it (`tools.subset()` over the full list). Matching:
   exact advertised name, else unambiguous bare-name fallback — request `x`
   matches a single tool ending in `__x`. Blank entries are skipped.
 - **Advertised schema**: the static schema (the Go literal is the source of
@@ -728,7 +738,7 @@ FULL executor; there is deliberately NO retry field — see §6), `parentSystem`
   plus `SubagentCutOffNote`. Either way the result is `isError`. Matching
   is line-start only, so prose quoting those tokens mid-line is untouched.
 
-### 10b. web_fetch (`NewWebFetchExecutor(WebFetchConfig)`)
+### 10b. web_fetch (`NewWebFetchTool(WebFetchConfig)`)
 
 Config: `httpClient?` (nil ⇒ a 45 s-timeout client), `userAgent?` (sent on
 the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
@@ -776,7 +786,7 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   failure ⇒ `web_fetch summary failed: <err>`; empty output ⇒
   `web_fetch summary returned empty output`.
 
-### 10c. todo_write (`NewTodoExecutor(TodoConfig)`)
+### 10c. todo_write (`NewTodoTool(TodoConfig)`)
 
 Config: `write: (todos) => void | error` — the host's store. A nil/absent
 `write` refuses every call.
@@ -823,7 +833,7 @@ Config: `write: (todos) => void | error` — the host's store. A nil/absent
   protocol and sinks). The subagent activity feed is a plain callback, not
   an event protocol.
 - The source's per-user tool settings (`disabled_tools` / `ask_tools`
-  lists, tool-name namespacing `<Server>__<tool>`): the built-in executors
+  lists, tool-name namespacing `<Server>__<tool>`): the built-in tools
   are composed or not composed; gating them is caller-side wrapping.
 - Title sanitization (`sanitizeTitle`, `<think>`-stripping, length caps) —
   `OneShot` returns raw trimmed text.

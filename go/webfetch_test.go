@@ -3,6 +3,7 @@ package agentic
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,13 +15,11 @@ import (
 )
 
 // wfCall builds a web_fetch ToolCall with the given JSON arguments.
-func wfCall(args string) ToolCall {
-	return ToolCall{ID: "wf-1", Name: WebFetchToolName, Arguments: args}
-}
+func wfCall(args string) json.RawMessage { return json.RawMessage(args) }
 
 func TestWebFetchAdvertisement(t *testing.T) {
-	exec := NewWebFetchExecutor(WebFetchConfig{})
-	tools := exec.Tools()
+	exec := NewWebFetchTool(WebFetchConfig{})
+	tools := []ToolDecl{exec.Decl()}
 	require.Len(t, tools, 1)
 	tool := tools[0]
 	assert.Equal(t, WebFetchToolName, tool.Name)
@@ -29,7 +28,7 @@ func TestWebFetchAdvertisement(t *testing.T) {
 		"Optionally provide summary_prompt to have the same model summarize the cleaned content before it is returned.",
 		tool.Description)
 	assert.Contains(t, string(tool.InputSchema), `"summary_prompt"`)
-	assert.False(t, exec.NeedsApproval(WebFetchToolName))
+	assert.False(t, exec.NeedsApproval())
 }
 
 func TestWebFetchSuccessCleansHTML(t *testing.T) {
@@ -43,7 +42,7 @@ func TestWebFetchSuccessCleansHTML(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exec := NewWebFetchExecutor(WebFetchConfig{UserAgent: "agentic-test/1.0"})
+	exec := NewWebFetchTool(WebFetchConfig{UserAgent: "agentic-test/1.0"})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`/page"}`))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
@@ -58,7 +57,7 @@ func TestWebFetchTruncationNote(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exec := NewWebFetchExecutor(WebFetchConfig{})
+	exec := NewWebFetchTool(WebFetchConfig{})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`"}`))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
@@ -71,7 +70,7 @@ func TestWebFetchBodySizeCap(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exec := NewWebFetchExecutor(WebFetchConfig{})
+	exec := NewWebFetchTool(WebFetchConfig{})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`"}`))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
@@ -84,7 +83,7 @@ func TestWebFetchNon2xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exec := NewWebFetchExecutor(WebFetchConfig{})
+	exec := NewWebFetchTool(WebFetchConfig{})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`"}`))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
@@ -95,7 +94,7 @@ func TestWebFetchConnectionError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := srv.URL
 	srv.Close()
-	exec := NewWebFetchExecutor(WebFetchConfig{})
+	exec := NewWebFetchTool(WebFetchConfig{})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+url+`"}`))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
@@ -111,7 +110,7 @@ func TestWebFetchURLValidation(t *testing.T) {
 		{"no host", "http://", "web_fetch URL must include a host"},
 		{"userinfo", "https://user:pw@example.invalid/", "web_fetch rejects URLs containing userinfo credentials"},
 	}
-	exec := NewWebFetchExecutor(WebFetchConfig{})
+	exec := NewWebFetchTool(WebFetchConfig{})
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+tc.url+`"}`))
@@ -126,12 +125,6 @@ func TestWebFetchURLValidation(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.True(t, strings.HasPrefix(res.Content, "invalid url: "))
-	})
-	t.Run("unknown tool", func(t *testing.T) {
-		res, err := exec.Execute(context.Background(), ToolCall{Name: "other"})
-		require.NoError(t, err)
-		assert.True(t, res.IsError)
-		assert.Equal(t, "unknown tool: other", res.Content)
 	})
 	t.Run("invalid args", func(t *testing.T) {
 		res, err := exec.Execute(context.Background(), wfCall(`{`))
@@ -148,7 +141,7 @@ func TestWebFetchBlockHook(t *testing.T) {
 	defer srv.Close()
 
 	var sawURL string
-	exec := NewWebFetchExecutor(WebFetchConfig{
+	exec := NewWebFetchTool(WebFetchConfig{
 		BlockURL: func(u string) string {
 			sawURL = u
 			return "fetching this repository is disabled; use the workspace tools instead"
@@ -162,7 +155,7 @@ func TestWebFetchBlockHook(t *testing.T) {
 	assert.Equal(t, srv.URL+"/repo", sawURL, "the hook sees the validated URL")
 
 	// An empty return allows the fetch.
-	allow := NewWebFetchExecutor(WebFetchConfig{BlockURL: func(string) string { return "" }})
+	allow := NewWebFetchTool(WebFetchConfig{BlockURL: func(string) string { return "" }})
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "fine")
 	}))
@@ -180,7 +173,7 @@ func TestWebFetchSummaryPath(t *testing.T) {
 	defer srv.Close()
 
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("  a fine summary  ")}}}
-	exec := NewWebFetchExecutor(WebFetchConfig{
+	exec := NewWebFetchTool(WebFetchConfig{
 		Provider: provider, Model: "m", MaxTokens: 256, Extra: map[string]any{"temperature": 0.1},
 	})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`/doc","summary_prompt":"list the key points"}`))
@@ -207,7 +200,7 @@ func TestWebFetchSummaryErrors(t *testing.T) {
 	defer srv.Close()
 
 	t.Run("no model available", func(t *testing.T) {
-		exec := NewWebFetchExecutor(WebFetchConfig{})
+		exec := NewWebFetchTool(WebFetchConfig{})
 		res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`","summary_prompt":"sum"}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
@@ -215,7 +208,7 @@ func TestWebFetchSummaryErrors(t *testing.T) {
 	})
 	t.Run("summary call fails", func(t *testing.T) {
 		provider := &scriptProvider{steps: []scriptStep{{err: &APIError{Status: 500, Body: "down"}}}}
-		exec := NewWebFetchExecutor(WebFetchConfig{Provider: provider, Model: "m"})
+		exec := NewWebFetchTool(WebFetchConfig{Provider: provider, Model: "m"})
 		res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`","summary_prompt":"sum"}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
@@ -223,7 +216,7 @@ func TestWebFetchSummaryErrors(t *testing.T) {
 	})
 	t.Run("summary empty", func(t *testing.T) {
 		provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("   ")}}}
-		exec := NewWebFetchExecutor(WebFetchConfig{Provider: provider, Model: "m"})
+		exec := NewWebFetchTool(WebFetchConfig{Provider: provider, Model: "m"})
 		res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`","summary_prompt":"sum"}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
@@ -247,7 +240,7 @@ func TestWebFetchTika(t *testing.T) {
 		}))
 		defer tika.Close()
 
-		exec := NewWebFetchExecutor(WebFetchConfig{TikaURL: tika.URL + "/"})
+		exec := NewWebFetchTool(WebFetchConfig{TikaURL: tika.URL + "/"})
 		res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+page.URL+`"}`))
 		require.NoError(t, err)
 		assert.False(t, res.IsError)
@@ -265,7 +258,7 @@ func TestWebFetchTika(t *testing.T) {
 			http.Error(w, "boom", http.StatusInternalServerError)
 		}))
 		defer tika.Close()
-		exec := NewWebFetchExecutor(WebFetchConfig{TikaURL: tika.URL})
+		exec := NewWebFetchTool(WebFetchConfig{TikaURL: tika.URL})
 		res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+page.URL+`"}`))
 		require.NoError(t, err)
 		assert.False(t, res.IsError)
@@ -277,7 +270,7 @@ func TestWebFetchTika(t *testing.T) {
 			_, _ = io.WriteString(w, "   \n  ")
 		}))
 		defer tika.Close()
-		exec := NewWebFetchExecutor(WebFetchConfig{TikaURL: tika.URL})
+		exec := NewWebFetchTool(WebFetchConfig{TikaURL: tika.URL})
 		res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+page.URL+`"}`))
 		require.NoError(t, err)
 		assert.Contains(t, res.Content, "%PDF-raw-bytes")
@@ -289,7 +282,7 @@ func TestWebFetchNoExtractableContent(t *testing.T) {
 		_, _ = io.WriteString(w, "<script>only()</script>")
 	}))
 	defer srv.Close()
-	exec := NewWebFetchExecutor(WebFetchConfig{})
+	exec := NewWebFetchTool(WebFetchConfig{})
 	res, err := exec.Execute(context.Background(), wfCall(`{"url":"`+srv.URL+`"}`))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)

@@ -19,8 +19,8 @@ redesign — check these when a behavior question comes up):
   param-strip retry, the SSE scanner and its buffer sizes), the loop
   semantics (RunSubagent's wrap-up fallback — but NOT its turn cap, which
   this library deliberately dropped, see Hard rules;
-  Run's approval flow and cancel/approval finalization), the executor
-  combinators, and the built-in tool executors — `run_subagent`
+  Run's approval flow and cancel/approval finalization), and the built-in
+  tools — `run_subagent`
   (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
   `context.go`/`summary.go`: schema, share_context modes, allowed_tools
   grants, Gate, activity telemetry) and `web_fetch`
@@ -99,6 +99,15 @@ side of that line it falls on — do not put it on both.
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
   safe.
+- **A tool is an individual thing, and nothing groups them.** `Tool` is
+  `Decl`/`Execute`/`NeedsApproval`, and a run's toolset is a flat `Tools`
+  slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
+  composite, and no view wrapper: concatenating toolsets is `append`, and
+  restricting one is `Readonly()`/`Subset()` returning a shorter slice. A
+  wrapper whose only job is to hide part of another wrapper is the design
+  this replaced -- do not reintroduce it. The call id being answered is not
+  an `Execute` argument: it rides the context (`WithToolCallID`/`ToolCallID`),
+  which `Run` sets around every call, because almost no tool wants it.
 - **There is NO turn cap, and adding one back is a regression.** No
   `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
   tools-withheld final turn. A counted cap cannot tell a model looping
@@ -113,11 +122,11 @@ side of that line it falls on — do not put it on both.
   ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
   the failure and the wait. A retry notification is not a stream event and
   never withholds a retry.
-- Exact strings are contract: `DeniedMessage`, the executor refusal texts,
+- Exact strings are contract: `DeniedMessage`, the sub-agent refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the stuck nudge
   (`stuckNudgeInstruction`; `StuckNudgeAt`/`StuckFailAt` are constants, not
   knobs), the compaction
-  request text, the param-strip regexes, the overflow regex, and the two
+  request text, the param-strip regexes, the overflow regex, and the three
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
   and allowed_tools error texts, `SubagentCutOffNote`,

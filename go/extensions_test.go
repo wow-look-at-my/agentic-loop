@@ -23,11 +23,11 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 		{comp: assistantComp("done")},
 	}}
-	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var begins []int
 	cfg := Config{
 		Provider: provider,
-		Tools:    exec,
+		Tools:    exec.registry(),
 		Events: Events{
 			// Wind-down injection: append a notice to THIS call's request only,
 			// on a fresh copy (the TS `[...messages, notice]` shape) so the
@@ -68,13 +68,13 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 		{comp: assistantComp("working", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 		{err: modelErr},
 	}}
-	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var turns []int
 	var comps []*Completion
 	var errs []error
 	cfg := Config{
 		Provider: provider,
-		Tools:    exec,
+		Tools:    exec.registry(),
 		Events: Events{
 			OnTurnEnd: func(turn int, comp *Completion, err error) error {
 				turns = append(turns, turn)
@@ -148,11 +148,11 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		{comp: &Completion{Message: Message{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "only thoughts"}}}, StopReason: StopEndTurn}},
 		{comp: assistantComp("synthesized report")},
 	}}
-	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var begins, ends []int
 	cfg := Config{
 		Provider: provider,
-		Tools:    exec,
+		Tools:    exec.registry(),
 		Events: Events{
 			OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil },
 			OnTurnEnd:   func(turn int, _ *Completion, _ error) error { ends = append(ends, turn); return nil },
@@ -175,11 +175,11 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 		{comp: assistantComp("done")},
 	}}
-	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var internal, begins []int
 	cfg := Config{
 		Provider: provider,
-		Tools:    exec,
+		Tools:    exec.registry(),
 		Events:   Events{OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil }},
 	}
 	cfg.turnHook = func(turn int) { internal = append(internal, turn) }

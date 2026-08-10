@@ -155,9 +155,9 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 			},
 		}, StopReason: StopToolUse}},
 	}}
-	exec := &fakeExec{tools: []Tool{{Name: "alpha"}, {Name: "beta"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}, {Name: "beta"}}}
 	fails := 0
-	cfg := Config{Provider: provider, Tools: exec, Events: Events{
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
 		OnToolCall: func(c ToolCall) error {
 			if c.Name == "beta" {
 				fails++
@@ -189,8 +189,8 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 	}}
-	exec := &fakeExec{tools: []Tool{{Name: "alpha"}}}
-	cfg := Config{Provider: provider, Tools: exec, Events: Events{
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
 		OnToolResult: func(ToolCall, ToolResult) error { return errSink },
 	}}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})

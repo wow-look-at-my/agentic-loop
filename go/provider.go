@@ -148,7 +148,7 @@ type Request struct {
 	Model     string
 	System    string
 	Messages  []Message
-	Tools     []Tool
+	Tools     []ToolDecl
 	MaxTokens int
 	Extra     map[string]any
 	CacheKey  string

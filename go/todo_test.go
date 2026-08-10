@@ -12,9 +12,7 @@ import (
 )
 
 // todoCall builds a todo_write ToolCall with the given JSON arguments.
-func todoCall(args string) ToolCall {
-	return ToolCall{ID: "td-1", Name: TodoWriteToolName, Arguments: args}
-}
+func todoCall(args string) json.RawMessage { return json.RawMessage(args) }
 
 // recordingTodos captures what the executor hands the host.
 type recordingTodos struct {
@@ -28,14 +26,14 @@ func (r *recordingTodos) write(_ context.Context, todos []Todo) error {
 }
 
 func TestTodoWriteAdvertisement(t *testing.T) {
-	exec := NewTodoExecutor(TodoConfig{})
-	tools := exec.Tools()
+	exec := NewTodoTool(TodoConfig{})
+	tools := []ToolDecl{exec.Decl()}
 	require.Len(t, tools, 1)
 	tool := tools[0]
 	assert.Equal(t, TodoWriteToolName, tool.Name)
 	assert.False(t, tool.Readonly,
 		"todo_write writes host state; a sub-agent inheriting it would overwrite its parent's plan")
-	assert.False(t, exec.NeedsApproval(TodoWriteToolName))
+	assert.False(t, exec.NeedsApproval())
 	assert.Contains(t, tool.Description, "REPLACES the whole list")
 
 	// The enum is the only thing stopping a model inventing a fourth state, so
@@ -65,7 +63,7 @@ func TestTodoWriteAdvertisement(t *testing.T) {
 // receives the whole thing every time, so it never has to merge.
 func TestTodoWriteHandsTheHostTheWholeList(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(
 		`{"todos":[{"title":"write it","state":"done"},{"title":"test it","state":"in_progress"},{"title":"ship it","state":"pending"}]}`))
@@ -101,7 +99,7 @@ func TestTodoWriteHandsTheHostTheWholeList(t *testing.T) {
 // apart leaves a stale plan on screen forever.
 func TestClearingTheListReachesTheHostAsAnEmptyList(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(`{"todos":[]}`))
 	require.NoError(t, err)
@@ -120,7 +118,7 @@ func TestClearingTheListReachesTheHostAsAnEmptyList(t *testing.T) {
 // would punish the common shape (write the plan, then set states as you go).
 func TestAMissingStateIsPending(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(`{"todos":[{"title":"no state given"}]}`))
 	require.NoError(t, err)
@@ -134,7 +132,7 @@ func TestAMissingStateIsPending(t *testing.T) {
 // leaves it guessing on a list of twenty.
 func TestAnUnknownStateIsRefusedWithItsIndexAndTheChoices(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(
 		`{"todos":[{"title":"fine","state":"done"},{"title":"bad","state":"blocked"}]}`))
@@ -149,7 +147,7 @@ func TestAnUnknownStateIsRefusedWithItsIndexAndTheChoices(t *testing.T) {
 // a description does not fit the surface a host gives the list.
 func TestAnUnusableTitleIsRefusedWithItsIndex(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(`{"todos":[{"title":"ok"},{"title":"   "}]}`))
 	require.NoError(t, err)
@@ -167,7 +165,7 @@ func TestAnUnusableTitleIsRefusedWithItsIndex(t *testing.T) {
 
 func TestATooLongListIsRefused(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	items := make([]string, todoMaxItems+1)
 	for i := range items {
@@ -184,7 +182,7 @@ func TestATooLongListIsRefused(t *testing.T) {
 // go on planning against a list that does not exist.
 func TestAHostThatCouldNotStoreTheListIsAFailure(t *testing.T) {
 	rec := &recordingTodos{fails: errors.New("disk on fire")}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(`{"todos":[{"title":"t"}]}`))
 	require.NoError(t, err)
@@ -195,7 +193,7 @@ func TestAHostThatCouldNotStoreTheListIsAFailure(t *testing.T) {
 // With nowhere to keep the list, the tool says so. Accepting a plan nobody
 // keeps would have the model believe the user can see it.
 func TestNoWriterMeansTheToolRefuses(t *testing.T) {
-	exec := NewTodoExecutor(TodoConfig{})
+	exec := NewTodoTool(TodoConfig{})
 	res, err := exec.Execute(context.Background(), todoCall(`{"todos":[{"title":"t"}]}`))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
@@ -204,16 +202,12 @@ func TestNoWriterMeansTheToolRefuses(t *testing.T) {
 
 func TestTodoWriteRejectsGarbageAndForeignNames(t *testing.T) {
 	rec := &recordingTodos{}
-	exec := NewTodoExecutor(TodoConfig{Write: rec.write})
+	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
 	res, err := exec.Execute(context.Background(), todoCall(`not json`))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "invalid todo_write arguments")
 
-	res, err = exec.Execute(context.Background(), ToolCall{ID: "x", Name: "something_else", Arguments: `{}`})
-	require.NoError(t, err)
-	assert.True(t, res.IsError)
-	assert.Equal(t, "unknown tool: something_else", res.Content)
 	assert.Empty(t, rec.got)
 }

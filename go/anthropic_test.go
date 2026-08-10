@@ -76,7 +76,7 @@ func TestAnthropicRequestBody(t *testing.T) {
 		Model:     "test-model",
 		System:    "be brief",
 		Messages:  messages,
-		Tools:     []Tool{{Name: "lookup", Description: "look things up", InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`)}, {Name: "bare"}},
+		Tools:     []ToolDecl{{Name: "lookup", Description: "look things up", InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`)}, {Name: "bare"}},
 		MaxTokens: 512,
 		Extra:     map[string]any{"thinking": map[string]any{"type": "adaptive"}, "model": "evil", "stream": false},
 	}

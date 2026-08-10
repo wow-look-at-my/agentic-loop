@@ -71,7 +71,7 @@ func TestOpenAIRequestBody(t *testing.T) {
 			{Role: RoleTool, Content: "", ToolCallID: "call_1"},
 			{Role: RoleAssistant, Content: "found it", ToolCalls: []ToolCall{{ID: "call_2", Name: "srch", Arguments: "{}"}}},
 		},
-		Tools: []Tool{
+		Tools: []ToolDecl{
 			{Name: "srch", Description: "search", InputSchema: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)},
 			{Name: "noschema"},
 		},

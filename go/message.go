@@ -60,22 +60,22 @@ type Message struct {
 	ToolIsError bool
 }
 
-// Tool is a function tool advertised to the model. InputSchema is the JSON
+// ToolDecl is what the model is told about one tool. InputSchema is the JSON
 // schema of the tool's arguments; nil marshals as {"type":"object"}. Readonly
 // marks a tool that only reads state; it is never sent to the upstream and
-// exists to drive ReadonlyView.
-type Tool struct {
+// exists to drive Tools.Readonly.
+type ToolDecl struct {
 	Name        string
 	Description string
 	InputSchema json.RawMessage
 	Readonly    bool
 }
 
-// defaultToolSchema is the schema sent for a Tool with a nil InputSchema.
+// defaultToolSchema is the schema sent for a ToolDecl with a nil InputSchema.
 var defaultToolSchema = json.RawMessage(`{"type":"object"}`)
 
 // schema returns the tool's input schema, defaulting nil to {"type":"object"}.
-func (t Tool) schema() json.RawMessage {
+func (t ToolDecl) schema() json.RawMessage {
 	if len(t.InputSchema) > 0 {
 		return t.InputSchema
 	}
@@ -118,19 +118,6 @@ type ToolResult struct {
 	// image here still costs the context only what Content says.
 	Parts   []ToolContentPart
 	IsError bool
-}
-
-// ToolExecutor advertises tools and executes the calls a model requests.
-// Tools must return a deterministic order (the advertised list is part of the
-// prompt-cache prefix). Execute should return a ToolResult with IsError set
-// for recoverable, model-facing failures and reserve the Go error for internal
-// faults; Run converts an Execute error into an error tool result rather than
-// aborting the loop. NeedsApproval reports whether a call to the named tool
-// must be approved before executing.
-type ToolExecutor interface {
-	Tools() []Tool
-	Execute(ctx context.Context, call ToolCall) (ToolResult, error)
-	NeedsApproval(name string) bool
 }
 
 // Approver decides whether an approval-gated tool call may run. Ask blocks

@@ -178,9 +178,9 @@ func TestRunEndToEndToolRoundTripOverOpenAI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exec := &fakeExec{tools: []Tool{{Name: "echo"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "echo"}}}
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Tools: exec},
+		Config{Provider: oaProvider(t, srv.URL), Tools: exec.registry()},
 		Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "start"}}})
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load())

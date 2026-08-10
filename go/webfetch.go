@@ -50,7 +50,7 @@ var webFetchSchema = json.RawMessage(`{
   "required": ["url"]
 }`)
 
-// WebFetchConfig configures NewWebFetchExecutor.
+// WebFetchConfig configures NewWebFetchTool.
 type WebFetchConfig struct {
 	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a
 	// client with a 45-second timeout.
@@ -83,44 +83,44 @@ type WebFetchConfig struct {
 	BlockURL func(url string) string
 }
 
-// webFetchExecutor implements the web_fetch tool.
-type webFetchExecutor struct {
+// webFetchTool implements the web_fetch tool.
+type webFetchTool struct {
 	cfg     WebFetchConfig
 	hc      *http.Client
 	tikaURL string
 }
 
-// NewWebFetchExecutor builds the web_fetch tool executor: an unauthenticated,
-// plain HTTP GET returning cleaned page content, with an optional model-backed
-// summarize path. Compose it with the rest of the toolset via NewComposite.
-// The tool is Readonly (a sub-agent's default toolset includes it) and
-// NeedsApproval always reports false — wrap the executor to gate it.
-func NewWebFetchExecutor(cfg WebFetchConfig) ToolExecutor {
+// NewWebFetchTool builds the web_fetch tool: an unauthenticated, plain HTTP
+// GET returning cleaned page content, with an optional model-backed summarize
+// path. Append it to the rest of the toolset like any other tool. The tool is
+// Readonly (a sub-agent's default toolset includes it) and NeedsApproval
+// always reports false — wrap it to gate it.
+func NewWebFetchTool(cfg WebFetchConfig) Tool {
 	hc := cfg.HTTPClient
 	if hc == nil {
 		hc = &http.Client{Timeout: webFetchRequestTimeout}
 	}
-	return &webFetchExecutor{
+	return &webFetchTool{
 		cfg:     cfg,
 		hc:      hc,
 		tikaURL: strings.TrimRight(strings.TrimSpace(cfg.TikaURL), "/"),
 	}
 }
 
-// Tools advertises web_fetch. It is read-only: the tool only performs a GET,
-// so it is safe for sub-agents.
-func (e *webFetchExecutor) Tools() []Tool {
-	return []Tool{{
+// Decl advertises web_fetch. It is read-only: the tool only performs a GET, so
+// it is safe for sub-agents.
+func (e *webFetchTool) Decl() ToolDecl {
+	return ToolDecl{
 		Name:        WebFetchToolName,
 		Description: webFetchToolDescription,
 		InputSchema: webFetchSchema,
 		Readonly:    true,
-	}}
+	}
 }
 
 // NeedsApproval always reports false: approval wiring stays the caller's
 // concern (the source application keyed it to a user setting).
-func (e *webFetchExecutor) NeedsApproval(string) bool { return false }
+func (e *webFetchTool) NeedsApproval() bool { return false }
 
 // webFetchArgs is the web_fetch argument payload.
 type webFetchArgs struct {
@@ -131,12 +131,9 @@ type webFetchArgs struct {
 // Execute fetches the URL and returns cleaned (optionally summarized)
 // content. Every failure — validation, a blocked URL, a failed GET, a failed
 // summary — is a recoverable error tool result, never a Go error.
-func (e *webFetchExecutor) Execute(ctx context.Context, call ToolCall) (ToolResult, error) {
-	if call.Name != WebFetchToolName {
-		return ToolResult{Content: "unknown tool: " + call.Name, IsError: true}, nil
-	}
+func (e *webFetchTool) Execute(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var in webFetchArgs
-	if err := json.Unmarshal([]byte(call.Arguments), &in); err != nil {
+	if err := json.Unmarshal(args, &in); err != nil {
 		return ToolResult{Content: "invalid web_fetch arguments: " + err.Error(), IsError: true}, nil
 	}
 	u, err := validateFetchURL(in.URL)
@@ -180,7 +177,7 @@ func (e *webFetchExecutor) Execute(ctx context.Context, call ToolCall) (ToolResu
 }
 
 // fetch performs the bounded GET.
-func (e *webFetchExecutor) fetch(ctx context.Context, u *url.URL) ([]byte, string, error) {
+func (e *webFetchTool) fetch(ctx context.Context, u *url.URL) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, "", err
@@ -206,7 +203,7 @@ func (e *webFetchExecutor) fetch(ctx context.Context, u *url.URL) ([]byte, strin
 // clean extracts readable text: via the configured Tika server when it
 // succeeds with non-empty output, else the built-in HTML cleanup. (The source
 // logged Tika failures; the library falls back silently.)
-func (e *webFetchExecutor) clean(ctx context.Context, raw []byte, contentType string) string {
+func (e *webFetchTool) clean(ctx context.Context, raw []byte, contentType string) string {
 	if e.tikaURL != "" {
 		if text, err := e.extractWithTika(ctx, raw, contentType); err == nil && strings.TrimSpace(text) != "" {
 			return normalizeText(text)
@@ -217,7 +214,7 @@ func (e *webFetchExecutor) clean(ctx context.Context, raw []byte, contentType st
 
 // extractWithTika PUTs the raw bytes to the Tika server's /tika endpoint and
 // returns the extracted plain text.
-func (e *webFetchExecutor) extractWithTika(ctx context.Context, raw []byte, contentType string) (string, error) {
+func (e *webFetchTool) extractWithTika(ctx context.Context, raw []byte, contentType string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, e.tikaURL+"/tika", bytes.NewReader(raw))
 	if err != nil {
 		return "", err

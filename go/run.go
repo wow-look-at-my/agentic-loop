@@ -2,6 +2,7 @@ package agentic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -134,10 +135,10 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 	return wrapCallbackErr(e.OnToolResult(c, r))
 }
 
-// Config wires one Run: the Provider to call, the ToolExecutor whose tools
-// are advertised and executed (nil runs tool-less), the Approver consulted
-// for calls the executor flags via NeedsApproval (nil denies gated calls with
-// DeniedMessage), and the event callbacks. There is deliberately no turn cap
+// Config wires one Run: the Provider to call, the Tools advertised and
+// executed (empty runs tool-less), the Approver consulted for calls a tool
+// flags via NeedsApproval (nil denies gated calls with DeniedMessage), and
+// the event callbacks. There is deliberately no turn cap
 // -- see the note above wrapUpInstruction for what bounds a run instead.
 //
 // Output dedup is ON by default: a read-only tool result whose content is
@@ -155,7 +156,7 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 // safe. See "Layering" in README.md.
 type Config struct {
 	Provider Provider
-	Tools    ToolExecutor
+	Tools    Tools
 	Approver Approver
 	Events   Events
 
@@ -167,8 +168,14 @@ type Config struct {
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
 	// turn). It is unexported: package-internal machinery -- the subagent
-	// executor's live activity telemetry -- not public API.
+	// tool's live activity telemetry -- not public API.
 	turnHook func(turn int)
+
+	// unknownTool, when non-nil, replaces the text a call to an unoffered name
+	// is answered with. Unexported: the sub-agent run uses it to say WHY a name
+	// its parent has is not in this run's toolset (read-only only, or outside
+	// the granted allowed_tools), which a bare "unknown tool" would not teach.
+	unknownTool func(name string) string
 }
 
 // Result is the outcome of a Run. Messages is the input transcript plus
@@ -188,8 +195,8 @@ type Result struct {
 // transcript, executes the tool calls each turn requests via cfg.Tools, feeds
 // the results back, and stops when the model answers with text.
 //
-// Each turn advertises cfg.Tools.Tools(); req.Tools is ignored and
-// overwritten (nil cfg.Tools advertises no tools). On the final permitted
+// Each turn advertises cfg.Tools.Decls(); req.Tools is ignored and
+// overwritten (an empty cfg.Tools advertises no tools). On the final permitted
 // turn tools are WITHHELD so the model must answer rather than request
 // another never-executed call. Tool failures never abort the loop: an
 // Execute error becomes a recoverable "tool execution failed: ..." error
@@ -229,10 +236,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	if cfg.Provider == nil {
 		return nil, badRequestErr("agentic: Config.Provider is required")
 	}
-	var advertised []Tool
-	if cfg.Tools != nil {
-		advertised = cfg.Tools.Tools()
-	}
+	advertised := cfg.Tools.Decls()
 
 	// Output dedup: build the readonly-tool name set from the advertised list
 	// and create one deduper for the whole run, so an unchanged read-only
@@ -381,7 +385,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// NOT in the transcript (it is only appended on the tool-execution
 		// branch), so the wrap-up request can't be rejected for an unanswered
 		// tool call.
-		if cfg.Tools != nil {
+		if len(cfg.Tools) > 0 {
 			wrapMsg := Message{Role: RoleUser, Content: wrapUpInstruction}
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
@@ -420,7 +424,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 // per-call Request (mutations apply to this call only), OnTurnEnd after it.
 func runModelCall(
 	ctx context.Context, cfg *Config,
-	req Request, turn int, msgs []Message, tools []Tool, res *Result,
+	req Request, turn int, msgs []Message, tools []ToolDecl, res *Result,
 ) (*Completion, error) {
 	r := req
 	r.Messages = msgs
@@ -448,12 +452,17 @@ func runModelCall(
 // when an approval decision never arrived (Approver.Ask failed), which ends
 // the run.
 func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, error) {
-	if cfg.Tools == nil {
-		// No executor is configured; the model hallucinated a tool. Teach it
-		// rather than aborting.
-		return ToolResult{Content: "unknown tool: " + call.Name, IsError: true}, nil
+	tool, known := cfg.Tools.Find(call.Name)
+	if !known {
+		// A name this run does not offer: the model hallucinated a tool, or it
+		// remembers one its parent has. Teach it rather than aborting.
+		text := "unknown tool: " + call.Name
+		if cfg.unknownTool != nil {
+			text = cfg.unknownTool(call.Name)
+		}
+		return ToolResult{Content: text, IsError: true}, nil
 	}
-	if cfg.Tools.NeedsApproval(call.Name) {
+	if tool.NeedsApproval() {
 		if cfg.Approver == nil {
 			// Fail closed: a gated tool with nobody to ask is denied.
 			return ToolResult{Content: DeniedMessage, IsError: true}, nil
@@ -466,7 +475,9 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 			return ToolResult{Content: DeniedMessage, IsError: true}, nil
 		}
 	}
-	result, exErr := cfg.Tools.Execute(ctx, call)
+	// The id is threaded on the context, where it is known -- the Tool
+	// interface stays id-free (see toolcallid.go).
+	result, exErr := tool.Execute(WithToolCallID(ctx, call.ID), json.RawMessage(call.Arguments))
 	if exErr != nil {
 		// Defensive: internal failures are surfaced as tool text so the model
 		// can react rather than aborting the conversation.
