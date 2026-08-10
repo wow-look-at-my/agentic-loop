@@ -420,7 +420,11 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   []Todo)` is where the host keeps and displays the list; it receives the
   whole post-mutation list, ids and all, after every call, and an empty list
   arrives as an empty (non-nil) one because clearing the list is a real
-  instruction. Each successful mutation's result also carries the list itself
+  instruction. A host that KEEPS that list between runs must hand it back as
+  `TodoConfig.Initial`: the store lives in memory, so a toolset built without
+  it starts empty, and the new run's first mutation persists a list holding
+  only that one task — the earlier tasks are gone, and nothing in the exchange
+  looks like a failure. Each successful mutation's result also carries the list itself
   as a `TodoListPartType` content part whose JSON equals what `Write` just
   stored, so a host can draw the plan mid-turn instead of parsing it back out
   of the text. The library owns the tools' semantics — the schemas'
