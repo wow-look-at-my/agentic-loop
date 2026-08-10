@@ -776,7 +776,8 @@ folder that could only cover part of what the path named.
 `NewGitHub(GitHubConfig)` is a credential-rotating GitHub REST client, and
 `NewRepoTools(RepoToolsConfig{GitHub: gh})` are the three tools over it:
 `repo_read` (commits, one commit's diff, pull requests, issues, CI status,
-one check run), plus the approval-gated `repo_file_write` and `repo_pr_create`.
+one check run, one Actions job's log), plus the approval-gated
+`repo_file_write` and `repo_pr_create`.
 A nil client yields no tools — a run with no GitHub access is never offered one
 that could only fail.
 
@@ -810,6 +811,16 @@ Two properties run through all of it:
   failure, so a readable Checks API costs no extra requests, and only when
   NEITHER answers — the one case where there is genuinely no verdict — are
   both failures reported.
+- **`what=job_log` is where that chain ends.** Naming the step that failed only
+  renames the question; the compiler error and the failing assertion are in the
+  job's log, so every failed job in the report carries the `job_log` call that
+  fetches it. `/actions/jobs/{id}/logs` is served under `actions` too, so a
+  token-backed host can reach it. It answers 302 with a signed URL on storage,
+  and that hop is made WITHOUT the token — the signature is the credential
+  there, and forwarding a PAT to a third party is not a tidiness question. The
+  whole log is returned when it fits; past that the tail comes back (where a
+  failure is) and `offset`/`limit` address any other window, so nothing in the
+  log is out of reach.
 - **A write never falls through to anonymous** and uses ONLY `WriteTokens`.
   Filtering that list by initiator is the host's job: a model-facing toolset
   gets `ModelWriteTokens(...)`, a user-initiated action gets everything.

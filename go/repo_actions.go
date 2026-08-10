@@ -51,6 +51,7 @@ type ghWorkflowRuns struct {
 
 // ghJob decodes one entry of /actions/runs/{id}/jobs.
 type ghJob struct {
+	ID         int64  `json:"id"`
 	Name       string `json:"name"`
 	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
@@ -140,6 +141,9 @@ func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWork
 			state = job.Conclusion
 		}
 		fmt.Fprintf(&b, "    %s: %s", nameOrUnnamed(job.Name), state)
+		if job.ID != 0 {
+			fmt.Fprintf(&b, " [job %d]", job.ID)
+		}
 		if job.HTMLURL != "" {
 			fmt.Fprintf(&b, " (%s)", job.HTMLURL)
 		}
@@ -158,6 +162,13 @@ func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWork
 			}
 			fmt.Fprintf(&b, "      step %d failed: %s (%s)\n", step.Number, nameOrUnnamed(step.Name), step.Conclusion)
 			shown++
+		}
+		// Naming the step that died renames the question. What the reader came
+		// for -- the compiler error, the failing assertion -- is in the log,
+		// and this is the only place the id needed to fetch it is on screen.
+		if job.ID != 0 {
+			fmt.Fprintf(&b, "      %s {\"what\":\"job_log\",\"org\":%q,\"repo\":%q,\"job_id\":%d} gives this job's full log.\n",
+				RepoReadToolName, org, repo, job.ID)
 		}
 	}
 	if jobs.TotalCount > len(jobs.Jobs) {
