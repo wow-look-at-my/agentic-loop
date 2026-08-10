@@ -23,8 +23,11 @@ const (
 	// GitHubMaxResponseBytes is the hard cap on one API response body.
 	GitHubMaxResponseBytes = 5 << 20
 	githubRequestTimeout   = 30 * time.Second
-	ownerRepoPerPage       = 100 // page size for owner (org/user) repo listings
-	ownerRepoMaxPages      = 5   // cap on pages fetched for an owner listing
+	// OwnerReposPerPage and OwnerReposMaxPages bound an owner listing: how many
+	// repositories one page holds, and how many pages are fetched before the
+	// listing is reported truncated.
+	OwnerReposPerPage  = 100
+	OwnerReposMaxPages = 5
 )
 
 // GitHubToken is one configured personal access token the repo tools may use.

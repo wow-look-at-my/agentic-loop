@@ -224,7 +224,7 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 var ErrOwnerListing = fmt.Errorf("owner listing returned no successful response")
 
 // collectOwnerRepos parses the first page of an owner's repositories and follows
-// pagination (up to ownerRepoMaxPages full pages) using the credential that
+// pagination (up to OwnerReposMaxPages full pages) using the credential that
 // already worked. It reports truncated=true when more pages remain past the cap.
 func (e *GitHub) collectOwnerRepos(ctx context.Context, owner string, isUser bool, token string, firstBody []byte) (repos []GHRepo, truncated bool, err error) {
 	repos, err = parseRepoArray(firstBody)
@@ -232,8 +232,8 @@ func (e *GitHub) collectOwnerRepos(ctx context.Context, owner string, isUser boo
 		return nil, false, err
 	}
 	lastLen := len(repos)
-	for page := 2; lastLen == ownerRepoPerPage; page++ {
-		if page > ownerRepoMaxPages {
+	for page := 2; lastLen == OwnerReposPerPage; page++ {
+		if page > OwnerReposMaxPages {
 			truncated = true
 			break
 		}
@@ -257,7 +257,7 @@ func (e *GitHub) ownerReposURL(owner string, isUser bool, page int) string {
 		kind = "users"
 	}
 	return fmt.Sprintf("%s/%s/%s/repos?per_page=%d&page=%d&sort=full_name",
-		e.base, kind, url.PathEscape(owner), ownerRepoPerPage, page)
+		e.base, kind, url.PathEscape(owner), OwnerReposPerPage, page)
 }
 
 func (e *GitHub) doGet(ctx context.Context, target, token, accept string) (GHResponse, error) {

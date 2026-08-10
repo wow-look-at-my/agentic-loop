@@ -129,8 +129,8 @@ func TestToken(ctx context.Context, apiBase, token string, httpClient *http.Clie
 const orgSweepMaxOrgs = 20
 
 // listVisibleRepos enumerates every repository the token can see via
-// GET /user/repos, paginated up to ownerRepoMaxPages full pages of
-// ownerRepoPerPage each — the same page size and cap OwnerRepos uses for
+// GET /user/repos, paginated up to OwnerReposMaxPages full pages of
+// OwnerReposPerPage each — the same page size and cap OwnerRepos uses for
 // an owner listing. It reports truncated=true when more pages remain past
 // the cap, and a non-empty error string when a page could not be fetched (the
 // token itself already passed the /user check, so this is reported alongside
@@ -141,8 +141,8 @@ const orgSweepMaxOrgs = 20
 func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []TokenTestRepo, orgOwners []string, truncated bool, errMsg string) {
 	now := time.Now()
 	seenOrg := map[string]bool{}
-	for page := 1; page <= ownerRepoMaxPages; page++ {
-		target := fmt.Sprintf("%s/user/repos?per_page=%d&page=%d&sort=full_name", e.base, ownerRepoPerPage, page)
+	for page := 1; page <= OwnerReposMaxPages; page++ {
+		target := fmt.Sprintf("%s/user/repos?per_page=%d&page=%d&sort=full_name", e.base, OwnerReposPerPage, page)
 		res, err := e.doGet(ctx, target, token, "application/vnd.github+json")
 		if err != nil {
 			return repos, orgOwners, false, "could not reach GitHub: " + err.Error()
@@ -161,7 +161,7 @@ func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []To
 				orgOwners = append(orgOwners, r.Owner.Login)
 			}
 		}
-		if len(batch) < ownerRepoPerPage {
+		if len(batch) < OwnerReposPerPage {
 			return repos, orgOwners, false, ""
 		}
 	}
@@ -234,8 +234,8 @@ func mergeOrgLogins(discovered, fromRepos []string) []string {
 // so it is reported through errMsg rather than treated as the token failing.
 func (e *GitHub) listVisibleOrgs(ctx context.Context, token string) (logins []string, errMsg string) {
 	now := time.Now()
-	for page := 1; page <= ownerRepoMaxPages; page++ {
-		target := fmt.Sprintf("%s/user/orgs?per_page=%d&page=%d", e.base, ownerRepoPerPage, page)
+	for page := 1; page <= OwnerReposMaxPages; page++ {
+		target := fmt.Sprintf("%s/user/orgs?per_page=%d&page=%d", e.base, OwnerReposPerPage, page)
 		res, err := e.doGet(ctx, target, token, "application/vnd.github+json")
 		if err != nil {
 			return logins, "could not reach GitHub: " + err.Error()
@@ -252,7 +252,7 @@ func (e *GitHub) listVisibleOrgs(ctx context.Context, token string) (logins []st
 		for _, o := range batch {
 			logins = append(logins, o.Login)
 		}
-		if len(batch) < ownerRepoPerPage {
+		if len(batch) < OwnerReposPerPage {
 			return logins, ""
 		}
 	}
@@ -265,8 +265,8 @@ func (e *GitHub) listVisibleOrgs(ctx context.Context, token string) (logins []st
 // listVisibleRepos.
 func (e *GitHub) listOrgRepos(ctx context.Context, token, org string) (repos []TokenTestRepo, truncated bool, errMsg string) {
 	now := time.Now()
-	for page := 1; page <= ownerRepoMaxPages; page++ {
-		target := fmt.Sprintf("%s/orgs/%s/repos?type=all&per_page=%d&page=%d&sort=full_name", e.base, url.PathEscape(org), ownerRepoPerPage, page)
+	for page := 1; page <= OwnerReposMaxPages; page++ {
+		target := fmt.Sprintf("%s/orgs/%s/repos?type=all&per_page=%d&page=%d&sort=full_name", e.base, url.PathEscape(org), OwnerReposPerPage, page)
 		res, err := e.doGet(ctx, target, token, "application/vnd.github+json")
 		if err != nil {
 			return repos, false, "could not reach GitHub: " + err.Error()
@@ -281,7 +281,7 @@ func (e *GitHub) listOrgRepos(ctx context.Context, token, org string) (repos []T
 		for _, r := range batch {
 			repos = append(repos, r.tokenTestRepo())
 		}
-		if len(batch) < ownerRepoPerPage {
+		if len(batch) < OwnerReposPerPage {
 			return repos, false, ""
 		}
 	}
