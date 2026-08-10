@@ -157,7 +157,7 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 	case err != nil:
 		checksNote = "the request failed: " + err.Error()
 	case checksRes.status < 200 || checksRes.status >= 300:
-		checksNote = DescribeResourceFailure("read the check runs of", resource, checksRes, len(e.gh.tokens)) + checksPermissionCaveat(checksRes)
+		checksNote = DescribeResourceFailure("read the check runs of", resource, checksRes, len(e.gh.tokens))
 	default:
 		if uerr := json.Unmarshal(checksRes.body, &checks); uerr != nil {
 			checksNote = "could not parse GitHub's check-runs response: " + uerr.Error()
@@ -180,20 +180,6 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 
 	details, undetailed := e.explainFailures(ctx, org, repo, checks.CheckRuns)
 	return formatStatus(org, repo, ref, combined, checks, checksNote, actions, actionsNote, details, undetailed), statusRes, nil
-}
-
-// checksPermissionCaveat answers the instruction GitHub's own 403 gives here.
-// The Checks API replies X-Accepted-GitHub-Permissions: checks=read, which the
-// failure describer quotes verbatim as "It needs the checks=read permission".
-// That is actionable for a GitHub App installation and impossible for a
-// fine-grained PAT, whose repository-permission list has no "Checks" entry to
-// grant — so left alone it sends a token-holding reader to look for a setting
-// that is not there.
-func checksPermissionCaveat(res GHResponse) string {
-	if res.status != 403 || !strings.Contains(res.header.Get("X-Accepted-GitHub-Permissions"), "checks") {
-		return ""
-	}
-	return " A GitHub App installation can hold that permission; a fine-grained personal access token cannot — its repository-permission list has no \"Checks\" entry to grant (https://docs.github.com/en/rest/checks/runs). So no token setting fixes this. The workflow runs below are those same runs read through the actions permission, which a token can hold."
 }
 
 // errStr is an error whose text is exactly the message given: the failure
@@ -277,10 +263,21 @@ func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghChe
 		}
 	}
 
+	// The Checks API and the Actions API describe the same runs behind two
+	// permissions, and a host holding only one of them is ordinary. So which
+	// endpoint answered is plumbing: the report shows the runs from whichever
+	// did, and a permission is named only when NEITHER could answer and the
+	// reader is genuinely left without a CI verdict.
+	if checksNote != "" && actionsNote == "" {
+		fmt.Fprintf(&b, "\nWorkflow runs:\n%s\n", actions)
+		return finishStatus(&b, org, repo, checks, undetailed)
+	}
+
 	b.WriteString("\nCheck runs")
 	switch {
 	case checksNote != "":
 		fmt.Fprintf(&b, ": unavailable -- %s\n", checksNote)
+		fmt.Fprintf(&b, "Workflow runs: unavailable -- %s\n", actionsNote)
 	case len(checks.CheckRuns) == 0:
 		b.WriteString(": (none)\n")
 	default:
@@ -301,23 +298,17 @@ func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghChe
 			b.WriteString(formatFailureDetail(details[c.ID]))
 		}
 	}
-	// The Actions account of the same runs, rendered only when the Checks API
-	// could not answer. Its own failure is stated: falling through to silence
-	// would leave the check-runs note reading as the last word.
-	if checksNote != "" {
-		b.WriteString("\nWorkflow runs (the Actions API, since the check runs could not be read)")
-		if actionsNote != "" {
-			fmt.Fprintf(&b, ": unavailable -- %s\n", actionsNote)
-		} else {
-			fmt.Fprintf(&b, ":\n%s\n", actions)
-		}
-	}
+	return finishStatus(&b, org, repo, checks, undetailed)
+}
+
+// finishStatus appends the drill-down pointers every rendering ends with.
+func finishStatus(b *strings.Builder, org, repo string, checks ghCheckRunsResponse, undetailed []string) string {
 	if len(undetailed) > 0 {
-		fmt.Fprintf(&b, "\nNot explained here: %s. Read each with %s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id>}.\n",
+		fmt.Fprintf(b, "\nNot explained here: %s. Read each with %s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id>}.\n",
 			strings.Join(undetailed, ", "), RepoReadToolName, org, repo)
 	}
 	if anyFailed(checks.CheckRuns) {
-		fmt.Fprintf(&b, "\n%s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id from above>} gives one check's full output and its error annotations.\n",
+		fmt.Fprintf(b, "\n%s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id from above>} gives one check's full output and its error annotations.\n",
 			RepoReadToolName, org, repo)
 	}
 	return strings.TrimRight(b.String(), "\n")

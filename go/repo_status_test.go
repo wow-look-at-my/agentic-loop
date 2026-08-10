@@ -122,17 +122,38 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	}
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
 	require.False(t, res.IsError, res.Content)
-	assert.Contains(t, res.Content, "Workflow runs (the Actions API, since the check runs could not be read):")
+	assert.Contains(t, res.Content, "Workflow runs:")
 	assert.Contains(t, res.Content, "CI: failure (https://example.com/run/77)")
-	// GitHub's 403 names a permission a PAT cannot be granted; the report must
-	// not leave that standing as an instruction.
-	assert.Contains(t, res.Content, "a fine-grained personal access token cannot")
-	assert.Contains(t, res.Content, "https://docs.github.com/en/rest/checks/runs")
+	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
+	// Which endpoint answered is plumbing. A reader who got their CI verdict is
+	// told nothing about permissions, and is never sent to change a setting.
+	assert.NotContains(t, res.Content, "permission")
+	assert.NotContains(t, res.Content, "unavailable")
 	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
 	assert.Contains(t, res.Content, "step 2 failed: go-toolchain (failure)")
 	// A passing job names no steps: the reader is after what broke.
 	assert.Contains(t, res.Content, "smoke: success")
 	assert.NotContains(t, res.Content, "step 1 failed")
+}
+
+// Neither API answered, so the reader has no CI verdict — that is the one case
+// where both failures are reported instead of a result.
+func TestRepoStatusReportsBothFailuresWhenNeitherAPIAnswers(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/commits/main/status":
+			return http.StatusOK, `{"state":"failure","sha":"abc","statuses":[]}`
+		case "/repos/octo/hello/commits/main/check-runs", "/repos/octo/hello/actions/runs":
+			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, "Check runs: unavailable")
+	assert.Contains(t, res.Content, "Workflow runs: unavailable")
 }
 
 // The fallback's own failure is stated. Falling through to silence would leave
