@@ -410,21 +410,27 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   fetch (the source application used it to redirect fetches of its
   workspace repository); the library ships the hook, not the policy. The
   tool is `Readonly`, so a sub-agent's default toolset includes it.
-- **`NewTodoTool(TodoConfig)`** — the `todo_write` tool: the model's own
-  task list, so a long job is legible to the user while it runs. Every call
-  REPLACES the list whole, so a task carries no id to track across turns and
-  ordering never has to be reconciled; `TodoConfig.Write(ctx, []Todo)` is
-  where the host keeps and displays it, and an empty list arrives as an
-  empty (non-nil) one because clearing the list is a real instruction. The
-  result also carries the list itself as a `TodoListPartType` content part, so
-  a host can draw the plan mid-turn instead of parsing it back out of the text.
-  The library owns the tool's semantics — the schema's `pending`/`in_progress`/
-  `done` enum, the caps (100 tasks, 200-rune titles), the per-item teaching
-  errors naming `todos[<i>]`, and `RenderTodos` (exported, so a host renders
-  the same text the model is answered with). A `Write` that returns an error
-  is reported to the model as a failure: a list that was not stored is never
-  reported as stored. NOT `Readonly` — it writes state the host shows, and a
-  sub-agent inheriting it would overwrite its parent's plan.
+- **`NewTodoTools(TodoConfig)`** — four task-list tools, `todo_add`,
+  `todo_edit`, `todo_cancel` and `todo_complete`, returned as one flat
+  `Tools` slice and sharing a single in-memory store: the model's own task
+  list, so a long job stays legible to the user while it runs. Each tool
+  mutates ONE task by its stable per-task `id` (`Todo.ID`), which is minted
+  once, never reused, and re-read in every reply — the model never resends or
+  reconstructs the rest of the list from memory. `TodoConfig.Write(ctx,
+  []Todo)` is where the host keeps and displays the list; it receives the
+  whole post-mutation list, ids and all, after every call, and an empty list
+  arrives as an empty (non-nil) one because clearing the list is a real
+  instruction. Each successful mutation's result also carries the list itself
+  as a `TodoListPartType` content part whose JSON equals what `Write` just
+  stored, so a host can draw the plan mid-turn instead of parsing it back out
+  of the text. The library owns the tools' semantics — the schemas'
+  `pending`/`in_progress`/`done` enum, the caps (100 tasks, 200-rune titles),
+  the exact teaching errors naming the offending `title`/`state`/`id`, and
+  `RenderTodos` (exported, so a host renders the same text the model is
+  answered with, each task line carrying its `#id`). A `Write` that returns
+  an error is reported to the model as a failure: a list that was not stored
+  is never reported as stored. NOT `Readonly` — they write state the host
+  shows, and a sub-agent inheriting them would overwrite its parent's plan.
 
 No built-in tool is approval-gated (`NeedsApproval` is always false) —
 approval wiring stays the caller's concern; wrap the tool if launching

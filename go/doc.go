@@ -9,9 +9,11 @@
 // recovery (NewParamStripper), prompt caching on both dialects, streaming
 // callbacks that can abort the call by returning an error (StreamEvents,
 // Events), provider-reported timings passthrough (Timings), conversation
-// compaction (Compact, OneShot), and three optional built-in tools —
+// compaction (Compact, OneShot), and optional built-in tools —
 // a sub-agent tool (NewSubagentTool), a web-fetch tool (NewWebFetchTool) and
-// a task list (NewTodoTool) — appended to a host's own tools like any other
+// a task list (NewTodoTools, four mutation tools todo_add/todo_edit/
+// todo_cancel/todo_complete over one store) — appended to a host's own tools
+// like any other
 // Tool. It is extracted from an internal chat application so the
 // same loop can be embedded in other hosts.
 //
