@@ -199,3 +199,11 @@ func (a GitHubAuthError) Status() int { return a.status }
 // which is why the two are told apart after every credential has been tried,
 // never during.
 func (a GitHubAuthError) Object() string { return a.object }
+
+// Do performs one request with ONE credential, for a host running its own
+// rotation -- a git push builds refs, blobs and trees itself and must send
+// them through the same client, or the two disagree about which token works.
+// A non-nil body is sent as JSON.
+func (e *GitHub) Do(ctx context.Context, method, target, token, accept string, body []byte) (GHResponse, error) {
+	return e.doRequest(ctx, method, target, token, accept, body)
+}

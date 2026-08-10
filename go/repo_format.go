@@ -84,11 +84,11 @@ func GitHubErrorMessage(body []byte) string {
 	return ""
 }
 
-// ghErrorDetail extracts GitHub's error message plus the first detailed
+// GitHubErrorDetail extracts GitHub's error message plus the first detailed
 // sub-error: 422 validation responses put the useful text ("A pull request
 // already exists...", "Reference already exists", ...) in errors[], as either
 // objects with a message or plain strings.
-func ghErrorDetail(body []byte) string {
+func GitHubErrorDetail(body []byte) string {
 	var e struct {
 		Message string            `json:"message"`
 		Errors  []json.RawMessage `json:"errors"`

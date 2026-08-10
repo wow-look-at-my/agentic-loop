@@ -65,10 +65,10 @@ func (a GitHubAuthError) Error() string {
 	return fmt.Sprintf("could not %s: status %d", a.what, a.status)
 }
 
-// classifyObjectRead is ClassifyWriteStatus for a step that reads ONE named
+// ClassifyObjectRead is ClassifyWriteStatus for a step that reads ONE named
 // git object, recording that object so an exhausted rotation can report a
 // missing commit as a missing commit.
-func classifyObjectRead(what, object string, res GHResponse) error {
+func ClassifyObjectRead(what, object string, res GHResponse) error {
 	err := ClassifyWriteStatus(what, res)
 	var auth GitHubAuthError
 	if errors.As(err, &auth) {
@@ -92,7 +92,7 @@ func ClassifyWriteStatus(what string, res GHResponse) error {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
 		return GitHubAuthError{status: res.status, what: what}
 	}
-	if msg := ghErrorDetail(res.body); msg != "" {
+	if msg := GitHubErrorDetail(res.body); msg != "" {
 		return GitHubFatalError{msg: fmt.Sprintf("could not %s: GitHub returned %d: %s", what, res.status, msg)}
 	}
 	return GitHubFatalError{msg: fmt.Sprintf("could not %s: GitHub returned status %d", what, res.status)}
