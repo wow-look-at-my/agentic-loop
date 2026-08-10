@@ -573,3 +573,31 @@ sharing the provider. A shared `Gate` bounds concurrent sub-agents.
 
 The test suite runs entirely against `httptest` fake servers and an
 in-process scripted provider — no network, no credentials.
+
+### Resource watching (optional)
+
+A resource is not advertised in the model's context the way a tool is, so a
+model never learns one exists. `NewResourceWatcher(ResourceWatchConfig)` closes
+that gap: at each turn boundary it re-reads every watched resource, hashes it,
+records what moved, and hands back a `ResourcePoll` a host renders with
+`FormatResourceNotice` — names and change ids, never content, because dumping a
+changed resource into the thread would cost its full size on every later turn.
+
+Nothing in it knows what MCP is. A host supplies two seams:
+
+- **`ResourceSource`** — `ID`/`Name`/`List`/`Read`. One thing that publishes
+  resources (an MCP server, a directory, anything listable).
+- **`ResourceSnapshots`** — where the watcher keeps what it saw, and where it
+  records each change. `RecordChange` returns the id, so the host owns id
+  generation (it is the side that resolves one later).
+
+`NewResourceDiffTool(ResourceChanges)` is the matching tool: it resolves a
+change id to the before/after captured AT THAT MOMENT, from the change record's
+own copy — a resource that has moved three times since still answers the first
+notice with the first change. Failures are recoverable results that list the
+real ids; a source that could not be listed becomes a WARNING, never a removal
+(absent-because-unreachable is not absent). Binary content is watched by hash
+and size and reported as such, never rendered as a diff.
+
+`UnifiedDiff`/`CountLineChanges`/`HumanSize` are exported for hosts rendering
+their own changes with the same words.
