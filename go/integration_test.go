@@ -21,7 +21,8 @@ func retryTestPolicy(attempts int) *RetryPolicy {
 
 func okSSE(w http.ResponseWriter, text string) {
 	w.Header().Set("Content-Type", "text/event-stream")
-	_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + text + `"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
+	chunk := jsonMust(jsonObj{"choices": jsonArr{jsonObj{"delta": jsonObj{"content": text}, "finish_reason": "stop"}}})
+	_, _ = w.Write([]byte("data: " + chunk + "\n\ndata: [DONE]\n\n"))
 }
 
 func TestRunOpenAI429ThenSuccess(t *testing.T) {
@@ -178,9 +179,9 @@ func TestRunEndToEndToolRoundTripOverOpenAI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exec := &fakeExec{tools: []Tool{{Name: "echo"}}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "echo"}}}
 	res, err := Run(context.Background(),
-		Config{Provider: oaProvider(t, srv.URL), Tools: exec},
+		Config{Provider: oaProvider(t, srv.URL), Tools: exec.registry()},
 		Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "start"}}})
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load())

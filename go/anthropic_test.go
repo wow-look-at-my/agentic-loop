@@ -37,7 +37,7 @@ func minimalAnEvents(text string) [][2]string {
 	return [][2]string{
 		{"message_start", `{"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}`},
 		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
-		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"` + text + `"}}`},
+		{"content_block_delta", jsonMust(jsonObj{"type": "content_block_delta", "index": 0, "delta": jsonObj{"type": "text_delta", "text": text}})},
 		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
 		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`},
 		{"message_stop", `{"type":"message_stop"}`},
@@ -62,6 +62,9 @@ func TestAnthropicRequestBody(t *testing.T) {
 			Content: "on it",
 			Thinking: []ThinkingBlock{
 				{Text: "pondering", Signature: "sig-1"},
+				// Unreplayable: no signature, no redacted payload. Sending it
+				// as a signature-less thinking block 400s the whole turn.
+				{Text: "text-only reasoning from somewhere else"},
 				{Redacted: "opaque-blob"},
 			},
 			ToolCalls: []ToolCall{
@@ -76,7 +79,7 @@ func TestAnthropicRequestBody(t *testing.T) {
 		Model:     "test-model",
 		System:    "be brief",
 		Messages:  messages,
-		Tools:     []Tool{{Name: "lookup", Description: "look things up", InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`)}, {Name: "bare"}},
+		Tools:     []ToolDecl{{Name: "lookup", Description: "look things up", InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`)}, {Name: "bare"}},
 		MaxTokens: 512,
 		Extra:     map[string]any{"thinking": map[string]any{"type": "adaptive"}, "model": "evil", "stream": false},
 	}
@@ -111,6 +114,14 @@ func TestAnthropicRequestBody(t *testing.T) {
 	assert.Equal(t, "thinking", think["type"], "thinking blocks replayed FIRST")
 	assert.Equal(t, "pondering", think["thinking"])
 	assert.Equal(t, "sig-1", think["signature"], "signature replayed unchanged")
+	for _, b := range blocks {
+		m := b.(map[string]any)
+		if m["type"] == "thinking" {
+			assert.NotEmpty(t, m["signature"],
+				"an unsigned thinking block is DROPPED, never sent signature-less: Anthropic rejects it, "+
+					"so one unreplayable block would fail the whole turn")
+		}
+	}
 	redacted := blocks[1].(map[string]any)
 	assert.Equal(t, "redacted_thinking", redacted["type"])
 	assert.Equal(t, "opaque-blob", redacted["data"])
@@ -316,7 +327,7 @@ func TestAnthropicErrorEventMapsToAPIError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.errType, func(t *testing.T) {
-			payload := `{"type":"error","error":{"type":"` + tc.errType + `","message":"boom"}}`
+			payload := jsonMust(jsonObj{"type": "error", "error": jsonObj{"type": tc.errType, "message": "boom"}})
 			h := &anSSEHandler{events: [][2]string{{"error", payload}}}
 			srv := httptest.NewServer(h)
 			defer srv.Close()

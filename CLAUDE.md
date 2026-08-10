@@ -19,8 +19,13 @@ redesign — check these when a behavior question comes up):
   param-strip retry, the SSE scanner and its buffer sizes), the loop
   semantics (RunSubagent's wrap-up fallback — but NOT its turn cap, which
   this library deliberately dropped, see Hard rules;
-  Run's approval flow and cancel/approval finalization), the executor
-  combinators, and the two built-in tool executors — `run_subagent`
+  Run's approval flow and cancel/approval finalization), the filesystem
+  tools (`internal/tools/fs*.go`: the seven tools' names, descriptions,
+  schemas, caps and rendering), the GitHub client and repo tools
+  (`internal/tools/repo*.go` + `token_probe.go`: the credential rotation,
+  the winning-token cache, repo_read's what-dispatch, the two gated writes,
+  and every failure explanation), and the built-in
+  tools — `run_subagent`
   (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
   `context.go`/`summary.go`: schema, share_context modes, allowed_tools
   grants, Gate, activity telemetry) and `web_fetch`
@@ -32,6 +37,10 @@ redesign — check these when a behavior question comes up):
 - `model-benchmark` `src` (`env.ts`, `agent.ts`): retry constants and
   classification, context-overflow detection, the transcript-tail cache
   marker discipline.
+
+The Responses dialect has NO source repo — it was written here, against the
+API's own shapes. Do not go looking for the semantics somewhere else; the
+answers are `go/README.md`, PARITY.md §4a, and `responses_test.go`.
 
 ## Build & test
 
@@ -86,10 +95,21 @@ side of that line it falls on — do not put it on both.
   placeholder endpoints (`https://api.openai.com/v1`,
   `https://api.anthropic.com`) and placeholder keys only.
 - **Providers are built ONLY via the per-dialect constructors**
-  (`NewOpenAIProvider(OpenAIConfig)` / `NewAnthropicProvider(AnthropicConfig)`,
-  each embedding the shared `ProviderConfig` connection base). The dialect
-  implementations (`openaiProvider`, `anthropicProvider`) stay unexported;
-  do not re-export them or add construction side doors.
+  (`NewOpenAIProvider` / `NewResponsesProvider` / `NewAnthropicProvider`, each
+  embedding the shared `ProviderConfig` connection base). The dialect
+  implementations (`openaiProvider`, `responsesProvider`, `anthropicProvider`)
+  stay unexported; do not re-export them or add construction side doors.
+  `Dialect` (dialect.go) NAMES a protocol for a host's settings — it never
+  constructs one.
+- **The Responses dialect exists for exactly one thing** (`responses.go` +
+  `responses_wire.go`): a reasoning model's chain of thought surviving a tool
+  call, which chat-completions has no field for. So the reasoning ITEM with its
+  `encrypted_content` is what gets replayed, never a summary alone — a summary
+  is prose about the reasoning. `Store` is FALSE by default against the API's
+  own default (third-party retention is the caller's decision to make out
+  loud), `previous_response_id` is never sent (the transcript is the caller's),
+  and detection can never name this dialect, since the model list looks
+  identical. Depth: `go/README.md`, PARITY.md §4a.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
   end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
   nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
@@ -99,6 +119,15 @@ side of that line it falls on — do not put it on both.
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
   safe.
+- **A tool is an individual thing, and nothing groups them.** `Tool` is
+  `Decl`/`Execute`/`NeedsApproval`, and a run's toolset is a flat `Tools`
+  slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
+  composite, and no view wrapper: concatenating toolsets is `append`, and
+  restricting one is `Readonly()`/`Subset()` returning a shorter slice. A
+  wrapper whose only job is to hide part of another wrapper is the design
+  this replaced -- do not reintroduce it. The call id being answered is not
+  an `Execute` argument: it rides the context (`WithToolCallID`/`ToolCallID`),
+  which `Run` sets around every call, because almost no tool wants it.
 - **There is NO turn cap, and adding one back is a regression.** No
   `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
   tools-withheld final turn. A counted cap cannot tell a model looping
@@ -113,17 +142,41 @@ side of that line it falls on — do not put it on both.
   ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
   the failure and the wait. A retry notification is not a stream event and
   never withholds a retry.
-- Exact strings are contract: `DeniedMessage`, the executor refusal texts,
+- Exact strings are contract: `DeniedMessage`, the sub-agent refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the stuck nudge
   (`stuckNudgeInstruction`; `StuckNudgeAt`/`StuckFailAt` are constants, not
   knobs), the compaction
-  request text, the param-strip regexes, the overflow regex, and the two
+  request text, the param-strip regexes, the overflow regex, and the
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
   and allowed_tools error texts, `SubagentCutOffNote`,
-  `SubagentNoReportText`, the context-summary and web-summary
-  prompts, the web_fetch validation/cap/result texts) are pinned by tests
-  and by PARITY.md. Do not "improve" them.
+  `SubagentNoReportText`, `SubagentLaunchReceipt` and the
+  `FormatSubagentDelivery` text, the context-summary and web-summary
+  prompts, the web_fetch validation/cap/result texts, the todo_write
+  description/schema/teaching errors and `RenderTodos`, and every word the
+  seven file tools render — descriptions, schemas, the cap announcements,
+  and grep's real-negative sentence) are pinned by tests and by PARITY.md.
+  Do not "improve" them.
+- **A tool's schema is INFERRED from the struct its handler decodes**
+  (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go` because
+  the runtime is stdlib-only). Never hand-write one: that is a second
+  declaration of the argument list, and nothing keeps it true. Field prose is
+  the `jsonschema` tag; `omitempty` is what makes an argument optional; a
+  field with no json tag panics at construction.
+- **A GitHub failure ESTABLISHES its cause, and reports the most informative
+  attempt.** The anonymous read runs LAST and its 401 says only that no
+  credential was sent, so returning it made a spent rate limit read as a
+  permanent auth problem (`MoreInformativeAuthFailure`). A write that
+  exhausts its credentials re-reads the repository before blaming them: a
+  404 on a named object with the repository readable means the OBJECT is
+  gone. Writes use `WriteTokens` only and never fall through to anonymous.
+- **A file tool's rendering IS the tool.** A cap that bites is announced
+  (truncated listing, `find_files` at its limit, `grep` at `MaxHits`) and an
+  empty `grep` states that every line in scope was read, because a partial
+  result that reads as complete is worse than no result. That is also why a
+  scope the mount does not hold is an ERROR rather than an empty result, and
+  why a single FILE is a scope (`WithinScope`) — treating one as a directory
+  made every file-scoped search answer "no matches" for text right there.
 - **A sub-agent's report is what it ANSWERED, never what it was mid-way
   through saying.** A backend that fails to parse a model's tool-call
   template makes the model emit the call as text, so the run ends on an

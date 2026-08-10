@@ -18,7 +18,7 @@ func TestCompact(t *testing.T) {
 		{Role: RoleAssistant, Content: "reply"},
 	}
 	req := Request{Model: "m", System: "you compact", Messages: history,
-		Tools: []Tool{{Name: "should-be-stripped"}}}
+		Tools: []ToolDecl{{Name: "should-be-stripped"}}}
 
 	res, err := Compact(context.Background(), provider, req)
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestOneShot(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("  My Title  ")}}}
 	text, usage, err := OneShot(context.Background(), provider, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "name this"}},
-		Tools: []Tool{{Name: "stripped"}},
+		Tools: []ToolDecl{{Name: "stripped"}},
 	}, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "My Title", text, "trimmed final text")

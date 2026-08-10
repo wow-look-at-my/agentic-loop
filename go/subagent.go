@@ -1,9 +1,7 @@
 package agentic
 
 import (
-	"context"
 	"encoding/json"
-	"strconv"
 	"strings"
 )
 
@@ -134,7 +132,7 @@ type SubagentActivity struct {
 	IsError bool // tool_result only: the tool reported an error
 }
 
-// SubagentConfig configures NewSubagentExecutor.
+// SubagentConfig configures NewSubagentTool.
 type SubagentConfig struct {
 	// Provider and Model run the sub-agent (typically the same as the parent
 	// turn's). MaxTokens and Extra are forwarded to every sub-agent model call
@@ -146,11 +144,11 @@ type SubagentConfig struct {
 	Model     string
 	MaxTokens int
 	Extra     map[string]any
-	// Tools is the parent's FULL tool executor (every tool the parent turn
-	// has). The executor derives the read-only subset from it for the default
-	// sub-agent toolset, but a non-read-only tool the orchestrator names in
-	// allowed_tools is granted explicitly. nil runs the sub-agent tool-less.
-	Tools ToolExecutor
+	// Tools is the parent's FULL toolset (every tool the parent turn has). The
+	// read-only subset of it is the default sub-agent toolset, but a
+	// non-read-only tool the orchestrator names in allowed_tools is granted
+	// explicitly. Empty runs the sub-agent tool-less.
+	Tools Tools
 	// ParentSystem and ParentMessages are the parent conversation's input
 	// context — the source for the share_context modes. The system prompt is
 	// prepended as a system message before selection, so last_n/messages
@@ -159,8 +157,17 @@ type SubagentConfig struct {
 	ParentSystem   string
 	ParentMessages []Message
 	// Gate bounds concurrent sub-agent execution (share one Gate across the
-	// executors that should share the limit). nil = no limit.
+	// tools that should share the limit). nil = no limit.
 	Gate *Gate
+	// Runs makes run_subagent ASYNCHRONOUS: the call returns a receipt as soon
+	// as the sub-agent is launched, so the orchestrator can fan several out in
+	// one turn and keep working, and each report is delivered between turns
+	// through this registry (Run drains it; a host driving its own loop calls
+	// Pending/Collect itself).
+	//
+	// nil keeps the call synchronous -- it blocks until the sub-agent answers,
+	// and one call can only ever produce one running sub-agent.
+	Runs *SubagentRuns
 	// SystemPrompt overrides DefaultSubagentSystemPrompt when non-empty.
 	SystemPrompt string
 	// OnActivity, when non-nil, receives live telemetry: a step per sub-agent
@@ -169,43 +176,42 @@ type SubagentConfig struct {
 	OnActivity func(SubagentActivity)
 }
 
-// subagentExecutor implements the run_subagent tool. The tool is deliberately
-// NOT marked read-only, so ReadonlyView excludes it from a sub-agent's default
-// toolset, and grantableTools omits it from the set allowed_tools can name —
-// so a sub-agent can never spawn another (no recursion).
-type subagentExecutor struct {
+// subagentTool implements run_subagent. It is deliberately NOT marked
+// read-only, so Tools.Readonly excludes it from a sub-agent's default toolset,
+// and grantableTools omits it from the set allowed_tools can name — so a
+// sub-agent can never spawn another (no recursion).
+type subagentTool struct {
 	cfg      SubagentConfig
 	system   string
-	readonly ToolExecutor
+	readonly Tools
 }
 
-// NewSubagentExecutor builds the run_subagent tool executor: a ToolExecutor
-// advertising one tool that runs a nested, in-memory agentic loop (this
-// package's Run) on cfg.Provider and reports back only the sub-agent's final
-// answer. Compose it with the rest of the toolset via NewComposite.
-// NeedsApproval always reports false — wrap the executor if launching
+// NewSubagentTool builds the run_subagent tool: one tool that runs a nested,
+// in-memory agentic loop (this package's Run) on cfg.Provider and reports back
+// only the sub-agent's final answer. Append it to the rest of the toolset like
+// any other tool. NeedsApproval always reports false — wrap it if launching
 // sub-agents should be approval-gated.
-func NewSubagentExecutor(cfg SubagentConfig) ToolExecutor {
+func NewSubagentTool(cfg SubagentConfig) Tool {
 	system := strings.TrimSpace(cfg.SystemPrompt)
 	if system == "" {
 		system = DefaultSubagentSystemPrompt
 	}
-	return &subagentExecutor{cfg: cfg, system: system, readonly: ReadonlyView(cfg.Tools)}
+	return &subagentTool{cfg: cfg, system: system, readonly: cfg.Tools.Readonly()}
 }
 
-// Tools advertises run_subagent. Readonly is intentionally left false — see
-// the executor doc.
-func (e *subagentExecutor) Tools() []Tool {
-	return []Tool{{
+// Decl advertises run_subagent. Readonly is intentionally left false — see the
+// type doc.
+func (e *subagentTool) Decl() ToolDecl {
+	return ToolDecl{
 		Name:        SubagentToolName,
 		Description: subagentToolDescription,
 		InputSchema: e.advertisedSchema(e.grantableTools()),
-	}}
+	}
 }
 
 // NeedsApproval always reports false: approval wiring stays the caller's
 // concern (the source application keyed it to a user setting).
-func (e *subagentExecutor) NeedsApproval(string) bool { return false }
+func (e *subagentTool) NeedsApproval() bool { return false }
 
 // grantableTools returns the tools allowed_tools may name, in deterministic
 // order: every tool in the full toolset EXCEPT run_subagent itself (excluding
@@ -213,21 +219,18 @@ func (e *subagentExecutor) NeedsApproval(string) bool { return false }
 // The set includes non-read-only tools — naming one in allowed_tools is how
 // the orchestrator explicitly grants it; without that, only the read-only
 // subset is used by default.
-func (e *subagentExecutor) grantableTools() []Tool {
-	if e.cfg.Tools == nil {
-		return nil
-	}
-	var out []Tool
-	for _, t := range e.cfg.Tools.Tools() {
-		if t.Name != "" && t.Name != SubagentToolName {
-			out = append(out, t)
+func (e *subagentTool) grantableTools() []ToolDecl {
+	var out []ToolDecl
+	for _, d := range e.cfg.Tools.Decls() {
+		if d.Name != SubagentToolName {
+			out = append(out, d)
 		}
 	}
 	return out
 }
 
 // grantableToolNames is the advertised names of grantableTools.
-func grantableToolNames(tools []Tool) []string {
+func grantableToolNames(tools []ToolDecl) []string {
 	names := make([]string, 0, len(tools))
 	for _, t := range tools {
 		names = append(names, t.Name)
@@ -243,7 +246,7 @@ func grantableToolNames(tools []Tool) []string {
 // static schema unchanged (allowed_tools is then inert). The map round-trip
 // keeps the static schema literal the single source of truth; any defensive
 // fall-through returns it intact.
-func (e *subagentExecutor) advertisedSchema(tools []Tool) json.RawMessage {
+func (e *subagentTool) advertisedSchema(tools []ToolDecl) json.RawMessage {
 	if len(tools) == 0 {
 		return subagentSchema
 	}
@@ -274,7 +277,7 @@ func (e *subagentExecutor) advertisedSchema(tools []Tool) json.RawMessage {
 // state)" so the model sees that listing one grants a side-effecting tool —
 // by default the sub-agent only gets read-only tools, and naming a tool here
 // is what makes a non-read-only one available.
-func allowedToolsDescription(tools []Tool) string {
+func allowedToolsDescription(tools []ToolDecl) string {
 	labels := make([]string, len(tools))
 	for i, t := range tools {
 		labels[i] = t.Name
@@ -299,280 +302,4 @@ type subagentArgs struct {
 	ContextMessageIndices []int    `json:"context_message_indices"`
 	CustomContext         string   `json:"custom_context"`
 	AllowedTools          []string `json:"allowed_tools"`
-}
-
-// Execute runs one sub-agent. Every misuse — a bad share_context selection,
-// an allowed_tools name that resolves to nothing — is a recoverable error
-// tool result that teaches the valid shape, never a Go error.
-func (e *subagentExecutor) Execute(ctx context.Context, call ToolCall) (ToolResult, error) {
-	if call.Name != SubagentToolName {
-		return ToolResult{Content: "unknown tool: " + call.Name, IsError: true}, nil
-	}
-	if e.cfg.Provider == nil || e.cfg.Model == "" {
-		return ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}, nil
-	}
-	var in subagentArgs
-	if err := json.Unmarshal([]byte(call.Arguments), &in); err != nil {
-		return ToolResult{Content: "invalid run_subagent arguments: " + err.Error(), IsError: true}, nil
-	}
-	if strings.TrimSpace(in.Prompt) == "" {
-		return ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}, nil
-	}
-
-	// Serialize per the shared Gate. Acquisition is cancellable so a caller
-	// disconnect (or a stopped turn) while waiting returns promptly.
-	release, err := e.cfg.Gate.Acquire(ctx)
-	if err != nil {
-		return ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}, nil
-	}
-	defer release()
-
-	// Pick the sub-agent's toolset. Default: the read-only subset only. When
-	// the orchestrator pins it with allowed_tools, select that subset from the
-	// FULL grantable set instead — so an explicitly-named non-read-only tool
-	// IS granted (and SubsetView wraps the full executor, not the read-only
-	// view, so it can actually run). An unresolved name is a recoverable tool
-	// error (it lists the valid tools) so the model can correct the call.
-	subTools := e.readonly
-	if len(in.AllowedTools) > 0 {
-		keep, terr := resolveAllowedTools(grantableToolNames(e.grantableTools()), in.AllowedTools)
-		if terr != "" {
-			return ToolResult{Content: terr, IsError: true}, nil
-		}
-		subTools = SubsetView(e.cfg.Tools, keep)
-	}
-
-	// Build the optional parent-context block the orchestrator asked to share
-	// and fold it into the task. A bad selection (e.g. last_n without a count)
-	// is a recoverable tool error so the model can correct the call.
-	block, errMsg := e.buildContextBlock(ctx, in)
-	if errMsg != "" {
-		return ToolResult{Content: errMsg, IsError: true}, nil
-	}
-	task := composeSubagentTask(block, in.Prompt)
-
-	res, runErr := Run(ctx, e.runConfig(call.ID, subTools), Request{
-		Model:     e.cfg.Model,
-		System:    e.system,
-		Messages:  []Message{{Role: RoleUser, Content: task}},
-		MaxTokens: e.cfg.MaxTokens,
-		Extra:     e.cfg.Extra,
-	})
-	if runErr != nil {
-		return ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}, nil
-	}
-	// Not just the final text: a run that ended by emitting a tool-call
-	// envelope as TEXT never answered, and passing that up as findings is the
-	// one failure the orchestrator cannot detect for itself.
-	return subagentReport(res.Final.Content), nil
-}
-
-// runConfig assembles the nested Run's Config: the sub-agent's toolset, the
-// approve-everything Approver (the explicit allowed_tools grant is itself the
-// authorization — the source loop never consulted NeedsApproval), and, when
-// the host listens, the activity telemetry hooks stamped with the parent
-// call's ID.
-func (e *subagentExecutor) runConfig(callID string, subTools ToolExecutor) Config {
-	cfg := Config{
-		Provider: e.cfg.Provider,
-		Tools:    subTools,
-		Approver: approveAll{},
-	}
-	act := e.cfg.OnActivity
-	if act == nil {
-		return cfg
-	}
-	cfg.turnHook = func(turn int) {
-		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
-	}
-	cfg.Events = Events{
-		OnToolCall: func(c ToolCall) error {
-			act(SubagentActivity{
-				CallID:  callID,
-				Kind:    SubagentActivityToolCall,
-				Tool:    c.Name,
-				Detail:  subagentPreview(c.Arguments),
-				Content: c.Arguments,
-			})
-			return nil
-		},
-		OnToolResult: func(c ToolCall, r ToolResult) error {
-			act(SubagentActivity{
-				CallID:  callID,
-				Kind:    SubagentActivityToolResult,
-				Tool:    c.Name,
-				Detail:  subagentPreview(r.Content),
-				Content: r.Content,
-				IsError: r.IsError,
-			})
-			return nil
-		},
-		// What the sub-agent itself said each turn. Without this a host can
-		// show every tool a sub-agent touched and still not show a word of its
-		// own reasoning or working notes — the run reads as a list of file
-		// accesses with a report appearing from nowhere at the end.
-		OnTurnEnd: func(turn int, comp *Completion, _ error) error {
-			if comp == nil {
-				return nil
-			}
-			if think := thinkingText(comp.Message.Thinking); think != "" {
-				act(SubagentActivity{
-					CallID:  callID,
-					Kind:    SubagentActivityThinking,
-					Turn:    turn,
-					Detail:  subagentPreview(think),
-					Content: think,
-				})
-			}
-			if text := comp.Message.Content; strings.TrimSpace(text) != "" {
-				act(SubagentActivity{
-					CallID:  callID,
-					Kind:    SubagentActivityText,
-					Turn:    turn,
-					Detail:  subagentPreview(text),
-					Content: text,
-				})
-			}
-			return nil
-		},
-	}
-	return cfg
-}
-
-// thinkingText joins a completion's reasoning blocks into one string.
-func thinkingText(blocks []ThinkingBlock) string {
-	if len(blocks) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(blocks))
-	for _, b := range blocks {
-		if b.Text != "" {
-			parts = append(parts, b.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-// approveAll is the nested run's Approver: a tool the sub-agent holds is
-// authorized by construction (read-only by default, or explicitly granted via
-// allowed_tools), so nothing is gated — matching the source loop, which
-// executed sub-agent tool calls without consulting the approval flow.
-type approveAll struct{}
-
-// Ask always allows.
-func (approveAll) Ask(context.Context, ToolCall) (bool, error) { return true, nil }
-
-// parentContext is the parent conversation's full input context: the system
-// prompt (when non-empty) followed by the messages — the same list shape the
-// source application selected over, so last_n/messages indices count
-// identically.
-func (e *subagentExecutor) parentContext() []Message {
-	if e.cfg.ParentSystem == "" {
-		return e.cfg.ParentMessages
-	}
-	out := make([]Message, 0, len(e.cfg.ParentMessages)+1)
-	out = append(out, Message{Role: RoleSystem, Content: e.cfg.ParentSystem})
-	out = append(out, e.cfg.ParentMessages...)
-	return out
-}
-
-// buildContextBlock renders the parent-conversation context the orchestrator
-// chose to share (share_context). It returns the rendered block (possibly
-// empty when there is nothing to share) or a non-empty errMsg describing a
-// misuse the model should fix. The summary mode makes one bounded model call.
-func (e *subagentExecutor) buildContextBlock(ctx context.Context, in subagentArgs) (block, errMsg string) {
-	switch strings.ToLower(strings.TrimSpace(in.ShareContext)) {
-	case "", "none":
-		return "", ""
-	case "custom":
-		c := strings.TrimSpace(in.CustomContext)
-		if c == "" {
-			return "", "share_context=custom requires custom_context text"
-		}
-		return c, ""
-	case "full":
-		return RenderTranscript(e.parentContext()), ""
-	case "last_n":
-		if in.ContextMessageCount <= 0 {
-			return "", "share_context=last_n requires context_message_count (a positive integer)"
-		}
-		return RenderTranscript(SelectLastN(e.parentContext(), in.ContextMessageCount)), ""
-	case "messages":
-		if len(in.ContextMessageIndices) == 0 {
-			return "", "share_context=messages requires context_message_indices (1 = the most recent message)"
-		}
-		return RenderTranscript(SelectByEndIndices(e.parentContext(), in.ContextMessageIndices)), ""
-	case "summary":
-		parent := e.parentContext()
-		if len(parent) == 0 {
-			return "", ""
-		}
-		summary, err := generateContextSummary(ctx, e.cfg.Provider, e.cfg.Model, parent, e.cfg.MaxTokens, e.cfg.Extra)
-		if err != nil {
-			return "", "failed to summarize the parent conversation: " + err.Error()
-		}
-		return summary, ""
-	default:
-		return "", "unknown share_context mode " + strconv.Quote(in.ShareContext) + " (want none, full, last_n, messages, summary, or custom)"
-	}
-}
-
-// resolveAllowedTools maps the orchestrator's requested tool names onto the
-// exact advertised names of the sub-agent's grantable tools (read-only ones
-// plus any non-read-only tool the orchestrator may explicitly name). A request
-// matches by exact advertised name, or — leniently — by its bare name (the
-// part after "__") when that is unambiguous, so dropping a server prefix
-// still works. It returns the advertised names to keep (in advertised order),
-// or a non-empty errMsg (which lists the available tools) when a requested
-// name resolves to nothing or the sub-agent has no tools at all — a
-// recoverable tool error the model can correct.
-func resolveAllowedTools(available, requested []string) (keep []string, errMsg string) {
-	if len(available) == 0 {
-		return nil, "run_subagent: the sub-agent has no tools available, so allowed_tools cannot be applied -- omit it."
-	}
-	set := make(map[string]bool, len(available))
-	for _, n := range available {
-		set[n] = true
-	}
-
-	chosen := make(map[string]bool)
-	var unknown []string
-	for _, raw := range requested {
-		req := strings.TrimSpace(raw)
-		if req == "" {
-			continue
-		}
-		if set[req] {
-			chosen[req] = true
-			continue
-		}
-		// Bare-name fallback: match "<server>__<req>" when exactly one tool does.
-		var hits []string
-		for _, adv := range available {
-			if strings.HasSuffix(adv, "__"+req) {
-				hits = append(hits, adv)
-			}
-		}
-		if len(hits) == 1 {
-			chosen[hits[0]] = true
-			continue
-		}
-		unknown = append(unknown, req)
-	}
-
-	if len(unknown) > 0 {
-		return nil, "run_subagent: allowed_tools names no available tool: " + strings.Join(unknown, ", ") +
-			". Available tools: " + strings.Join(available, ", ") +
-			". Use these exact names, or omit allowed_tools to allow every read-only tool."
-	}
-	if len(chosen) == 0 {
-		return nil, "run_subagent: allowed_tools contained no usable tool names. Available tools: " +
-			strings.Join(available, ", ") + "."
-	}
-	for _, n := range available {
-		if chosen[n] {
-			keep = append(keep, n)
-		}
-	}
-	return keep, ""
 }

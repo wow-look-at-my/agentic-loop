@@ -71,7 +71,7 @@ func TestOpenAIRequestBody(t *testing.T) {
 			{Role: RoleTool, Content: "", ToolCallID: "call_1"},
 			{Role: RoleAssistant, Content: "found it", ToolCalls: []ToolCall{{ID: "call_2", Name: "srch", Arguments: "{}"}}},
 		},
-		Tools: []Tool{
+		Tools: []ToolDecl{
 			{Name: "srch", Description: "search", InputSchema: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)},
 			{Name: "noschema"},
 		},
@@ -247,7 +247,7 @@ func TestOpenAIStopReasonMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.finish, func(t *testing.T) {
 			h := &sseHandler{payloads: []string{
-				`{"choices":[{"delta":{"content":"x"},"finish_reason":"` + tc.finish + `"}]}`,
+				jsonMust(jsonObj{"choices": jsonArr{jsonObj{"delta": jsonObj{"content": "x"}, "finish_reason": tc.finish}}}),
 			}}
 			srv := httptest.NewServer(h)
 			defer srv.Close()

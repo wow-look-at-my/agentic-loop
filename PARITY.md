@@ -18,11 +18,12 @@ distilled, dependency-free extraction.
 | Type | Fields | Notes |
 |---|---|---|
 | `Role` | `"system" \| "user" \| "assistant" \| "tool"` | |
-| `ThinkingBlock` | `text`, `signature`, `redacted` | `redacted` holds an opaque `redacted_thinking` payload; when set, the other two are empty. |
+| `ThinkingBlock` | `text`, `signature`, `id`, `redacted` | `text` is always the readable reasoning and `signature` always the opaque token that must be replayed VERBATIM. Anthropic: native thinking (text+signature) or `redacted` (an opaque `redacted_thinking` payload; when set, the others are empty). Responses: summary → `text`, `encrypted_content` → `signature`, item id → `id`. OpenAI chat completions: `text` only, no replay token — which is why §4a exists. |
 | `ToolCall` | `id`, `name`, `arguments` | `arguments` is the RAW JSON object **text** (OpenAI: concatenated streamed fragments; Anthropic: accumulated `input_json_delta.partial_json`). |
 | `Message` | `role`, `content`, `thinking[]`, `toolCalls[]`, `toolCallID`, `toolIsError` | thinking/toolCalls assistant-only; toolCallID/toolIsError tool-only. |
-| `Tool` | `name`, `description`, `inputSchema`, `readonly` | nil/absent schema marshals as `{"type":"object"}`. `readonly` is never sent to the upstream. |
-| `ToolResult` | `content`, `isError` | Text-only by design (see cuts). |
+| `ToolDecl` | `name`, `description`, `inputSchema`, `readonly` | nil/absent schema marshals as `{"type":"object"}`. `readonly` is never sent to the upstream. |
+| `ToolContentPart` | `type`, `text?`, `data?`, `mimeType?`, `uri?`, `name?`, `description?` | An MCP content block, or a block a tool and its host agree on. JSON wire names: `type`, `text`, `data`, `mime_type`, `uri`, `name`, `description` (everything but `type` omitted when empty). |
+| `ToolResult` | `content`, `parts[]`, `isError` | `content` is what the MODEL is fed. `parts` is structured content for the HOST to render (images, audio, files, a tool's own block) and is **never** sent to the model, so a result can carry a megabyte of image at no context cost. `Run` passes the whole result to `Events.OnToolResult`; nothing else in the loop reads `parts`. |
 | `Usage` | `promptTokens`, `completionTokens`, `totalTokens`, `cacheReadTokens?`, `cacheWriteTokens?` | The two cache fields are **tri-state**: absent/undefined = provider reported no cache info; a number (including 0) = a real report. Never zero-fill, never estimate. |
 | `PromptProgress` | `processed`, `total`, `cache`, `timeMS` | Wire-faithful to the upstream `prompt_progress` object (`{total, cache, processed, time_ms}`). |
 | `Timings` | `promptN`, `promptMS`, `predictedN`, `predictedMS` | Wire-faithful to the llama.cpp-style chunk `timings` object (`{prompt_n, prompt_ms, predicted_n, predicted_ms}`; the `_ms` fields are floats). Decode only — the library NEVER synthesizes timings from wall-clock time. |
@@ -31,18 +32,21 @@ distilled, dependency-free extraction.
 | `Result` | `messages`, `final`, `usages[]`, `turns` | `usages` = one entry per model call IN ORDER, never summed (successive prompts overlap; summing double-counts the shared prefix). |
 
 Seams (interfaces): `Provider.complete(req, events) -> Completion`
-(streaming under the hood), `ToolExecutor {tools(), execute(call),
-needsApproval(name)}`, `Approver {ask(call) -> boolean}` (throw = decision
-never arrived).
+(streaming under the hood), `Tool {decl(), execute(args), needsApproval()}`
+-- ONE tool, and a run's toolset is a flat ordered list of them --
+`Approver {ask(call) -> boolean}` (throw = decision never arrived).
 
 **Provider construction is one factory function per dialect over a shared
 config base.** The dialect implementations are internal — NOT exported, no
-exported dialect classes, and no dialect string enum: consumers call the
-dialect's factory (Go: `NewOpenAIProvider(config)` /
-`NewAnthropicProvider(config)`) and hold only the `Provider` interface. The
+exported dialect classes, and no dialect string enum selecting one:
+consumers call the dialect's factory (Go: `NewOpenAIProvider(config)` /
+`NewResponsesProvider(config)` / `NewAnthropicProvider(config)`) and hold
+only the `Provider` interface. (The `Dialect` strings of §10f name a
+protocol for a host's own settings; they never construct anything.) The
 shared connection-config shape — the required `baseURL` plus
 `apiKey`/`httpClient`/`userAgent`/`headers` — is embedded/extended by the
-per-dialect configs: the OpenAI config adds `selfHosted`, the Anthropic
+per-dialect configs: the OpenAI config adds `selfHosted`, the Responses
+config adds `store`, the Anthropic
 config adds `version` (the anthropic-version header) and `disableCaching`.
 An empty baseURL fails fast with a permanent (never-retried) error. There
 are no per-dialect base-URL defaults: baseURL is always explicit.
@@ -103,20 +107,30 @@ the loop owns WHAT calls to make and what to do with results. Hence retry
 (§6) and the param stripper (§7) are BOTH provider-side, and neither the
 loop config nor the sub-agent config carries a retry policy.
 
-## 2. Executor combinators
+## 2. The toolset
 
-- **Composite**: skip nil executors and empty tool names; **first
-  registration of a name wins**; advertised order = iteration order across
-  executors; zero tools ⇒ the combinator itself is nil/absent ("no tools").
-  Unknown call ⇒ recoverable error result `unknown tool: <name>` (never a
-  thrown error). `needsApproval` routes to the owning executor; unknown ⇒
-  false.
-- **ReadonlyView**: only `readonly` tools; nil inner or zero survivors ⇒
-  nil. Refusal text: `tool not available to subagent (read-only tools
-  only): <name>`. `needsApproval` = allowed && inner's flag.
-- **SubsetView(names)**: only named tools; nil inner / empty names / no
-  matches ⇒ nil. Refusal text: `tool not in the sub-agent's allowed set:
-  <name>`.
+A tool is an individual thing and nothing groups them: a run's toolset is a
+flat ordered list of `Tool`, and restricting it is filtering that list. There
+is NO executor, no composite, and no view wrapper -- a port that reintroduces
+one has diverged.
+
+- **Concatenation** is list append. **First tool to claim a name answers it**;
+  advertised order = list order (it is part of the prompt-cache prefix).
+- **decls()/names()**: skip tools with an empty name -- a provider rejects
+  them, and one malformed entry must not fail every turn.
+- **find(name)**: a miss is NOT an error here; the loop answers it with the
+  recoverable result `unknown tool: <name>` (never a thrown error).
+- **readonly()**: the `readonly` tools. The sub-agent default toolset: a
+  mutating tool is ABSENT from it, not refused by it.
+- **subset(names)**: the named tools, in the LIST's order, not the caller's.
+- The call id being answered is not an `execute` argument: it rides the
+  ambient context (`withToolCallID` / `toolCallID`), which `run` sets around
+  every execute. Only the sub-agent tool reads it.
+- **Sub-agent refusal texts** stay contract, now produced by the loop's
+  unknown-tool text for a sub-run: `tool not available to subagent
+  (read-only tools only): <name>` when the sub-agent got the default
+  read-only set, `tool not in the sub-agent's allowed set: <name>` when
+  `allowed_tools` pinned it.
 
 ## 3. OpenAI dialect
 
@@ -338,6 +352,108 @@ same shape from the merged message_start/message_delta state.
 is a permanent (never-retried) error. The SSE path always sets `streamed`
 TRUE.
 
+## 4a. OpenAI Responses dialect
+
+**Why it exists**: it is the only dialect that can replay a reasoning
+model's chain of thought across a tool call. Chat completions has no field
+for it, so the model re-derives its reasoning every turn and the prompt
+cache breaks at each reasoning boundary. Do NOT port this as a variant of
+§3 — the wire vocabulary is different end to end.
+
+**Endpoint**: POST `BaseURL + "/responses"` (BaseURL includes `/v1`, the
+same root as §3). Headers identical to §3: `Content-Type`, `Accept:
+text/event-stream`, `Authorization: Bearer` when a key is set, `User-Agent`
+when set, then caller headers.
+
+**Body build order**: merge `extra` first, skipping the reserved keys
+`input`, `instructions`, `model`, `stream`, `tools`; then `model`,
+`instructions` (only when the system prompt is non-empty — it is NOT a
+message on this dialect), `input`, `stream: true`, `store`.
+`include: ["reasoning.encrypted_content"]` **only when extra supplied no
+`include` key**. `tools` only when non-empty; `max_output_tokens` (not
+`max_tokens`) only when `maxTokens > 0`; `prompt_cache_key` when set.
+
+- **`store` defaults to FALSE**, contrary to the API's own default. It is a
+  config field. A port that inherits the API default has silently opted its
+  callers into third-party retention of every prompt.
+- **`previous_response_id` is NEVER sent.** The transcript is the caller's;
+  a server-side conversation id would make it a partial lie about what the
+  model sees. Every call sends its full input.
+
+**Tools**: `{type:"function", name, description?, parameters}` — flat, with
+NO nested `function` object. A nil schema still becomes `{"type":"object"}`.
+
+**Input items** (`input` is an ordered item list, not messages):
+- user/system message → `{type:"message", role, content:[{type:"input_text", text}]}`
+- assistant text → `{type:"message", role:"assistant", content:[{type:"output_text", text}]}`
+- tool call → `{type:"function_call", call_id, name, arguments}`
+- tool result → `{type:"function_call_output", call_id, output}` — a
+  top-level item, NOT a message with a role. `call_id` (not the item id) is
+  what pairs them.
+- reasoning → `{type:"reasoning", id?, summary:[{type:"summary_text", text}]?, encrypted_content}`
+
+**Assistant item ORDER is contract**: reasoning items, then the text, then
+the tool calls — the order the model emitted them.
+
+**A reasoning block is replayed only when it carries the payload**
+(`ThinkingBlock.signature`, the encrypted content). A summary-only block is
+DROPPED, never sent alone: a summary is prose about the reasoning, and
+sending it as the reasoning hands the model a paraphrase of its own
+thinking.
+
+**Streamed events acted on** (each payload carries its own `type`, so the
+SSE `event:` line is not read):
+- `response.output_text.delta` → content delta, emit `onText`
+- `response.reasoning_summary_text.delta` → reasoning delta, emit `onReasoning`
+- `response.output_item.done` → a finished item: `function_call` appends a
+  tool call, `reasoning` appends a ThinkingBlock. **Text items are ignored
+  here** — the deltas already carried the text, and taking both doubles it.
+- `response.completed` / `response.incomplete` → the terminal Response:
+  usage and stop reason. Items in `response.output` are NOT re-read (each
+  already arrived as an `output_item.done`; re-reading duplicates calls).
+- `response.failed` / `error` → a failure inside a 200.
+
+Everything else (`response.output_item.added`,
+`response.function_call_arguments.delta`, the part lifecycle) is ignored:
+finished items arrive whole, so there is **no fragment accumulator** on this
+dialect, and a fragment stream nobody needs would be a second source of
+truth for the same bytes. Unparseable payloads are skipped silently, as in §3.
+
+**ThinkingBlock mapping**: summary text → `text`, `encrypted_content` →
+`signature`, item id → `id`. When the stream produced summary text but no
+replayable item, keep a text-only block — unable to replay beats losing the
+reasoning from the transcript.
+
+**Usage** (different field names from §3; decode its own type):
+`{input_tokens, output_tokens, total_tokens,
+input_tokens_details:{cached_tokens?}, output_tokens_details:{reasoning_tokens?}}`
+→ `promptTokens`/`completionTokens`/`totalTokens`. `input_tokens` ALREADY
+includes cached tokens, so it passes through untouched. A reported
+`cached_tokens` sets `cacheReadTokens` and an explicit `cacheWriteTokens: 0`
+(this API bills no cache-write class); no cache detail at all leaves BOTH
+nil. `reasoningTokens` comes from `output_tokens_details`. `costUsd` never
+exists on this dialect. `rawUsage` is the `response.usage` object verbatim.
+Merging follows §5 unchanged.
+
+**Stop reason**: there is no `finish_reason`. `incomplete_details.reason ==
+"max_output_tokens"` → `max_tokens`; any other non-empty reason passes
+through raw; otherwise the SHAPE of the turn decides — tool calls present →
+`tool_use`, else `end_turn`.
+
+**Failures inside a 200**: `response.failed` (use `response.error.message`,
+appending ` (code)` when present) and a stream-level `error` event both
+produce a **permanent** (never-retried) error — re-sending a request the
+server accepted and then rejected only gets billed twice. Nothing streamed →
+nil completion; after data → the partial completion alongside the error,
+exactly as §3.
+
+**Non-streaming fallback**: a 2xx that is not `text/event-stream` is the
+plain Response object, reassembled with `streamed: false`. There the
+`output` items ARE the only source (no deltas arrived): `message` content
+parts of type `output_text` concatenate, `function_call` items become tool
+calls, `reasoning` items become ThinkingBlocks. `status: "failed"` is an
+error, not a blank answer.
+
 ## 5. Usage merging, flooring, cache normalization
 
 - **Merge rule** (per model call): streamed usage objects are monotonic
@@ -403,7 +519,7 @@ TRUE.
   retrying and surfaces THAT error in place of the upstream's. No event
   fires for an attempt that succeeds, or for a failure that is not retried.
 - **The loop has NO retry knob.** `Run`'s config MUST NOT carry a retry
-  policy, and neither must the sub-agent executor's config; both inherit
+  policy, and neither must the sub-agent tool's config; both inherit
   whatever the Provider does. A retried call counts as ONE turn, trivially,
   because the loop only sees the outcome. A custom Provider implementation
   owns its own retry.
@@ -457,7 +573,7 @@ gone there is nothing left to diverge on.
   not-progressing) and the caller's cancellation context. A port MUST NOT
   reintroduce a cap.
 - Each turn advertises `tools.tools()`; `request.tools` is ignored and
-  overwritten (nil executor ⇒ no tools advertised). **Every** turn carries
+  overwritten (an empty toolset ⇒ no tools advertised). **Every** turn carries
   them — there is no final turn that withholds tools, because there is no
   final turn.
 - Continue looping while the turn produced tool calls. Per call, in order:
@@ -472,7 +588,7 @@ gone there is nothing left to diverge on.
      that assistant message's toolCalls (content/thinking preserved),
      return the partial Result together with the error — the transcript
      stays replayable with no orphans;
-  3. execute; an executor throw/error becomes
+  3. execute; a tool throw/error becomes
      `tool execution failed: <message>` with isError (the loop NEVER
      aborts on tool failure);
   4. fire OnToolResult — a thrown/returned error ⇒ the same batch-clearing
@@ -500,7 +616,7 @@ gone there is nothing left to diverge on.
 - Internal turn hook: the loop exposes a package-internal per-turn hook
   (1-based turn number, fired as each NUMBERED turn begins; the stall
   wrap-up call is not a numbered turn). It is not public API — it exists
-  solely so the built-in subagent executor (§10) can emit its `turn`
+  solely so the built-in subagent tool (§10) can emit its `turn`
   activity at exactly the source's emission points. The port needs an
   equivalent internal seam.
 - **Public per-turn hooks** (in addition to the internal seam, which stays
@@ -514,7 +630,7 @@ gone there is nothing left to diverge on.
   return aborts the run like any other callback error: onTurnBegin aborts
   before the call (nothing counted), onTurnEnd after it (the completed data
   is kept, finalized like a mid-stream break).
-- With a nil executor, a hallucinated call gets the teaching result
+- With an empty toolset, a hallucinated call gets the teaching result
   `unknown tool: <name>` and the loop continues (deviation from the source
   subagent, which ended the loop; the teaching behavior is deliberate).
 - **Retry** is NOT the loop's concern (see §6): the Provider re-attempts
@@ -528,7 +644,7 @@ gone there is nothing left to diverge on.
   assistant message is appended with any dangling (capped last turn)
   toolCalls cleared.
 - **Stall fallback** (content empty at loop end):
-  - with an executor: one extra TOOL-LESS wrap-up call on transcript +
+  - with tools: one extra TOOL-LESS wrap-up call on transcript +
     user(wrapUpInstruction). The stalling turn's assistant message is NOT
     in that request (it was never appended — only the tool branch
     appends), so the wrap-up cannot be rejected for an unanswered tool
@@ -579,10 +695,14 @@ gone there is nothing left to diverge on.
   unchanged: a marker must never stand in for a failure, and a transient
   failure a caller means to retry must not be collapsed into "nothing
   changed".
-- Only read-only tools are eligible; `Reset` clears everything, and is
-  called when earlier outputs leave the model's context (compaction, a
-  rewound thread), since the marker only means anything while the full
-  output it refers to is still there.
+- **Eligibility is the deduper's own decision, not the caller's**:
+  `Collapse` takes the tool's DECLARATION and returns the content unchanged
+  for anything not `readonly` (a marker must never stand in for a side
+  effect) or unnamed. A loop re-deriving that rule before calling is a second
+  copy of it that nothing keeps in agreement.
+- `Reset` clears everything, and is called when earlier outputs leave the
+  model's context (compaction, a rewound thread), since the marker only means
+  anything while the full output it refers to is still there.
 - The marker text may claim ONLY that the output repeated, never that the
   arguments did — the deduper hashes output and does not see arguments, and
   identical output is equally what a tool that ignores an argument
@@ -597,14 +717,14 @@ gone there is nothing left to diverge on.
   ignores the field you changed — check its schema before trying a third
   phrasing.`
 
-## 10. Built-in tool executors (plugins)
+## 10. Built-in tools (plugins)
 
-The `ToolExecutor` seam IS the plugin interface: the built-ins are ordinary
-executors composed via the Composite; callers who don't use them see zero
-behavior change. Both are ports from the source application; the strings
-below are contract.
+The `Tool` seam IS the plugin interface: the built-ins are ordinary tools
+appended to a host's list; callers who don't append them see zero behavior
+change. They are ports from the source application; the strings below are
+contract.
 
-Both executors use `config.provider` exactly as given — never wrapped
+They use `config.provider` exactly as given — never wrapped
 implicitly. The source application routed every one of these model calls
 (the sub-agent's nested loop, the context-summary briefing, and the web
 summary) through its param-strip recovery layer (§7), so a caller/port
@@ -612,21 +732,21 @@ reproduces the source exactly by handing the built-ins a
 param-stripper-wrapped Provider — the same wrapped value given to the
 loop's own config.
 
-### 10a. run_subagent (`NewSubagentExecutor(SubagentConfig)`)
+### 10a. run_subagent (`NewSubagentTool(SubagentConfig)`)
 
 Config: `provider`, `model`, `maxTokens`, `extra`, `tools` (the parent's
-FULL executor; there is deliberately NO retry field — see §6), `parentSystem` +
+FULL toolset; there is deliberately NO retry field — see §6), `parentSystem` +
 `parentMessages` (the share_context source), `gate?`, `systemPrompt?` (empty ⇒
 `DefaultSubagentSystemPrompt`), `onActivity?`.
 
-- Tool name exactly `run_subagent`; `readonly` FALSE (so ReadonlyView drops
+- Tool name exactly `run_subagent`; `readonly` FALSE (so readonly() drops
   it from any sub-agent's default toolset) and the tool is excluded from
   its own grantable set — a sub-agent can never spawn another.
   `needsApproval` is always false (approval wiring is the caller's).
-- **Default sub toolset** = `ReadonlyView(tools)`. **`allowed_tools`**
+- **Default sub toolset** = `tools.readonly()`. **`allowed_tools`**
   selects from the FULL grantable set (every parent tool except
   run_subagent, empty names skipped), so naming a non-read-only tool
-  explicitly GRANTS it (`SubsetView` over the full executor). Matching:
+  explicitly GRANTS it (`tools.subset()` over the full list). Matching:
   exact advertised name, else unambiguous bare-name fallback — request `x`
   matches a single tool ending in `__x`. Blank entries are skipped.
 - **Advertised schema**: the static schema (the Go literal is the source of
@@ -727,7 +847,35 @@ FULL executor; there is deliberately NO retry field — see §6), `parentSystem`
   plus `SubagentCutOffNote`. Either way the result is `isError`. Matching
   is line-start only, so prose quoting those tokens mid-line is untouched.
 
-### 10b. web_fetch (`NewWebFetchExecutor(WebFetchConfig)`)
+#### 10a-async. Asynchronous launches (`SubagentRuns`)
+
+`config.runs` (a `SubagentRuns`) flips run_subagent from blocking to
+launch-and-report. Contract:
+
+- **Only an unparseable body still answers synchronously**; an unconfigured
+  model, an empty prompt, a bad share_context and an unresolved allowed_tools
+  name all reach the model as the REPORT, one delivery later.
+- The launch answers `subagentLaunchReceipt(description)` (exact text).
+- **Registry states**: `queued` -> `running` -> `done`/`error`, plus
+  `abandoned` for a run stranded when the turn ended. Each transition fires
+  the `onUpdate` callback with `{callID, label, prompt?, state, report?,
+  isError?, duration?}` -- transient telemetry, never model context.
+- **Launch is idempotent per call id**; unknown ids on markRunning/complete are
+  ignored. A call with no id gets one minted (`subagent_<n>`, per registry).
+- **collect()** blocks for the next report and returns EVERY ready one (several
+  finishing together cost one delivery), returns the context error on cancel,
+  and returns nothing without blocking when nothing is outstanding.
+  **take()** drains what has arrived without waiting; **cancelRemaining()**
+  marks the rest abandoned and returns how many.
+- **pending()** counts unfinished PLUS undelivered; a nil/absent registry
+  answers 0 to everything so a loop can consult one it never got.
+- **The loop drains it**: a turn that produced no tool calls and would END
+  while `pending() > 0` collects instead, appends
+  `formatSubagentDelivery(reports, running, 0)` as a USER message, and loops.
+  The delivery text is contract (header, per-report `FAILED`/`finished`
+  wording, the empty-report and still-running/abandoned sentences).
+
+### 10b. web_fetch (`NewWebFetchTool(WebFetchConfig)`)
 
 Config: `httpClient?` (nil ⇒ a 45 s-timeout client), `userAgent?` (sent on
 the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
@@ -775,6 +923,217 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   failure ⇒ `web_fetch summary failed: <err>`; empty output ⇒
   `web_fetch summary returned empty output`.
 
+### 10c. todo_write (`NewTodoTool(TodoConfig)`)
+
+Config: `write: (todos) => void | error` — the host's store. A nil/absent
+`write` refuses every call.
+
+- Tool name exactly `todo_write`; `readonly` FALSE (it writes host state a
+  sub-agent would overwrite for its parent); `needsApproval` false.
+  Description and schema: the Go literals. Schema shape: `todos` (required)
+  is an array of objects with `title` (required, string) and `state`
+  (optional, enum `pending` | `in_progress` | `done`).
+- **Whole-list replacement is the contract**: every call hands `write` the
+  complete list, in the model's order, with no ids. A host never merges. An
+  empty `todos` reaches `write` as an EMPTY, NON-NULL list (clearing the
+  list is a real instruction a host must be able to tell from a no-op).
+- **Normalization**: titles are trimmed; an absent or blank `state` becomes
+  `pending`.
+- **Validation** (exact error texts, none of which reach `write`):
+  `> 100` items ⇒ `too many tasks: the list holds at most 100, and you sent
+  <n>. Track the work at a coarser grain.`; blank title ⇒ `todos[<i>] has
+  an empty title; every task needs one`; title over 200 runes ⇒
+  `todos[<i>] has a title of <n> characters; the limit is 200. It is a task
+  name, not a description.`; unknown state ⇒ `todos[<i>] has state "<s>";
+  it must be one of pending, in_progress, done`. Unknown tool name ⇒
+  `unknown tool: <name>`; bad JSON ⇒ `invalid todo_write arguments: <err>`;
+  no writer ⇒ `the task list is unavailable: this run has nowhere to keep
+  it`; `write` returning an error ⇒ `could not save the task list: <err>`.
+- **Result parts**: a successful call carries ONE part, `type` exactly
+  `todo_list` (`TodoListPartType`), `mimeType` `application/json`, `text` the
+  validated list as a JSON array of `{title, state}` — including `[]` for a
+  cleared list, so a host's display empties with it. A refused call carries
+  NO part, so a host never blanks its display over a call that changed
+  nothing.
+- **Result text** (`RenderTodos`, exported so a host can render the same
+  text): empty ⇒ `Task list cleared.`; otherwise `Task list updated (<n> tasks):`
+  then one line per task, `\n<mark> <title>`, where mark is `[x]` done,
+  `[~]` in_progress, `[ ]` pending. The model gets the list back so a call
+  that dropped a task is visible in the reply, not only on the user's
+  screen.
+
+### 10d. The filesystem tools (`NewFileTools(FileToolsConfig)`)
+
+Config: `folders` (map from mount name — the leading path segment, no
+slash — to a `Folder`), `mountsBlurb` (appended to EVERY description),
+`notes` (keyed by tool name, appended to THAT tool's description only —
+a write's staging warning has no business in every read), `unavailable(mount)
+=> string`, `guard(path) => [blocked, reason]`. Each addendum is trimmed and
+joined with one space, and an empty one contributes nothing. An empty/all-nil
+`folders` returns NO tools, not tools that can only fail.
+
+Seven tools, names exactly `list_dir`, `read_file`, `find_files`, `grep`,
+`write_file`, `edit_file`, `delete_file`. The first four are `readonly`
+TRUE, the three writes FALSE (so a sub-agent's default read-only toolset
+excludes them); `needsApproval` is false on all seven — gating a write is
+the host's call, made by wrapping. Descriptions and schemas: the Go
+literals in `files_decl.go`.
+
+- **`Folder`**: `display(path)`, `list(path)`, `read(path)`,
+  `find(path, pattern, limit)`, `grep(path, query)`. Every method receives
+  the WHOLE virtual path as the model wrote it — the mount's grammar
+  (`/repos/<org>/<repo>@<ref>/<path>`) is the folder's business, never the
+  tool layer's. `WritableFolder` adds `writable(path) => [ok, why]`,
+  `create`, `replace`, `remove`, each returning the model-facing note.
+  `ReadOnlyExplainer.readOnlyReason(path)` lets a read-only folder name the
+  writable route.
+- **Resolution order** (`resolve`): blank path ⇒ `<tool> requires "path".`;
+  then `guard` (its reason verbatim, no tool prefix); then the mount, which
+  is `MountOf(path)` — the leading segment up to the first `/` **or `@`**,
+  so a ref suffix stays part of the path. An unmounted name ⇒
+  `<tool>: ` + `unavailable(mount)`, falling back to
+  `/<mount> is not available in this conversation.`
+- **Write routing**: a folder that is not writable ⇒ `<tool>: ` +
+  `readOnlyReason(path)` or `<display> is read-only.`; a writable folder
+  refusing THIS path ⇒ `<tool>: <why>`.
+- **Every failure is a recoverable result** (`isError` true, no thrown
+  error): bad JSON ⇒ `invalid <tool> arguments: <err>`; a folder error ⇒
+  `<tool>: <err>`. A bad path is something the model corrects, never
+  something that ends a turn.
+- **Caps** — `find` default 20 / max 100, `grep` default 30 / max 100,
+  listing 1000 entries; a non-positive `limit` takes the default, then it
+  is clamped. **Every cap that bites is announced**: find at its limit adds
+  ` (first <n>; raise limit or narrow the pattern for more)`; grep adds
+  `(stopped at <n> matching lines — more exist. Narrow the path or "glob",
+  or raise "limit" to at most 100.)`; a truncated listing adds
+  `(listing truncated; narrow the path or use find_files)`.
+- **`read_file`'s window** (`SliceLines`, 1-based inclusive `offset`, so a
+  grep line number goes straight in): no offset and no limit ⇒ the whole
+  file, no note. Otherwise the header gains `(lines <a>-<b> of <total>)`,
+  plus `; <n> more follow — re-read with offset <b+1>` when more remain;
+  an offset past the end ⇒ `(this file has <n> lines; line <o> is past its
+  end)` with an empty body. A trailing newline is not a line. A folder's own
+  `truncatedNote` is a SEPARATE header line from the window note — merging
+  them would misstate what the line numbers are relative to.
+- **Listing rendering**: canonical path, optional `  (<note>)`, then
+  directories before files, each sorted by name; `dir   <name>/`, else
+  `file  <name> (<HumanSize>)`, with `kind` overriding the type column for
+  symlinks/submodules (and suppressing the size), and `  <note>` appended.
+  Empty ⇒ `(empty directory)`.
+- **`grep`'s empty result is a REAL NEGATIVE** and must say so, verbatim:
+  `grep "<pattern>" in <where>: no matches.` then
+  `Every line of every file in scope was searched, so the text is genuinely
+  absent from it — this is a real negative, not a search that gave up.` A
+  `GrepResult.note` (partial coverage) is appended after it — that is the
+  only thing allowed to qualify the claim. Hits render grouped by file:
+  `grep "<p>" in <where>[ (<globs>)]: <n> matching line(s) in <m> file(s)`,
+  then per file a blank line, the FULL virtual path, and `%7d: <text>` per
+  hit — so every hit feeds straight back into `read_file`'s `offset`.
+- **Scope is the path and nothing else**, for both `find_files` and `grep`,
+  and **a single FILE is a scope** (`WithinScope`): rendering one as a
+  directory makes every file-scoped search answer "no matches" for text
+  right there. A path the mount does not hold is an ERROR, never an empty
+  result.
+- **`MatchesPattern`**: a pattern with `*?[` is glob-matched against the
+  base name and then the full path; anything else is a case-insensitive
+  substring of the path. `SplitGlobs` splits `glob` on commas and trims.
+  Both exported, so a folder filters by the same rule the description
+  promises.
+- **`edit_file` guards its own contract**: an empty `old_text` ⇒
+  `edit_file requires "old_text": the exact existing text to replace,
+  occurring exactly once in the file. To add a brand-new file use
+  write_file.` A blank `pattern` ⇒ `find_files requires "pattern": a
+  filename glob (*.go) or a plain substring of the name or path.` /
+  `grep requires "pattern": the text to find inside the files.`
+
+### 10e. The GitHub module (`NewGitHub` + `NewRepoTools`)
+
+The client is a separate value from the tools because several consumers
+share it — the tools, a `/repos` folder for the file tools, a
+credential-test button — and they must share one credential order and one
+winning-token cache.
+
+`GitHubConfig`: `baseURL` (default `https://api.github.com`), `tokens`
+(rotated), `writeTokens`, `cache` (a `RepoKeyCache`: `get(key)`/`set(key,
+credentialID)`), `httpClient`, `userAgent`. `ModelWriteTokens(tokens)`
+filters to the ones the user flagged model-writable — the host decides who
+is asking, the library never guesses.
+
+`RepoToolsConfig`: `gitHub` (**nil ⇒ NO tools**, never tools that can only
+fail) and `blocked(org, repo) => ToolResult | null`, which vetoes a WRITE
+only. Reads are never asked: history, pull requests and CI are not things a
+working copy holds a version of, and gating them left a checked-out
+repository's own CI unreachable.
+
+Three tools, named exactly `repo_read`, `repo_file_write`,
+`repo_pr_create`. `repo_read` is readonly TRUE and `needsApproval` false;
+the two writes are readonly FALSE and **declare `needsApproval` TRUE** —
+they reach GitHub and no undo exists.
+
+- **`repo_read`'s `what` is one declaration**, the ordered list `commits,
+  commit, prs, pr, issues, issue, status, check_run`. The handler table, the
+  schema enum and the "must be one of" error all derive from that one array,
+  so a read cannot exist in one and be missing from another.
+- **The reads that became file operations redirect by name**: `tree` ⇒
+  `list_dir`, `file` ⇒ `read_file`, `filenames` ⇒ `find_files`, each with an
+  example call on `/repos/<org>/<repo>/...`. A model calling the old name is
+  pointed at the new tool, never told the `what` is merely unknown.
+- **Credential order for a READ**: the cached winner for this repo, then
+  every token in order, then anonymously (so a public repository works with
+  no credential). A success calls `remember(key, credentialID)`.
+- **A failed read reports the MOST INFORMATIVE attempt**, never the
+  anonymous 401 — whose only content is that no credential was sent.
+  `MoreInformativeAuthFailure` picks it: a 403 or 404 seen by a real token
+  beats a 401 seen by none. This is why a spent rate limit stopped reading
+  as a permanent auth problem.
+- **A WRITE uses `writeTokens` only and never falls through to anonymous.**
+  When every write credential fails, it **re-reads the repository before
+  blaming them**: a 404 on a named object with the repository readable means
+  the OBJECT is gone, not the credential.
+- Caps: `RepoFileMaxRunes` and `RepoDiffMaxRunes` 200_000, one PR/issue body
+  20_000, one comment 5_000; list reads default `per_page` 10, hard cap 30.
+  Every cap that bites is announced in the rendered result.
+- `TestToken(...)` probes ONE credential against `/user` and explains a
+  failure through the same machinery, so a host's "test this token" button
+  is not a second implementation of the diagnosis.
+
+### 10f. Dialect detection (`DetectDialect` / `DialectOfModelList`)
+
+`Dialect` is `""` (auto), `"openai"`, `"anthropic"`, `"responses"`, with
+`valid()`, `label()` (`detect` / `openai-compatible` / `anthropic messages`
+/ `openai responses`) and `dialects()` returning all four, default first.
+The labels live here so a host's settings UI does not carry a second copy of
+the vocabulary.
+
+`DetectDialect(ctx, providerConfig)` does one `GET {baseURL}/v1/models`
+carrying **both** credential forms (`Authorization: Bearer` AND `x-api-key`
+plus `anthropic-version`), because which server is answering is the very
+thing being established, and each dialect ignores the other's header. It
+returns:
+
+- `DialectOpenAI` when the envelope has `"object": "list"`;
+- `DialectAnthropic` when the envelope has `has_more` (present at all,
+  either value);
+- otherwise, the first item's `type == "model"` ⇒ Anthropic, `object ==
+  "model"` ⇒ OpenAI.
+
+The ENVELOPE is checked before the items, so an EMPTY list still identifies
+its server. Anything else — a non-2xx, a body that is not JSON, a document
+of neither shape, a missing `baseURL` — is `DialectAuto` **with an error**,
+never a guess: a wrong dialect does not degrade, it breaks chat outright.
+The read is capped at 1 MiB.
+
+`DialectOfModelList(body)` is the same shape test over bytes the caller
+already has, exported so a host that fetches model lists anyway pays no
+extra request — and so the rule is declared once rather than reimplemented
+against a decoded struct.
+
+**Detection NEVER returns `"responses"`**, and a port must not invent a way
+for it to. An endpoint answers the same `/v1/models` document whether or not
+it also serves `/v1/responses`, so nothing there distinguishes them; §4a is
+a deliberate choice with a real trade-off, and the explicit setting is what
+a choice looks like.
+
 ## 11. Deliberate cuts (do NOT implement in ts/ either)
 
 - DB/persistence (message trees, leaf advancement, statuses) — the library
@@ -783,12 +1142,10 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   protocol and sinks). The subagent activity feed is a plain callback, not
   an event protocol.
 - The source's per-user tool settings (`disabled_tools` / `ask_tools`
-  lists, tool-name namespacing `<Server>__<tool>`): the built-in executors
+  lists, tool-name namespacing `<Server>__<tool>`): the built-in tools
   are composed or not composed; gating them is caller-side wrapping.
 - Title sanitization (`sanitizeTitle`, `<think>`-stripping, length caps) —
   `OneShot` returns raw trimmed text.
-- Structured tool-result content parts (multimodal blocks); `ToolResult` is
-  text-only.
 - Model-gated thinking/temperature/effort tables (the reference app's
   per-model gates) — callers own `extra`.
 - Pricing/cost computation.

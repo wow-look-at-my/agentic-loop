@@ -23,6 +23,14 @@ func mustAnthropic(t *testing.T, cfg AnthropicConfig) Provider {
 	return p
 }
 
+// mustResponses builds a Provider via NewResponsesProvider, failing on error.
+func mustResponses(t *testing.T, cfg ResponsesConfig) Provider {
+	t.Helper()
+	p, err := NewResponsesProvider(cfg)
+	require.NoError(t, err)
+	return p
+}
+
 // oaProvider is shorthand for an OpenAI-dialect test provider. Providers retry
 // by default, so tests inject the fast no-sleep policy — otherwise every
 // retrying test would wait out real exponential backoff.
@@ -91,5 +99,11 @@ func TestConstructorsRequireBaseURL(t *testing.T) {
 	assert.Nil(t, p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "AnthropicConfig.BaseURL")
+	assert.False(t, IsTransient(err), "misconfiguration is permanent")
+
+	p, err = NewResponsesProvider(ResponsesConfig{})
+	assert.Nil(t, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ResponsesConfig.BaseURL")
 	assert.False(t, IsTransient(err), "misconfiguration is permanent")
 }

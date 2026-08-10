@@ -1,17 +1,18 @@
 // Package agentic provides a reusable agentic loop for chat-model APIs:
 // provider adapters for OpenAI-compatible and Anthropic Messages endpoints
 // (built with NewOpenAIProvider / NewAnthropicProvider, both hidden behind
-// the Provider interface), a tool-calling loop (Run) with approval seams
-// (ToolExecutor, Approver), transient-failure retry on by default in every
+// the Provider interface), a tool-calling loop (Run) over a flat set of
+// individual tools with approval seams (Tool, Tools, Approver),
+// transient-failure retry on by default in every
 // provider (ProviderConfig.Retry, RetryPolicy),
 // rejected-parameter
 // recovery (NewParamStripper), prompt caching on both dialects, streaming
 // callbacks that can abort the call by returning an error (StreamEvents,
 // Events), provider-reported timings passthrough (Timings), conversation
-// compaction (Compact, OneShot), and two optional built-in tool executors —
-// a sub-agent tool (NewSubagentExecutor) and a web-fetch tool
-// (NewWebFetchExecutor) — composed like any other ToolExecutor via
-// NewComposite. It is extracted from an internal chat application so the
+// compaction (Compact, OneShot), and three optional built-in tools —
+// a sub-agent tool (NewSubagentTool), a web-fetch tool (NewWebFetchTool) and
+// a task list (NewTodoTool) — appended to a host's own tools like any other
+// Tool. It is extracted from an internal chat application so the
 // same loop can be embedded in other hosts.
 //
 // # Layering
