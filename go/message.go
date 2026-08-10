@@ -18,16 +18,26 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// ThinkingBlock is one reasoning block produced by the model. For Anthropic it
-// is a native thinking block (Text + Signature) or an opaque redacted block
-// (Redacted set, Text/Signature empty); replaying blocks verbatim — signatures
-// intact, redacted payloads untouched — is required for tool-use continuations.
-// For OpenAI-compatible upstreams the accumulated reasoning text rides in a
-// single ThinkingBlock with only Text set (it is never replayed on that
-// dialect).
+// ThinkingBlock is one reasoning block produced by the model. Text is always
+// the human-readable reasoning; Signature is always the opaque token that must
+// be replayed VERBATIM for the block to still count as the model's own
+// thinking. What fills them differs by dialect:
+//
+//   - Anthropic: a native thinking block (Text + Signature) or an opaque
+//     redacted block (Redacted set, Text/Signature empty). Replaying blocks
+//     verbatim — signatures intact, redacted payloads untouched — is required
+//     for tool-use continuations.
+//   - Responses: the reasoning item's summary in Text, its encrypted_content in
+//     Signature, and its item id in ID.
+//   - OpenAI chat-completions: the accumulated reasoning text in a single block
+//     with only Text set. There is no replay token on that dialect, which is
+//     the whole reason the Responses dialect exists.
 type ThinkingBlock struct {
 	Text      string
 	Signature string
+	// ID is the provider's identifier for this reasoning item, replayed with
+	// it (a Responses `rs_...`). Empty on the dialects that have none.
+	ID string
 	// Redacted holds an opaque redacted_thinking payload. When set, Text and
 	// Signature are empty and the block is replayed to Anthropic as
 	// {type:"redacted_thinking", data:Redacted}.

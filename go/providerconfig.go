@@ -6,14 +6,15 @@ import "net/http"
 // not used on its own: embed it in the per-dialect config types (OpenAIConfig,
 // AnthropicConfig) accepted by the dialect constructors.
 type ProviderConfig struct {
-	// BaseURL is the API root and is required. OpenAI: include the version
-	// segment (e.g. "https://api.openai.com/v1"); requests POST to
-	// BaseURL + "/chat/completions". Anthropic: the bare root (e.g.
-	// "https://api.anthropic.com"); requests POST to BaseURL + "/v1/messages".
-	// Trailing slashes are trimmed before joining.
+	// BaseURL is the API root and is required. OpenAI and Responses: include
+	// the version segment (e.g. "https://api.openai.com/v1"); requests POST to
+	// BaseURL + "/chat/completions" and BaseURL + "/responses" respectively.
+	// Anthropic: the bare root (e.g. "https://api.anthropic.com"); requests
+	// POST to BaseURL + "/v1/messages". Trailing slashes are trimmed before
+	// joining.
 	BaseURL string
-	// APIKey, when non-empty, authenticates requests: a Bearer token on the
-	// OpenAI dialect, the x-api-key header on Anthropic.
+	// APIKey, when non-empty, authenticates requests: a Bearer token on both
+	// OpenAI dialects, the x-api-key header on Anthropic.
 	APIKey string
 	// HTTPClient performs the requests; nil uses http.DefaultClient.
 	HTTPClient *http.Client
@@ -66,6 +67,21 @@ type OpenAIConfig struct {
 	ReplayReasoning bool
 }
 
+// ResponsesConfig configures NewResponsesProvider: the shared ProviderConfig
+// connection base plus the one knob specific to the OpenAI Responses dialect.
+type ResponsesConfig struct {
+	ProviderConfig
+
+	// Store opts INTO the API's server-side retention of every prompt and
+	// response. It defaults to false, unlike the API itself, because retaining
+	// a caller's conversations on a third party's servers is a decision for
+	// the caller to make out loud rather than one a library makes for them by
+	// inheriting a default. Reasoning still survives across tool calls with
+	// Store false: the provider asks for the encrypted reasoning payload and
+	// replays it.
+	Store bool
+}
+
 // AnthropicConfig configures NewAnthropicProvider: the shared ProviderConfig
 // connection base plus the knobs specific to the Anthropic Messages dialect.
 type AnthropicConfig struct {
@@ -97,6 +113,25 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 		promptCache:     cfg.PromptCache,
 		replayReasoning: cfg.ReplayReasoning,
 		headers:         cfg.Headers,
+	}, cfg.Retry), nil
+}
+
+// NewResponsesProvider builds the Provider for the OpenAI Responses API. It
+// fails fast -- with a permanent (never-retried) error -- on an empty BaseURL.
+// The returned Provider retries transient failures per ProviderConfig.Retry.
+// The concrete implementation is unexported; consumers hold only the Provider
+// interface.
+func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
+	if cfg.BaseURL == "" {
+		return nil, badRequestErr("agentic: ResponsesConfig.BaseURL is required")
+	}
+	return newProvider(&responsesProvider{
+		baseURL:    cfg.BaseURL,
+		apiKey:     cfg.APIKey,
+		httpClient: rateLimitedClient(cfg.HTTPClient, cfg.RateLimiter),
+		userAgent:  cfg.UserAgent,
+		store:      cfg.Store,
+		headers:    cfg.Headers,
 	}, cfg.Retry), nil
 }
 

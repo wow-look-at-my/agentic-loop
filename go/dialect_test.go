@@ -74,6 +74,12 @@ func TestDialectOfModelListIsTheOneShapeTest(t *testing.T) {
 	assert.Equal(t, DialectAuto, DialectOfModelList([]byte(jsonMust(jsonObj{
 		"models": jsonArr{"a"},
 	}))), "a document of neither shape places neither dialect")
+
+	// An endpoint serving /v1/responses answers the same model list as one
+	// that does not, so detection cannot ever name it. Using it is a choice.
+	assert.Equal(t, DialectOpenAI, DialectOfModelList([]byte(jsonMust(jsonObj{
+		"object": "list", "data": jsonArr{jsonObj{"id": "gpt-x", "object": "model"}},
+	}))), "detection never returns DialectResponses")
 }
 
 // An unanswered question answers DialectAuto and an error, never a guess: a
@@ -113,11 +119,11 @@ func TestDetectDialectRefusesToGuess(t *testing.T) {
 // The vocabulary is the library's, so a host's UI does not carry a second copy
 // that goes stale when a dialect is added.
 func TestDialectVocabulary(t *testing.T) {
-	assert.Equal(t, []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic}, Dialects())
+	assert.Equal(t, []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}, Dialects())
 	for _, d := range Dialects() {
 		assert.True(t, d.Valid())
 		assert.NotEmpty(t, d.Label())
 	}
-	assert.False(t, Dialect("responses").Valid(), "a dialect this library cannot speak is not valid")
+	assert.False(t, Dialect("cohere").Valid(), "a dialect this library cannot speak is not valid")
 	assert.Equal(t, "detect", DialectAuto.Label())
 }
