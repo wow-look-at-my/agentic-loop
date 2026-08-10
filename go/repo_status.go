@@ -157,15 +157,42 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 	case err != nil:
 		checksNote = "the request failed: " + err.Error()
 	case checksRes.status < 200 || checksRes.status >= 300:
-		checksNote = DescribeResourceFailure("read the check runs of", resource, checksRes, len(e.gh.tokens))
+		checksNote = DescribeResourceFailure("read the check runs of", resource, checksRes, len(e.gh.tokens)) + checksPermissionCaveat(checksRes)
 	default:
 		if uerr := json.Unmarshal(checksRes.body, &checks); uerr != nil {
 			checksNote = "could not parse GitHub's check-runs response: " + uerr.Error()
 		}
 	}
 
+	// A token accepted for `actions` and refused for `checks` is the ordinary
+	// case for a fine-grained PAT, and the two APIs describe the same runs. So
+	// when the check runs cannot be read, ask the Actions API instead: "CI is
+	// red" without a reason is the report that leaves the reader exactly where
+	// they started.
+	var actions, actionsNote string
+	if checksNote != "" {
+		sha := combined.SHA
+		if sha == "" {
+			sha = ref
+		}
+		actions, actionsNote = e.actionsReport(ctx, org, repo, sha)
+	}
+
 	details, undetailed := e.explainFailures(ctx, org, repo, checks.CheckRuns)
-	return formatStatus(org, repo, ref, combined, checks, checksNote, details, undetailed), statusRes, nil
+	return formatStatus(org, repo, ref, combined, checks, checksNote, actions, actionsNote, details, undetailed), statusRes, nil
+}
+
+// checksPermissionCaveat answers the instruction GitHub's own 403 gives here.
+// The Checks API replies X-Accepted-GitHub-Permissions: checks=read, which the
+// failure describer quotes verbatim as "It needs the checks=read permission" —
+// correct for a GitHub App and impossible for a fine-grained PAT, whose
+// repository-permission list has no "Checks" entry to grant. Left alone it
+// sends the reader to look for a setting that is not there.
+func checksPermissionCaveat(res GHResponse) string {
+	if res.status != 403 || !strings.Contains(res.header.Get("X-Accepted-GitHub-Permissions"), "checks") {
+		return ""
+	}
+	return " That permission is a GitHub App one: a fine-grained personal access token cannot be granted \"Checks\" at all, so no token setting fixes this. The workflow runs below are the same runs read through the actions permission, which a token can hold."
 }
 
 // errStr is an error whose text is exactly the message given: the failure
@@ -220,7 +247,7 @@ func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int6
 // formatStatus renders both CI mechanisms as one report. A check-runs failure
 // is noted, not fatal — a token can read the legacy status and lack Checks API
 // access (or vice versa), and a partial answer beats none.
-func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote string, details map[int64]ghCheckRun, undetailed []string) string {
+func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote, actions, actionsNote string, details map[int64]ghCheckRun, undetailed []string) string {
 	sha := combined.SHA
 	if sha == "" {
 		sha = ref
@@ -271,6 +298,17 @@ func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghChe
 			}
 			b.WriteString("\n")
 			b.WriteString(formatFailureDetail(details[c.ID]))
+		}
+	}
+	// The Actions account of the same runs, rendered only when the Checks API
+	// could not answer. Its own failure is stated: falling through to silence
+	// would leave the check-runs note reading as the last word.
+	if checksNote != "" {
+		b.WriteString("\nWorkflow runs (the Actions API, since the check runs could not be read)")
+		if actionsNote != "" {
+			fmt.Fprintf(&b, ": unavailable -- %s\n", actionsNote)
+		} else {
+			fmt.Fprintf(&b, ":\n%s\n", actions)
 		}
 	}
 	if len(undetailed) > 0 {
