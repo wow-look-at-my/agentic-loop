@@ -174,7 +174,7 @@ func TestRepoStatusActionsFallbackFailureIsStated(t *testing.T) {
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
 	require.False(t, res.IsError, res.Content)
-	assert.Contains(t, res.Content, "Workflow runs (the Actions API, since the check runs could not be read): unavailable")
+	assert.Contains(t, res.Content, "Workflow runs: unavailable")
 	assert.Contains(t, res.Content, "could not read the workflow runs of /repos/octo/hello@abc")
 }
 
