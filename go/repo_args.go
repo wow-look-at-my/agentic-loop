@@ -30,6 +30,7 @@ var repoReadFields = map[string][]string{
 	"issue":     {"org", "repo", "number"},
 	"status":    {"org", "repo", "ref"},
 	"check_run": {"org", "repo", "id"},
+	"job_log":   {"org", "repo", "job_id", "offset", "limit"},
 }
 
 // repoReadFieldRedirect points each ignorable field at the read that does use
@@ -45,6 +46,9 @@ var repoReadFieldRedirect = map[string]string{
 	"ref":          `"ref" picks the starting ref for what=commits, or the commit for what=status.`,
 	"include_diff": `"include_diff" applies to what=pr.`,
 	"id":           `"id" names the check run what=check_run reads; what=status lists the ids.`,
+	"job_id":       `"job_id" names the Actions job what=job_log reads; what=status prints it beside each job as [job N].`,
+	"offset":       `"offset" and "limit" pick a line window of what=job_log. To read part of a FILE use ` + ReadFileToolName + `, which takes the same two.`,
+	"limit":        `"limit" bounds what=job_log's line window; the list reads take "per_page" instead.`,
 }
 
 // validateRepoReadArgs rejects a call carrying arguments the chosen read

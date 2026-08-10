@@ -109,7 +109,7 @@ func (e *repoTools) block(org, repo string) *ToolResult {
 // repoReadArgs is repo_read's argument union: "what" selects the read, the
 // remaining fields apply per-what (see repoReadSchema's field descriptions).
 type repoReadArgs struct {
-	What        string `json:"what" jsonschema:"Which read to perform: commits (commit list), commit (one commit with diff), prs (PR list), pr (one PR), issues (issue list), issue (one issue with comments), status (a commit's CI state, with every failing check explained), check_run (one check run's full output and error annotations). To list, read, find or SEARCH files use the filesystem tools on /repos/<org>/<repo>/<path> instead."`
+	What        string `json:"what" jsonschema:"Which read to perform: commits (commit list), commit (one commit with diff), prs (PR list), pr (one PR), issues (issue list), issue (one issue with comments), status (a commit's CI state, with every failing check explained), check_run (one check run's full output and error annotations), job_log (a failing Actions job's own log — the compiler error, the failing assertion, the stack trace). To list, read, find or SEARCH files use the filesystem tools on /repos/<org>/<repo>/<path> instead."`
 	Org         string `json:"org,omitempty" jsonschema:"Repository owner (org or user)."`
 	Repo        string `json:"repo,omitempty" jsonschema:"Repository name."`
 	Path        string `json:"path,omitempty" jsonschema:"For what=commits: only list commits touching this file or directory."`
@@ -121,13 +121,16 @@ type repoReadArgs struct {
 	Labels      string `json:"labels,omitempty" jsonschema:"For what=issues: optional comma-separated label names; only issues carrying all of them are listed."`
 	PerPage     int    `json:"per_page,omitempty" jsonschema:"Result count for the list reads (what=commits/prs/issues): 1-30, default 10."`
 	IncludeDiff bool   `json:"include_diff,omitempty" jsonschema:"For what=pr: also fetch the PR's full diff (capped). Defaults to false."`
+	JobID       int64  `json:"job_id,omitempty" jsonschema:"For what=job_log: the Actions job id, as what=status prints it beside each job ([job N])."`
+	Offset      int    `json:"offset,omitempty" jsonschema:"For what=job_log: 1-based first line to return. Omitted, the log's tail is returned (where a failing step's error is)."`
+	Limit       int    `json:"limit,omitempty" jsonschema:"For what=job_log: how many lines to return from offset."`
 }
 
 // repoReadWhatOrder is the one declaration of which reads exist and in what
 // order. The handler table, the schema's enum and the "must be one of" error
 // all derive from it, so a read cannot be added to one and missing from
 // another.
-var repoReadWhatOrder = []string{"commits", "commit", "prs", "pr", "issues", "issue", "status", "check_run"}
+var repoReadWhatOrder = []string{"commits", "commit", "prs", "pr", "issues", "issue", "status", "check_run", "job_log"}
 
 // repoReadWhats maps each valid "what" to its implementation.
 var repoReadWhats = map[string]func(*repoTools, context.Context, repoReadArgs) ToolResult{
@@ -139,6 +142,7 @@ var repoReadWhats = map[string]func(*repoTools, context.Context, repoReadArgs) T
 	"issue":     (*repoTools).issueRead,
 	"status":    (*repoTools).statusRead,
 	"check_run": (*repoTools).checkRunRead,
+	"job_log":   (*repoTools).jobLogRead,
 }
 
 var repoReadWhatList = strings.Join(repoReadWhatOrder, ", ")
