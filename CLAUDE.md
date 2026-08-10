@@ -21,7 +21,10 @@ redesign — check these when a behavior question comes up):
   this library deliberately dropped, see Hard rules;
   Run's approval flow and cancel/approval finalization), the filesystem
   tools (`internal/tools/fs*.go`: the seven tools' names, descriptions,
-  schemas, caps and rendering), and the built-in
+  schemas, caps and rendering), the GitHub client and repo tools
+  (`internal/tools/repo*.go` + `token_probe.go`: the credential rotation,
+  the winning-token cache, repo_read's what-dispatch, the two gated writes,
+  and every failure explanation), and the built-in
   tools — `run_subagent`
   (`internal/tools/subagent.go` + `internal/chat/subagent.go` +
   `context.go`/`summary.go`: schema, share_context modes, allowed_tools
@@ -139,6 +142,19 @@ side of that line it falls on — do not put it on both.
   seven file tools render — descriptions, schemas, the cap announcements,
   and grep's real-negative sentence) are pinned by tests and by PARITY.md.
   Do not "improve" them.
+- **A tool's schema is INFERRED from the struct its handler decodes**
+  (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go` because
+  the runtime is stdlib-only). Never hand-write one: that is a second
+  declaration of the argument list, and nothing keeps it true. Field prose is
+  the `jsonschema` tag; `omitempty` is what makes an argument optional; a
+  field with no json tag panics at construction.
+- **A GitHub failure ESTABLISHES its cause, and reports the most informative
+  attempt.** The anonymous read runs LAST and its 401 says only that no
+  credential was sent, so returning it made a spent rate limit read as a
+  permanent auth problem (`MoreInformativeAuthFailure`). A write that
+  exhausts its credentials re-reads the repository before blaming them: a
+  404 on a named object with the repository readable means the OBJECT is
+  gone. Writes use `WriteTokens` only and never fall through to anonymous.
 - **A file tool's rendering IS the tool.** A cap that bites is announced
   (truncated listing, `find_files` at its limit, `grep` at `MaxHits`) and an
   empty `grep` states that every line in scope was read, because a partial

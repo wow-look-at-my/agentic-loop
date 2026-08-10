@@ -646,3 +646,42 @@ partial result that reads as complete is worse than no result. And **an empty
 the text is not there — which is why a scope the mount does not hold is an
 error rather than an empty result, and why `GrepResult.Note` exists for a
 folder that could only cover part of what the path named.
+
+### The GitHub module (optional)
+
+`NewGitHub(GitHubConfig)` is a credential-rotating GitHub REST client, and
+`NewRepoTools(RepoToolsConfig{GitHub: gh})` are the three tools over it:
+`repo_read` (commits, one commit's diff, pull requests, issues, CI status,
+one check run), plus the approval-gated `repo_file_write` and `repo_pr_create`.
+A nil client yields no tools — a run with no GitHub access is never offered one
+that could only fail.
+
+```go
+gh := agentic.NewGitHub(agentic.GitHubConfig{
+	Tokens:      readTokens,                            // rotated, then anonymous
+	WriteTokens: agentic.ModelWriteTokens(readTokens),  // only what the user flagged
+	Cache:       myRepoKeyCache,                        // which token works, per repo
+})
+tools := agentic.NewRepoTools(agentic.RepoToolsConfig{GitHub: gh})
+```
+
+Two properties run through all of it:
+
+- **A read tries the cached winner, then every token, then anonymously** (so a
+  public repository works with no credential at all), and **when every attempt
+  fails it reports the MOST INFORMATIVE one** — never the anonymous attempt's
+  401, whose only content is that no credential was sent. That is how a spent
+  rate limit stopped reading as a permanent auth problem.
+- **A write never falls through to anonymous** and uses ONLY `WriteTokens`.
+  Filtering that list by initiator is the host's job: a model-facing toolset
+  gets `ModelWriteTokens(...)`, a user-initiated action gets everything.
+  `RepoToolsConfig.Blocked` vetoes a write per repository (a working copy whose
+  staged state a direct commit would bypass); reads are never asked, because a
+  working copy holds no version of history or CI.
+
+The client is a separate value from the tools because a host needs it directly.
+A `/repos` filesystem folder and a "test this token" button take the same
+`*GitHub`, so all three share one credential order and one winning-token cache
+— `Fetch`, `FetchURL`, `OwnerRepos`, `DefaultBranch`, `CIStatusReport`,
+`TestToken`, and, for a host running its own git push, `WriteCredentials`,
+`Do`, `ClassifyWriteStatus` and `MoreInformativeAuthFailure`.

@@ -941,6 +941,88 @@ literals in `files_decl.go`.
   filename glob (*.go) or a plain substring of the name or path.` /
   `grep requires "pattern": the text to find inside the files.`
 
+### 10d. The filesystem tools (`NewFileTools(FileToolsConfig)`)
+
+Config: `folders` (map from mount name — the leading path segment, no
+slash — to a `Folder`), `mountsBlurb` (appended to EVERY description,
+prefixed with one space when it lacks one), `unavailable(mount) => string`,
+`guard(path) => [blocked, reason]`. An empty/all-nil `folders` returns NO
+tools, not tools that can only fail.
+
+Seven tools, names exactly `list_dir`, `read_file`, `find_files`, `grep`,
+`write_file`, `edit_file`, `delete_file`. The first four are `readonly`
+TRUE, the three writes FALSE (so a sub-agent's default read-only toolset
+excludes them); `needsApproval` is false on all seven — gating a write is
+the host's call, made by wrapping. Descriptions and schemas: the Go
+literals in `files_decl.go`.
+
+- **`Folder`**: `display(path)`, `list(path)`, `read(path)`,
+  `find(path, pattern, limit)`, `grep(path, query)`. Every method receives
+  the WHOLE virtual path as the model wrote it — the mount's grammar
+  (`/repos/<org>/<repo>@<ref>/<path>`) is the folder's business, never the
+  tool layer's. `WritableFolder` adds `writable(path) => [ok, why]`,
+  `create`, `replace`, `remove`, each returning the model-facing note.
+  `ReadOnlyExplainer.readOnlyReason(path)` lets a read-only folder name the
+  writable route.
+- **Resolution order** (`resolve`): blank path ⇒ `<tool> requires "path".`;
+  then `guard` (its reason verbatim, no tool prefix); then the mount, which
+  is `MountOf(path)` — the leading segment up to the first `/` **or `@`**,
+  so a ref suffix stays part of the path. An unmounted name ⇒
+  `<tool>: ` + `unavailable(mount)`, falling back to
+  `/<mount> is not available in this conversation.`
+- **Write routing**: a folder that is not writable ⇒ `<tool>: ` +
+  `readOnlyReason(path)` or `<display> is read-only.`; a writable folder
+  refusing THIS path ⇒ `<tool>: <why>`.
+- **Every failure is a recoverable result** (`isError` true, no thrown
+  error): bad JSON ⇒ `invalid <tool> arguments: <err>`; a folder error ⇒
+  `<tool>: <err>`. A bad path is something the model corrects, never
+  something that ends a turn.
+- **Caps** — `find` default 20 / max 100, `grep` default 30 / max 100,
+  listing 1000 entries; a non-positive `limit` takes the default, then it
+  is clamped. **Every cap that bites is announced**: find at its limit adds
+  ` (first <n>; raise limit or narrow the pattern for more)`; grep adds
+  `(stopped at <n> matching lines — more exist. Narrow the path or "glob",
+  or raise "limit" to at most 100.)`; a truncated listing adds
+  `(listing truncated; narrow the path or use find_files)`.
+- **`read_file`'s window** (`SliceLines`, 1-based inclusive `offset`, so a
+  grep line number goes straight in): no offset and no limit ⇒ the whole
+  file, no note. Otherwise the header gains `(lines <a>-<b> of <total>)`,
+  plus `; <n> more follow — re-read with offset <b+1>` when more remain;
+  an offset past the end ⇒ `(this file has <n> lines; line <o> is past its
+  end)` with an empty body. A trailing newline is not a line. A folder's own
+  `truncatedNote` is a SEPARATE header line from the window note — merging
+  them would misstate what the line numbers are relative to.
+- **Listing rendering**: canonical path, optional `  (<note>)`, then
+  directories before files, each sorted by name; `dir   <name>/`, else
+  `file  <name> (<HumanSize>)`, with `kind` overriding the type column for
+  symlinks/submodules (and suppressing the size), and `  <note>` appended.
+  Empty ⇒ `(empty directory)`.
+- **`grep`'s empty result is a REAL NEGATIVE** and must say so, verbatim:
+  `grep "<pattern>" in <where>: no matches.` then
+  `Every line of every file in scope was searched, so the text is genuinely
+  absent from it — this is a real negative, not a search that gave up.` A
+  `GrepResult.note` (partial coverage) is appended after it — that is the
+  only thing allowed to qualify the claim. Hits render grouped by file:
+  `grep "<p>" in <where>[ (<globs>)]: <n> matching line(s) in <m> file(s)`,
+  then per file a blank line, the FULL virtual path, and `%7d: <text>` per
+  hit — so every hit feeds straight back into `read_file`'s `offset`.
+- **Scope is the path and nothing else**, for both `find_files` and `grep`,
+  and **a single FILE is a scope** (`WithinScope`): rendering one as a
+  directory makes every file-scoped search answer "no matches" for text
+  right there. A path the mount does not hold is an ERROR, never an empty
+  result.
+- **`MatchesPattern`**: a pattern with `*?[` is glob-matched against the
+  base name and then the full path; anything else is a case-insensitive
+  substring of the path. `SplitGlobs` splits `glob` on commas and trims.
+  Both exported, so a folder filters by the same rule the description
+  promises.
+- **`edit_file` guards its own contract**: an empty `old_text` ⇒
+  `edit_file requires "old_text": the exact existing text to replace,
+  occurring exactly once in the file. To add a brand-new file use
+  write_file.` A blank `pattern` ⇒ `find_files requires "pattern": a
+  filename glob (*.go) or a plain substring of the name or path.` /
+  `grep requires "pattern": the text to find inside the files.`
+
 ## 11. Deliberate cuts (do NOT implement in ts/ either)
 
 - DB/persistence (message trees, leaf advancement, statuses) — the library
