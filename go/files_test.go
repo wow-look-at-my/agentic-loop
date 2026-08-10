@@ -410,7 +410,7 @@ func TestSplitGlobsAndMatching(t *testing.T) {
 func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
 	type schema struct {
 		Type                 string                     `json:"type"`
-		AdditionalProperties bool                        `json:"additionalProperties"`
+		AdditionalProperties bool                       `json:"additionalProperties"`
 		Properties           map[string]json.RawMessage `json:"properties"`
 		Required             []string                   `json:"required"`
 	}
