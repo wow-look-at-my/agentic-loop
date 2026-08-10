@@ -301,7 +301,7 @@ func TestRunHasNoTurnCap(t *testing.T) {
 	// (TestRunStuckFailsAfterNudge); this test is about the absence of a cap.
 	steps := make([]scriptStep, 0, noTurnCapProbe)
 	for i := 0; i < noTurnCapProbe-1; i++ {
-		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: fmt.Sprintf(`{"i":%d}`, i)})})
+		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: jsonMust(jsonObj{"i": i})})})
 	}
 	steps = append(steps, scriptStep{comp: assistantComp("finished on its own terms")})
 	provider := &scriptProvider{steps: steps}

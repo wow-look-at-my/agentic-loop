@@ -37,7 +37,7 @@ func minimalAnEvents(text string) [][2]string {
 	return [][2]string{
 		{"message_start", `{"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}`},
 		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
-		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"` + text + `"}}`},
+		{"content_block_delta", jsonMust(jsonObj{"type": "content_block_delta", "index": 0, "delta": jsonObj{"type": "text_delta", "text": text}})},
 		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
 		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`},
 		{"message_stop", `{"type":"message_stop"}`},
@@ -316,7 +316,7 @@ func TestAnthropicErrorEventMapsToAPIError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.errType, func(t *testing.T) {
-			payload := `{"type":"error","error":{"type":"` + tc.errType + `","message":"boom"}}`
+			payload := jsonMust(jsonObj{"type": "error", "error": jsonObj{"type": tc.errType, "message": "boom"}})
 			h := &anSSEHandler{events: [][2]string{{"error", payload}}}
 			srv := httptest.NewServer(h)
 			defer srv.Close()

@@ -21,7 +21,8 @@ func retryTestPolicy(attempts int) *RetryPolicy {
 
 func okSSE(w http.ResponseWriter, text string) {
 	w.Header().Set("Content-Type", "text/event-stream")
-	_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + text + `"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
+	chunk := jsonMust(jsonObj{"choices": jsonArr{jsonObj{"delta": jsonObj{"content": text}, "finish_reason": "stop"}}})
+	_, _ = w.Write([]byte("data: " + chunk + "\n\ndata: [DONE]\n\n"))
 }
 
 func TestRunOpenAI429ThenSuccess(t *testing.T) {

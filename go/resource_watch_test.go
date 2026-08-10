@@ -228,7 +228,7 @@ func TestAChangeIdKeepsAnsweringItsOwnChange(t *testing.T) {
 	require.NoError(t, err)
 
 	tool := NewResourceDiffTool(snaps)
-	res, err := tool.Execute(context.Background(), []byte(`{"change_id":"`+firstID+`"}`))
+	res, err := tool.Execute(context.Background(), []byte(jsonMust(jsonObj{"change_id": firstID})))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "+three")
@@ -332,7 +332,7 @@ func TestBinaryResourcesAreWatchedNotCaptured(t *testing.T) {
 	assert.Contains(t, poll.Changes[0].Note, "watched by hash and size only")
 
 	tool := NewResourceDiffTool(snaps)
-	res, err := tool.Execute(context.Background(), []byte(`{"change_id":"`+poll.Changes[0].ChangeID+`"}`))
+	res, err := tool.Execute(context.Background(), []byte(jsonMust(jsonObj{"change_id": poll.Changes[0].ChangeID})))
 	require.NoError(t, err)
 	assert.Contains(t, res.Content, "watched by hash and size only")
 	assert.NotContains(t, res.Content, "@@", "a binary change is never rendered as a diff")
@@ -353,7 +353,7 @@ func TestTruncatedCaptureCarriesItsCaveat(t *testing.T) {
 	assert.Contains(t, poll.Changes[0].Note, "was cut at")
 
 	tool := NewResourceDiffTool(snaps)
-	res, err := tool.Execute(context.Background(), []byte(`{"change_id":"`+poll.Changes[0].ChangeID+`"}`))
+	res, err := tool.Execute(context.Background(), []byte(jsonMust(jsonObj{"change_id": poll.Changes[0].ChangeID})))
 	require.NoError(t, err)
 	assert.Contains(t, res.Content, "cut at the host's per-resource cap")
 }
@@ -415,7 +415,7 @@ func TestFullAndAddedReturnContent(t *testing.T) {
 	added := poll.Changes[0].ChangeID
 
 	tool := NewResourceDiffTool(snaps)
-	res, err := tool.Execute(context.Background(), []byte(`{"change_id":"`+added+`"}`))
+	res, err := tool.Execute(context.Background(), []byte(jsonMust(jsonObj{"change_id": added})))
 	require.NoError(t, err)
 	assert.Contains(t, res.Content, "newly available")
 	assert.Contains(t, res.Content, "hello")
@@ -423,7 +423,7 @@ func TestFullAndAddedReturnContent(t *testing.T) {
 	src.set("file://a", "goodbye\n")
 	poll, err = w.Poll(context.Background())
 	require.NoError(t, err)
-	res, err = tool.Execute(context.Background(), []byte(`{"change_id":"`+poll.Changes[0].ChangeID+`","full":true}`))
+	res, err = tool.Execute(context.Background(), []byte(jsonMust(jsonObj{"change_id": poll.Changes[0].ChangeID, "full": true})))
 	require.NoError(t, err)
 	assert.Contains(t, res.Content, "Full captured content")
 	assert.Contains(t, res.Content, "goodbye")
@@ -444,7 +444,7 @@ func TestARemovalKeepsItsLastContents(t *testing.T) {
 	require.Len(t, poll.Changes, 1)
 
 	tool := NewResourceDiffTool(snaps)
-	res, err := tool.Execute(context.Background(), []byte(`{"change_id":"`+poll.Changes[0].ChangeID+`"}`))
+	res, err := tool.Execute(context.Background(), []byte(jsonMust(jsonObj{"change_id": poll.Changes[0].ChangeID})))
 	require.NoError(t, err)
 	assert.Contains(t, res.Content, "no longer advertised")
 	assert.Contains(t, res.Content, "kept text")

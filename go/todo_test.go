@@ -155,7 +155,7 @@ func TestAnUnusableTitleIsRefusedWithItsIndex(t *testing.T) {
 	assert.Equal(t, "todos[1] has an empty title; every task needs one", res.Content)
 
 	long := strings.Repeat("x", todoMaxTitleRunes+1)
-	res, err = exec.Execute(context.Background(), todoCall(`{"todos":[{"title":"`+long+`"}]}`))
+	res, err = exec.Execute(context.Background(), todoCall(jsonMust(jsonObj{"todos": jsonArr{jsonObj{"title": long}}})))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "todos[0] has a title of 201 characters; the limit is 200")
@@ -167,11 +167,11 @@ func TestATooLongListIsRefused(t *testing.T) {
 	rec := &recordingTodos{}
 	exec := NewTodoTool(TodoConfig{Write: rec.write})
 
-	items := make([]string, todoMaxItems+1)
+	items := make(jsonArr, todoMaxItems+1)
 	for i := range items {
-		items[i] = `{"title":"t"}`
+		items[i] = jsonObj{"title": "t"}
 	}
-	res, err := exec.Execute(context.Background(), todoCall(`{"todos":[`+strings.Join(items, ",")+`]}`))
+	res, err := exec.Execute(context.Background(), todoCall(jsonMust(jsonObj{"todos": items})))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "the list holds at most 100, and you sent 101")

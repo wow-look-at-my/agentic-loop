@@ -247,7 +247,7 @@ func TestOpenAIStopReasonMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.finish, func(t *testing.T) {
 			h := &sseHandler{payloads: []string{
-				`{"choices":[{"delta":{"content":"x"},"finish_reason":"` + tc.finish + `"}]}`,
+				jsonMust(jsonObj{"choices": jsonArr{jsonObj{"delta": jsonObj{"content": "x"}, "finish_reason": tc.finish}}}),
 			}}
 			srv := httptest.NewServer(h)
 			defer srv.Close()

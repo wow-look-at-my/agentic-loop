@@ -151,7 +151,7 @@ func (e *webFetchTool) Execute(ctx context.Context, args json.RawMessage) (ToolR
 		return ToolResult{Content: err.Error(), IsError: true}, nil
 	}
 	cleaned := e.clean(ctx, raw, contentType)
-	cleaned, truncated := truncateRunes(cleaned, webFetchMaxResultRunes)
+	cleaned, truncated := TruncateRunes(cleaned, webFetchMaxResultRunes)
 	if strings.TrimSpace(cleaned) == "" {
 		cleaned = "(no extractable content)"
 	}
@@ -389,8 +389,10 @@ func collapseSpaces(s string) string {
 	return b.String()
 }
 
-// truncateRunes caps s at maxRunes runes, reporting whether it truncated.
-func truncateRunes(s string, maxRunes int) (string, bool) {
+// TruncateRunes caps s at maxRunes runes, reporting whether it truncated. It
+// is exported because a host serving its own file reads must cut them the same
+// way the tools do -- a differently-capped read is a differently-sized answer.
+func TruncateRunes(s string, maxRunes int) (string, bool) {
 	if maxRunes <= 0 || utf8.RuneCountInString(s) <= maxRunes {
 		return s, false
 	}
