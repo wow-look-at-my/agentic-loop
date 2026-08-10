@@ -48,9 +48,16 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) ToolResult 
 	// application/json, though the body that arrives is plain text: the
 	// endpoint 415s "Must accept 'application/json'" on the honest Accept,
 	// because what it serves under that header is the 302 to storage.
-	res, err := e.gh.FetchURLOpts(ctx, RepoCacheKey(in.Org, in.Repo), target, "application/json", FetchOptions{MaxBytes: jobLogMaxBytes})
+	res, err := e.gh.FetchURLOpts(ctx, RepoCacheKey(in.Org, in.Repo), target,
+		"application/json", FetchOptions{MaxBytes: jobLogMaxBytes, NoRedirect: true})
 	if err != nil {
 		return ToolResult{Content: fmt.Sprintf("reading the log of %s failed: %s", resource, err.Error()), IsError: true}
+	}
+	if loc := res.header.Get("Location"); res.status >= 300 && res.status < 400 && loc != "" {
+		res, err = e.gh.FetchRedirectTarget(ctx, loc, jobLogMaxBytes)
+		if err != nil {
+			return ToolResult{Content: fmt.Sprintf("reading the log of %s failed at its storage URL: %s", resource, err.Error()), IsError: true}
+		}
 	}
 	if res.status < 200 || res.status >= 300 {
 		return ToolResult{Content: DescribeResourceFailure("read the log of", resource, res, len(e.gh.tokens)), IsError: true}

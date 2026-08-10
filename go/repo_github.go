@@ -55,6 +55,10 @@ type FetchOptions struct {
 	NoAnonymous bool
 	// MaxBytes overrides the per-response read cap (default GitHubMaxResponseBytes).
 	MaxBytes int64
+	// NoRedirect returns a 3xx instead of following it, so the caller can make
+	// the second request on its own terms -- without its credential, when the
+	// redirect crosses to a host the credential was not issued for.
+	NoRedirect bool
 }
 
 // Fetch performs a GET against the contents endpoint for org/repo/inner. It is
@@ -91,7 +95,11 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 			lastErr = err
 			continue
 		}
-		if res.status >= 200 && res.status < 300 {
+		// With NoRedirect a 3xx is the answer, not a failure: the credential was
+		// accepted and the resource lives at the Location. Ranking it as a
+		// failure would move on to the next token and finally to the anonymous
+		// attempt, whose 404 would then stand as the verdict.
+		if res.status >= 200 && res.status < 300 || (opt.NoRedirect && res.status >= 300 && res.status < 400) {
 			if e.cache != nil && cacheKey != "" {
 				e.cache.Put(cacheKey, att.id)
 			}
@@ -266,10 +274,41 @@ func (e *GitHub) doGet(ctx context.Context, target, token, accept string) (GHRes
 
 // doGetOpts is doGet honouring a per-call response cap.
 func (e *GitHub) doGetOpts(ctx context.Context, target, token, accept string, opt FetchOptions) (GHResponse, error) {
+	if opt.NoRedirect {
+		return e.doRequestOn(ctx, e.noRedirectClient(), http.MethodGet, target, token, accept, nil, opt.maxBytes())
+	}
 	if opt.MaxBytes <= 0 {
 		return e.doGet(ctx, target, token, accept)
 	}
 	return e.doRequestCapped(ctx, http.MethodGet, target, token, accept, nil, opt.MaxBytes)
+}
+
+func (o FetchOptions) maxBytes() int64 {
+	if o.MaxBytes <= 0 {
+		return GitHubMaxResponseBytes
+	}
+	return o.MaxBytes
+}
+
+// noRedirectClient is this client with redirect following turned off. The
+// transport, and so the caller's own *http.Client configuration, is kept: only
+// the redirect policy differs.
+func (e *GitHub) noRedirectClient() *http.Client {
+	c := *e.hc
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &c
+}
+
+// FetchRedirectTarget performs an UNAUTHENTICATED GET of an absolute URL a
+// GitHub response redirected to. Some endpoints answer 3xx with a signed URL on
+// another host, where the signature IS the credential -- sending the caller's
+// token there would hand it to a third party, and there is no version of that
+// which is merely untidy.
+func (e *GitHub) FetchRedirectTarget(ctx context.Context, target string, maxBytes int64) (GHResponse, error) {
+	if maxBytes <= 0 {
+		maxBytes = GitHubMaxResponseBytes
+	}
+	return e.doRequestOn(ctx, e.hc, http.MethodGet, target, "", "", nil, maxBytes)
 }
 
 // doRequest performs one GitHub API call with a single credential. A non-nil
@@ -283,6 +322,12 @@ func (e *GitHub) doRequest(ctx context.Context, method, target, token, accept st
 // repository's tree mid-JSON, which surfaced as an unexplained decode error
 // rather than as the size problem it is.
 func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, accept string, body []byte, MaxBytes int64) (GHResponse, error) {
+	return e.doRequestOn(ctx, e.hc, method, target, token, accept, body, MaxBytes)
+}
+
+// doRequestOn is doRequestCapped on a named client, which is how a caller that
+// must see a 3xx rather than follow it gets one.
+func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, target, token, accept string, body []byte, MaxBytes int64) (GHResponse, error) {
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
@@ -299,7 +344,7 @@ func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, acc
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := e.hc.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return GHResponse{}, err
 	}
