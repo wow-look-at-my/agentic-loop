@@ -18,7 +18,7 @@ distilled, dependency-free extraction.
 | Type | Fields | Notes |
 |---|---|---|
 | `Role` | `"system" \| "user" \| "assistant" \| "tool"` | |
-| `ThinkingBlock` | `text`, `signature`, `redacted` | `redacted` holds an opaque `redacted_thinking` payload; when set, the other two are empty. |
+| `ThinkingBlock` | `text`, `signature`, `id`, `redacted` | `text` is always the readable reasoning and `signature` always the opaque token that must be replayed VERBATIM. Anthropic: native thinking (text+signature) or `redacted` (an opaque `redacted_thinking` payload; when set, the others are empty). Responses: summary → `text`, `encrypted_content` → `signature`, item id → `id`. OpenAI chat completions: `text` only, no replay token — which is why §4a exists. |
 | `ToolCall` | `id`, `name`, `arguments` | `arguments` is the RAW JSON object **text** (OpenAI: concatenated streamed fragments; Anthropic: accumulated `input_json_delta.partial_json`). |
 | `Message` | `role`, `content`, `thinking[]`, `toolCalls[]`, `toolCallID`, `toolIsError` | thinking/toolCalls assistant-only; toolCallID/toolIsError tool-only. |
 | `ToolDecl` | `name`, `description`, `inputSchema`, `readonly` | nil/absent schema marshals as `{"type":"object"}`. `readonly` is never sent to the upstream. |
@@ -38,12 +38,15 @@ Seams (interfaces): `Provider.complete(req, events) -> Completion`
 
 **Provider construction is one factory function per dialect over a shared
 config base.** The dialect implementations are internal — NOT exported, no
-exported dialect classes, and no dialect string enum: consumers call the
-dialect's factory (Go: `NewOpenAIProvider(config)` /
-`NewAnthropicProvider(config)`) and hold only the `Provider` interface. The
+exported dialect classes, and no dialect string enum selecting one:
+consumers call the dialect's factory (Go: `NewOpenAIProvider(config)` /
+`NewResponsesProvider(config)` / `NewAnthropicProvider(config)`) and hold
+only the `Provider` interface. (The `Dialect` strings of §10f name a
+protocol for a host's own settings; they never construct anything.) The
 shared connection-config shape — the required `baseURL` plus
 `apiKey`/`httpClient`/`userAgent`/`headers` — is embedded/extended by the
-per-dialect configs: the OpenAI config adds `selfHosted`, the Anthropic
+per-dialect configs: the OpenAI config adds `selfHosted`, the Responses
+config adds `store`, the Anthropic
 config adds `version` (the anthropic-version header) and `disableCaching`.
 An empty baseURL fails fast with a permanent (never-retried) error. There
 are no per-dialect base-URL defaults: baseURL is always explicit.
@@ -348,6 +351,108 @@ same shape from the merged message_start/message_delta state.
 `reasoningTokens`/`costUsd` never exist on this dialect. A malformed body
 is a permanent (never-retried) error. The SSE path always sets `streamed`
 TRUE.
+
+## 4a. OpenAI Responses dialect
+
+**Why it exists**: it is the only dialect that can replay a reasoning
+model's chain of thought across a tool call. Chat completions has no field
+for it, so the model re-derives its reasoning every turn and the prompt
+cache breaks at each reasoning boundary. Do NOT port this as a variant of
+§3 — the wire vocabulary is different end to end.
+
+**Endpoint**: POST `BaseURL + "/responses"` (BaseURL includes `/v1`, the
+same root as §3). Headers identical to §3: `Content-Type`, `Accept:
+text/event-stream`, `Authorization: Bearer` when a key is set, `User-Agent`
+when set, then caller headers.
+
+**Body build order**: merge `extra` first, skipping the reserved keys
+`input`, `instructions`, `model`, `stream`, `tools`; then `model`,
+`instructions` (only when the system prompt is non-empty — it is NOT a
+message on this dialect), `input`, `stream: true`, `store`.
+`include: ["reasoning.encrypted_content"]` **only when extra supplied no
+`include` key**. `tools` only when non-empty; `max_output_tokens` (not
+`max_tokens`) only when `maxTokens > 0`; `prompt_cache_key` when set.
+
+- **`store` defaults to FALSE**, contrary to the API's own default. It is a
+  config field. A port that inherits the API default has silently opted its
+  callers into third-party retention of every prompt.
+- **`previous_response_id` is NEVER sent.** The transcript is the caller's;
+  a server-side conversation id would make it a partial lie about what the
+  model sees. Every call sends its full input.
+
+**Tools**: `{type:"function", name, description?, parameters}` — flat, with
+NO nested `function` object. A nil schema still becomes `{"type":"object"}`.
+
+**Input items** (`input` is an ordered item list, not messages):
+- user/system message → `{type:"message", role, content:[{type:"input_text", text}]}`
+- assistant text → `{type:"message", role:"assistant", content:[{type:"output_text", text}]}`
+- tool call → `{type:"function_call", call_id, name, arguments}`
+- tool result → `{type:"function_call_output", call_id, output}` — a
+  top-level item, NOT a message with a role. `call_id` (not the item id) is
+  what pairs them.
+- reasoning → `{type:"reasoning", id?, summary:[{type:"summary_text", text}]?, encrypted_content}`
+
+**Assistant item ORDER is contract**: reasoning items, then the text, then
+the tool calls — the order the model emitted them.
+
+**A reasoning block is replayed only when it carries the payload**
+(`ThinkingBlock.signature`, the encrypted content). A summary-only block is
+DROPPED, never sent alone: a summary is prose about the reasoning, and
+sending it as the reasoning hands the model a paraphrase of its own
+thinking.
+
+**Streamed events acted on** (each payload carries its own `type`, so the
+SSE `event:` line is not read):
+- `response.output_text.delta` → content delta, emit `onText`
+- `response.reasoning_summary_text.delta` → reasoning delta, emit `onReasoning`
+- `response.output_item.done` → a finished item: `function_call` appends a
+  tool call, `reasoning` appends a ThinkingBlock. **Text items are ignored
+  here** — the deltas already carried the text, and taking both doubles it.
+- `response.completed` / `response.incomplete` → the terminal Response:
+  usage and stop reason. Items in `response.output` are NOT re-read (each
+  already arrived as an `output_item.done`; re-reading duplicates calls).
+- `response.failed` / `error` → a failure inside a 200.
+
+Everything else (`response.output_item.added`,
+`response.function_call_arguments.delta`, the part lifecycle) is ignored:
+finished items arrive whole, so there is **no fragment accumulator** on this
+dialect, and a fragment stream nobody needs would be a second source of
+truth for the same bytes. Unparseable payloads are skipped silently, as in §3.
+
+**ThinkingBlock mapping**: summary text → `text`, `encrypted_content` →
+`signature`, item id → `id`. When the stream produced summary text but no
+replayable item, keep a text-only block — unable to replay beats losing the
+reasoning from the transcript.
+
+**Usage** (different field names from §3; decode its own type):
+`{input_tokens, output_tokens, total_tokens,
+input_tokens_details:{cached_tokens?}, output_tokens_details:{reasoning_tokens?}}`
+→ `promptTokens`/`completionTokens`/`totalTokens`. `input_tokens` ALREADY
+includes cached tokens, so it passes through untouched. A reported
+`cached_tokens` sets `cacheReadTokens` and an explicit `cacheWriteTokens: 0`
+(this API bills no cache-write class); no cache detail at all leaves BOTH
+nil. `reasoningTokens` comes from `output_tokens_details`. `costUsd` never
+exists on this dialect. `rawUsage` is the `response.usage` object verbatim.
+Merging follows §5 unchanged.
+
+**Stop reason**: there is no `finish_reason`. `incomplete_details.reason ==
+"max_output_tokens"` → `max_tokens`; any other non-empty reason passes
+through raw; otherwise the SHAPE of the turn decides — tool calls present →
+`tool_use`, else `end_turn`.
+
+**Failures inside a 200**: `response.failed` (use `response.error.message`,
+appending ` (code)` when present) and a stream-level `error` event both
+produce a **permanent** (never-retried) error — re-sending a request the
+server accepted and then rejected only gets billed twice. Nothing streamed →
+nil completion; after data → the partial completion alongside the error,
+exactly as §3.
+
+**Non-streaming fallback**: a 2xx that is not `text/event-stream` is the
+plain Response object, reassembled with `streamed: false`. There the
+`output` items ARE the only source (no deltas arrived): `message` content
+parts of type `output_text` concatenate, `function_call` items become tool
+calls, `reasoning` items become ThinkingBlocks. `status: "failed"` is an
+error, not a blank answer.
 
 ## 5. Usage merging, flooring, cache normalization
 
@@ -994,10 +1099,11 @@ they reach GitHub and no undo exists.
 
 ### 10f. Dialect detection (`DetectDialect` / `DialectOfModelList`)
 
-`Dialect` is `""` (auto), `"openai"`, `"anthropic"`, with `valid()`,
-`label()` (`detect` / `openai-compatible` / `anthropic messages`) and
-`dialects()` returning all three, default first. The labels live here so a
-host's settings UI does not carry a second copy of the vocabulary.
+`Dialect` is `""` (auto), `"openai"`, `"anthropic"`, `"responses"`, with
+`valid()`, `label()` (`detect` / `openai-compatible` / `anthropic messages`
+/ `openai responses`) and `dialects()` returning all four, default first.
+The labels live here so a host's settings UI does not carry a second copy of
+the vocabulary.
 
 `DetectDialect(ctx, providerConfig)` does one `GET {baseURL}/v1/models`
 carrying **both** credential forms (`Authorization: Bearer` AND `x-api-key`
@@ -1021,6 +1127,12 @@ The read is capped at 1 MiB.
 already has, exported so a host that fetches model lists anyway pays no
 extra request — and so the rule is declared once rather than reimplemented
 against a decoded struct.
+
+**Detection NEVER returns `"responses"`**, and a port must not invent a way
+for it to. An endpoint answers the same `/v1/models` document whether or not
+it also serves `/v1/responses`, so nothing there distinguishes them; §4a is
+a deliberate choice with a real trade-off, and the explicit setting is what
+a choice looks like.
 
 ## 11. Deliberate cuts (do NOT implement in ts/ either)
 

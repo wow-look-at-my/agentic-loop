@@ -1,7 +1,8 @@
 # agentic (Go)
 
-A reusable agentic loop for chat-model APIs, with two provider dialects —
-OpenAI-compatible chat completions and the Anthropic Messages API — plus the
+A reusable agentic loop for chat-model APIs, with three provider dialects —
+OpenAI-compatible chat completions, the OpenAI Responses API, and the
+Anthropic Messages API — plus the
 machinery a production tool loop needs: streaming callbacks that can abort
 the call, tool execution with approval gating, transient-failure retry,
 rejected-parameter recovery, prompt caching on both dialects, conversation
@@ -50,6 +51,32 @@ res, err := agentic.Run(ctx, agentic.Config{
 })
 if err != nil { /* res may still carry the partial transcript */ }
 fmt.Println(res.Final.Content)
+```
+
+## Quick start — OpenAI Responses
+
+Reach for this dialect over chat completions when the model reasons and uses
+tools in the same turn: it is the only one of the three that can hand a
+model back its own chain of thought after a tool call.
+
+```go
+provider, err := agentic.NewResponsesProvider(agentic.ResponsesConfig{
+	ProviderConfig: agentic.ProviderConfig{
+		BaseURL: "https://api.openai.com/v1", // same root as chat completions
+		APIKey:  "YOUR_API_KEY",
+	},
+	// Store defaults to FALSE: server-side retention of your conversations
+	// is opt-in here even though the API's own default is on.
+})
+if err != nil { /* misconfiguration */ }
+
+res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
+	agentic.Request{
+		Model:    "your-model-id",
+		System:   "You are a helpful assistant.", // sent as `instructions`
+		Messages: []agentic.Message{{Role: agentic.RoleUser, Content: "Hi!"}},
+		Extra:    map[string]any{"reasoning": map[string]any{"effort": "high"}},
+	})
 ```
 
 ## Quick start — Anthropic
@@ -123,15 +150,17 @@ type Provider interface {
 }
 
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error)
+func NewResponsesProvider(cfg ResponsesConfig) (Provider, error)
 func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error)
 ```
 
-The per-dialect constructors are the only way to build the two dialect
+The per-dialect constructors are the only way to build the three dialect
 providers — the implementations are unexported, so consumers hold nothing
 but the `Provider` interface. `ProviderConfig` is the shared connection
 base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`,
 `Headers` — embedded in each dialect's config: `OpenAIConfig` adds
-`SelfHosted` (the `cache_prompt` opt-in for llama.cpp-style servers), and
+`SelfHosted` (the `cache_prompt` opt-in for llama.cpp-style servers),
+`ResponsesConfig` adds `Store`, and
 `AnthropicConfig` adds `Version` (the `anthropic-version` header) and
 `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
 
@@ -152,6 +181,49 @@ alongside the error. Both dialects are safe for concurrent use.
 `reasoning_effort`, `num_ctx`, `thinking`, ...). It is merged first, so the
 typed core fields always win; the library never interprets, gates, or filters
 what you put there.
+
+### The Responses dialect, and when it is worth it
+
+Two of the three dialects talk to the same OpenAI endpoints. They are not
+interchangeable, and exactly one thing separates them:
+
+**On chat completions, a reasoning model's chain of thought does not survive
+a tool call.** The reasoning arrives as deltas, and the request format has
+nowhere to put it back — so on the next turn the model re-derives what it
+already worked out, pays for those tokens again, and loses the prompt cache
+at every reasoning boundary. In a long tool-using investigation that is the
+dominant cost.
+
+**The Responses API models a turn as an ordered list of items**, and a
+reasoning item can be sent back verbatim. This provider asks for
+`include: ["reasoning.encrypted_content"]`, keeps what comes back in
+`ThinkingBlock` (summary in `Text`, encrypted payload in `Signature`, item
+id in `ID`), and replays it — reasoning first, then the text, then the tool
+calls, in the order the model emitted them. A block with no payload is
+dropped rather than half-replayed: a summary is prose *about* the reasoning,
+and sending it as though it were the reasoning hands the model a paraphrase
+of its own thinking.
+
+Two positions this provider takes deliberately:
+
+- **`Store` defaults to false**, unlike the API. Server-side retention of
+  every prompt and response is a decision for the caller to make out loud,
+  not one to inherit from a default. Reasoning still survives with it off —
+  that is what the encrypted payload is for.
+- **`previous_response_id` is never sent.** This library's contract is a flat
+  transcript the caller owns and can edit, fork, compact or persist; a
+  server-side conversation id would make that transcript a partial lie about
+  what the model actually sees. Every call sends its full input.
+
+Everything else behind the seam is unchanged: the same `Request`, the same
+callbacks, the same retry and error classification, the same `Run`. What
+differs is the wire — `instructions` rather than a system message,
+`max_output_tokens` rather than `max_tokens`, `input_tokens`/`output_tokens`
+rather than `prompt`/`completion`, no `finish_reason` (the shape of the turn
+says it), and a failure that can arrive inside a 200 as a `response.failed`
+event. That last one surfaces as a permanent error, never a transient one:
+re-sending a request the server accepted and then rejected just gets billed
+twice.
 
 ### Which dialect an endpoint speaks
 

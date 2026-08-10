@@ -38,6 +38,10 @@ redesign — check these when a behavior question comes up):
   classification, context-overflow detection, the transcript-tail cache
   marker discipline.
 
+The Responses dialect has NO source repo — it was written here, against the
+API's own shapes. Do not go looking for the semantics somewhere else; the
+answers are `go/README.md`, PARITY.md §4a, and `responses_test.go`.
+
 ## Build & test
 
 ALWAYS build and test with `go-toolchain` (no args) from `go/`. NEVER run
@@ -91,10 +95,21 @@ side of that line it falls on — do not put it on both.
   placeholder endpoints (`https://api.openai.com/v1`,
   `https://api.anthropic.com`) and placeholder keys only.
 - **Providers are built ONLY via the per-dialect constructors**
-  (`NewOpenAIProvider(OpenAIConfig)` / `NewAnthropicProvider(AnthropicConfig)`,
-  each embedding the shared `ProviderConfig` connection base). The dialect
-  implementations (`openaiProvider`, `anthropicProvider`) stay unexported;
-  do not re-export them or add construction side doors.
+  (`NewOpenAIProvider` / `NewResponsesProvider` / `NewAnthropicProvider`, each
+  embedding the shared `ProviderConfig` connection base). The dialect
+  implementations (`openaiProvider`, `responsesProvider`, `anthropicProvider`)
+  stay unexported; do not re-export them or add construction side doors.
+  `Dialect` (dialect.go) NAMES a protocol for a host's settings — it never
+  constructs one.
+- **The Responses dialect exists for exactly one thing** (`responses.go` +
+  `responses_wire.go`): a reasoning model's chain of thought surviving a tool
+  call, which chat-completions has no field for. So the reasoning ITEM with its
+  `encrypted_content` is what gets replayed, never a summary alone — a summary
+  is prose about the reasoning. `Store` is FALSE by default against the API's
+  own default (third-party retention is the caller's decision to make out
+  loud), `previous_response_id` is never sent (the transcript is the caller's),
+  and detection can never name this dialect, since the model list looks
+  identical. Depth: `go/README.md`, PARITY.md §4a.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
   end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
   nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
