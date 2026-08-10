@@ -11,37 +11,40 @@ import (
 // failure is a recoverable teaching error -- a bad path is something the model
 // can correct, never something that ends a turn.
 
-// One argument struct per tool.
+// One argument struct per tool: each is both what the handler decodes and what
+// the advertised schema is inferred from (schema.go), so the two cannot
+// disagree. The `jsonschema` tag is the model-facing description of the field,
+// and a json tag without `omitempty` marks it required.
 type (
 	pathArgs struct {
-		Path string `json:"path"`
+		Path string `json:"path" jsonschema:"Virtual path."`
 	}
 	readArgs struct {
-		Path   string `json:"path"`
-		Offset int    `json:"offset,omitempty"`
-		Limit  int    `json:"limit,omitempty"`
+		Path   string `json:"path" jsonschema:"Virtual path of the file to read."`
+		Offset int    `json:"offset,omitempty" jsonschema:"First line to return, 1-based. Omit to start at the beginning. A grep hit's line number goes here directly."`
+		Limit  int    `json:"limit,omitempty" jsonschema:"How many lines to return from offset. Omit for the rest of the file. The reply says how many lines the file has and where to continue."`
 	}
 	findArgs struct {
-		Path    string `json:"path"`
-		Pattern string `json:"pattern"`
-		Limit   int    `json:"limit,omitempty"`
+		Path    string `json:"path" jsonschema:"Directory to search below, recursively."`
+		Pattern string `json:"pattern" jsonschema:"Filename glob (*.go, test_*) or a plain substring. Matched against the file NAME and its path, never its contents."`
+		Limit   int    `json:"limit,omitempty" jsonschema:"Maximum results to return, 1-100 (default 20). The reply says when it stopped at the cap."`
 	}
 	grepArgs struct {
-		Path          string `json:"path"`
-		Pattern       string `json:"pattern"`
-		Glob          string `json:"glob,omitempty"`
-		Regexp        bool   `json:"regexp,omitempty"`
-		CaseSensitive bool   `json:"case_sensitive,omitempty"`
-		Limit         int    `json:"limit,omitempty"`
+		Path          string `json:"path" jsonschema:"Where to search, recursively. A directory, a subdirectory of one, or a single file."`
+		Pattern       string `json:"pattern" jsonschema:"The text to find. Matched literally and case-insensitively anywhere in a line unless regexp or case_sensitive say otherwise. Not tokenized: give the literal text you expect to see in the file."`
+		Glob          string `json:"glob,omitempty" jsonschema:"Only search files whose name matches this glob, or a comma-separated list of them, e.g. \"*.usf\" or \"*.c,*.h\"."`
+		Regexp        bool   `json:"regexp,omitempty" jsonschema:"Treat pattern as an extended regular expression instead of literal text. Defaults to false."`
+		CaseSensitive bool   `json:"case_sensitive,omitempty" jsonschema:"Match case exactly. Defaults to false (case-insensitive)."`
+		Limit         int    `json:"limit,omitempty" jsonschema:"Maximum matching lines to return, 1-100 (default 30). The reply says when it stopped at the cap."`
 	}
 	writeArgs struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
+		Path    string `json:"path" jsonschema:"Path of the NEW file."`
+		Content string `json:"content" jsonschema:"The file's full contents."`
 	}
 	editArgs struct {
-		Path    string `json:"path"`
-		OldText string `json:"old_text"`
-		NewText string `json:"new_text"`
+		Path    string `json:"path" jsonschema:"Path of the existing file to change."`
+		OldText string `json:"old_text" jsonschema:"The exact text to replace. Must appear in the file exactly once — include enough surrounding lines to be unique."`
+		NewText string `json:"new_text" jsonschema:"The replacement text. An empty string deletes the matched text."`
 	}
 )
 
