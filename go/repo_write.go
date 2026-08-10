@@ -196,7 +196,7 @@ func (e *repoTools) repoURL(org, repo string) string { return e.gh.RepoURL(org, 
 // RepoURL is the API root of one repository, which a host composing its own
 // endpoint (a ref update, a blob write) builds on.
 func (e *GitHub) RepoURL(org, repo string) string {
-	return e.gh.base + "/repos/" + url.PathEscape(org) + "/" + url.PathEscape(repo)
+	return e.base + "/repos/" + url.PathEscape(org) + "/" + url.PathEscape(repo)
 }
 
 // resolveRefSHA resolves any ref (branch, tag, or SHA) to a commit SHA via the
