@@ -152,8 +152,8 @@ side of that line it falls on — do not put it on both.
   and allowed_tools error texts, `SubagentCutOffNote`,
   `SubagentNoReportText`, `SubagentLaunchReceipt` and the
   `FormatSubagentDelivery` text, the context-summary and web-summary
-  prompts, the web_fetch validation/cap/result texts, the todo_write
-  description/schema/teaching errors and `RenderTodos`, and every word the
+  prompts, the web_fetch validation/cap/result texts, the task-list tools'
+  descriptions/schemas/teaching errors and `RenderTodos`, and every word the
   seven file tools render — descriptions, schemas, the cap announcements,
   and grep's real-negative sentence) are pinned by tests and by PARITY.md.
   Do not "improve" them.

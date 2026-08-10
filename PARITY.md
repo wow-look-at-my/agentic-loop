@@ -923,44 +923,64 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
   failure ⇒ `web_fetch summary failed: <err>`; empty output ⇒
   `web_fetch summary returned empty output`.
 
-### 10c. todo_write (`NewTodoTool(TodoConfig)`)
+### 10c. The task-list tools (`NewTodoTools(TodoConfig)`)
 
 Config: `write: (todos) => void | error` — the host's store. A nil/absent
 `write` refuses every call.
 
-- Tool name exactly `todo_write`; `readonly` FALSE (it writes host state a
-  sub-agent would overwrite for its parent); `needsApproval` false.
-  Description and schema: the Go literals. Schema shape: `todos` (required)
-  is an array of objects with `title` (required, string) and `state`
-  (optional, enum `pending` | `in_progress` | `done`).
-- **Whole-list replacement is the contract**: every call hands `write` the
-  complete list, in the model's order, with no ids. A host never merges. An
-  empty `todos` reaches `write` as an EMPTY, NON-NULL list (clearing the
-  list is a real instruction a host must be able to tell from a no-op).
-- **Normalization**: titles are trimmed; an absent or blank `state` becomes
-  `pending`.
+- Tool names exactly `todo_add`, `todo_edit`, `todo_cancel`,
+  `todo_complete`; each is a separate Tool in one flat `Tools` slice sharing
+  a single in-memory store. All four are `readonly` FALSE (they write host
+  state a sub-agent would overwrite for its parent) and `needsApproval`
+  false. Each tool's schema is inferred from its argument struct: `todo_add`
+  takes `title` (required, string) + `state` (optional, enum `pending` |
+  `in_progress` | `done`); `todo_edit` takes `id` (required, integer) +
+  `title`/`state` (optional); `todo_cancel` and `todo_complete` take `id`
+  (required, integer). Descriptions: the Go literals.
+- **Stable per-task identity is the contract.** Every task carries an `id`
+  (`Todo.ID`) minted once and never reused, stored in the library's
+  in-memory store. `todo_add` returns the new id in its reply; `todo_edit`,
+  `todo_cancel` and `todo_complete` each address exactly ONE task by that id
+  and change only it — every sibling's id, title and state are untouched. A
+  model never resends the tasks it did not touch. Each reply's rendered text
+  (`RenderTodos`) carries every task's `#id`, and the host's `write` receives
+  the whole post-mutation list with ids, so the model re-reads ids from the
+  reply instead of recalling them. An id that matches no task ⇒ `no task with
+  id <n>; use a task id from the latest reply`; an id that would match more
+  than one task (impossible through the tools, but a damaged store must not
+  be edited into a lie) ⇒ `task id <n> is ambiguous: it names more than one
+  task`. A refused target changes nothing and reaches `write` not at all.
+- **Per-mutation semantics**: `todo_add` appends one task and refuses when
+  the list already holds the 100-task cap; `todo_edit` requires at least one
+  of `title`/`state` (else `todo_edit: nothing to change; provide a title
+  and/or a state`) and changes only what is given; `todo_cancel` removes one
+  task; `todo_complete` sets one task `done`. Note `todo_add` has no `id`
+  argument — the store mints it.
+- **Normalization**: titles are trimmed; a missing or blank `state` on add
+  becomes `pending`.
 - **Validation** (exact error texts, none of which reach `write`):
-  `> 100` items ⇒ `too many tasks: the list holds at most 100, and you sent
-  <n>. Track the work at a coarser grain.`; blank title ⇒ `todos[<i>] has
-  an empty title; every task needs one`; title over 200 runes ⇒
-  `todos[<i>] has a title of <n> characters; the limit is 200. It is a task
-  name, not a description.`; unknown state ⇒ `todos[<i>] has state "<s>";
-  it must be one of pending, in_progress, done`. Unknown tool name ⇒
-  `unknown tool: <name>`; bad JSON ⇒ `invalid todo_write arguments: <err>`;
-  no writer ⇒ `the task list is unavailable: this run has nowhere to keep
-  it`; `write` returning an error ⇒ `could not save the task list: <err>`.
+  a blank/missing title ⇒ `title is empty; every task needs one`; a title
+  over 200 runes ⇒ `title has <n> characters; the limit is 200. It is a task
+  name, not a description.`; adding past 100 tasks ⇒ `too many tasks: the
+  list holds at most 100. Track the work at a coarser grain.`; an unknown
+  state ⇒ `state "<s>"; it must be one of pending, in_progress, done`.
+  Unknown tool name ⇒ `unknown tool: <name>`; bad JSON ⇒
+  `invalid <tool> arguments: <err>` (each tool named for itself); no writer ⇒
+  `the task list is unavailable: this run has nowhere to keep it`; `write`
+  returning an error ⇒ `could not save the task list: <err>`.
 - **Result parts**: a successful call carries ONE part, `type` exactly
   `todo_list` (`TodoListPartType`), `mimeType` `application/json`, `text` the
-  validated list as a JSON array of `{title, state}` — including `[]` for a
-  cleared list, so a host's display empties with it. A refused call carries
-  NO part, so a host never blanks its display over a call that changed
-  nothing.
+  post-mutation list as a JSON array of `{id, title, state}` — including
+  `[]` for a list cleared by canceling its last task, so a host's display
+  empties with it. The part's JSON equals exactly what the host's `write` was
+  handed. A refused call carries NO part, so a host never blanks its display
+  over a call that changed nothing.
 - **Result text** (`RenderTodos`, exported so a host can render the same
   text): empty ⇒ `Task list cleared.`; otherwise `Task list updated (<n> tasks):`
-  then one line per task, `\n<mark> <title>`, where mark is `[x]` done,
-  `[~]` in_progress, `[ ]` pending. The model gets the list back so a call
-  that dropped a task is visible in the reply, not only on the user's
-  screen.
+  then one line per task, `\n<mark> #<id> <title>`, where mark is `[x]` done,
+  `[~]` in_progress, `[ ]` pending. The model gets the list (with ids) back
+  so a call that dropped or changed a task is visible in the reply, not only
+  on the user's screen.
 
 ### 10d. The filesystem tools (`NewFileTools(FileToolsConfig)`)
 
