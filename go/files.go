@@ -166,7 +166,10 @@ type PathGuard func(path string) (blocked bool, reason string)
 // FileToolsConfig configures NewFileTools.
 type FileToolsConfig struct {
 	// Folders are the mounts, keyed by their leading path segment WITHOUT the
-	// slash ("repos", "workspace"). An empty map yields no tools at all.
+	// slash ("repos", "workspace"). Matching folds case -- a mount vocabulary
+	// is a handful of fixed words, and telling a model that wrote /Repos that
+	// no such mount exists teaches it something false. An empty map yields no
+	// tools at all.
 	Folders map[string]Folder
 	// MountsBlurb is appended to every tool description: the host's own
 	// sentence naming what its mounts are, since the library cannot know.
@@ -199,7 +202,7 @@ func NewFileTools(cfg FileToolsConfig) Tools {
 	mounted := map[string]Folder{}
 	for name, f := range cfg.Folders {
 		if name != "" && f != nil {
-			mounted[name] = f
+			mounted[strings.ToLower(name)] = f
 		}
 	}
 	if len(mounted) == 0 {

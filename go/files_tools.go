@@ -67,7 +67,7 @@ func (e *files) resolve(tool, raw string) (Folder, *ToolResult) {
 			return nil, &ToolResult{Content: reason, IsError: true}
 		}
 	}
-	mount := MountOf(raw)
+	mount := strings.ToLower(MountOf(raw))
 	f, ok := e.folders[mount]
 	if !ok {
 		return nil, &ToolResult{Content: tool + ": " + e.mountUnavailable(mount), IsError: true}

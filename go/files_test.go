@@ -2,7 +2,10 @@ package agentic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -396,4 +399,45 @@ func TestSplitGlobsAndMatching(t *testing.T) {
 	assert.True(t, MatchesPattern("src/util.go", "src/*.go"), "and the full path")
 	assert.True(t, MatchesPattern("src/Util.go", "util"), "a plain substring folds case")
 	assert.False(t, MatchesPattern("src/util.go", "*.rs"))
+}
+
+// The seven schemas are hand-written JSON beside the descriptions they belong
+// to, so nothing derives them from the structs the handlers decode. This is
+// what stands in for that: every advertised property must be a field the
+// handler reads, and every required one must be a field it cannot work
+// without. An argument the schema omits is one the model never sends; one it
+// requires by mistake is a tool the model refuses to call.
+func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
+	type schema struct {
+		Type                 string                     `json:"type"`
+		AdditionalProperties bool                        `json:"additionalProperties"`
+		Properties           map[string]json.RawMessage `json:"properties"`
+		Required             []string                   `json:"required"`
+	}
+	want := map[string]struct{ properties, required []string }{
+		ListDirToolName:    {[]string{"path"}, []string{"path"}},
+		DeleteFileToolName: {[]string{"path"}, []string{"path"}},
+		ReadFileToolName:   {[]string{"path", "offset", "limit"}, []string{"path"}},
+		FindFilesToolName:  {[]string{"path", "pattern", "limit"}, []string{"path", "pattern"}},
+		GrepToolName: {
+			[]string{"path", "pattern", "glob", "regexp", "case_sensitive", "limit"},
+			[]string{"path", "pattern"},
+		},
+		WriteFileToolName: {[]string{"path", "content"}, []string{"path", "content"}},
+		EditFileToolName:  {[]string{"path", "old_text", "new_text"}, []string{"path", "old_text", "new_text"}},
+	}
+	reg, _ := fileRig()
+	for _, d := range reg.Decls() {
+		t.Run(d.Name, func(t *testing.T) {
+			var s schema
+			require.NoError(t, json.Unmarshal(d.InputSchema, &s))
+			assert.Equal(t, "object", s.Type)
+			assert.False(t, s.AdditionalProperties, "an argument the handler cannot read must be refused, not ignored")
+			assert.ElementsMatch(t, want[d.Name].properties, slices.Collect(maps.Keys(s.Properties)))
+			assert.ElementsMatch(t, want[d.Name].required, s.Required)
+			for name, prop := range s.Properties {
+				assert.Contains(t, string(prop), `"description"`, "%s.%s tells the model nothing", d.Name, name)
+			}
+		})
+	}
 }
