@@ -347,8 +347,15 @@ func (e *subagentTool) launched(ctx context.Context, callID string, in subagentA
 			e.cfg.Runs.Complete(callID, fmt.Sprintf("the sub-agent crashed: %v", rec), true)
 		}
 	}()
+	release, err := e.cfg.Gate.Acquire(ctx)
+	if err != nil {
+		e.cfg.Runs.Complete(callID, "the sub-agent was cancelled while waiting for a free slot: "+err.Error(), true)
+		return
+	}
+	defer release()
 	e.cfg.Runs.MarkRunning(callID)
-	res := e.run(WithToolCallID(ctx, callID), in)
+
+	res := e.runGated(WithToolCallID(ctx, callID), in)
 	e.cfg.Runs.Complete(callID, res.Content, res.IsError)
 }
 
@@ -356,20 +363,26 @@ func (e *subagentTool) launched(ctx context.Context, callID string, in subagentA
 // share_context selection, an allowed_tools name that resolves to nothing — is
 // a recoverable error tool result that teaches the valid shape.
 func (e *subagentTool) run(ctx context.Context, in subagentArgs) ToolResult {
+	// Serialize per the shared Gate. Acquisition is cancellable so a caller
+	// disconnect (or a stopped turn) while waiting returns promptly. The
+	// asynchronous path takes the slot itself, BEFORE marking the run running,
+	// so a queued launch reads as queued rather than as an unexplained delay.
+	release, err := e.cfg.Gate.Acquire(ctx)
+	if err != nil {
+		return ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}
+	}
+	defer release()
+	return e.runGated(ctx, in)
+}
+
+// runGated executes one sub-agent with its concurrency slot already held.
+func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) ToolResult {
 	if e.cfg.Provider == nil || e.cfg.Model == "" {
 		return ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}
 	}
 	if strings.TrimSpace(in.Prompt) == "" {
 		return ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}
 	}
-
-	// Serialize per the shared Gate. Acquisition is cancellable so a caller
-	// disconnect (or a stopped turn) while waiting returns promptly.
-	release, err := e.cfg.Gate.Acquire(ctx)
-	if err != nil {
-		return ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}
-	}
-	defer release()
 
 	// Pick the sub-agent's toolset. Default: the read-only subset only. When
 	// the orchestrator pins it with allowed_tools, select that subset from the
