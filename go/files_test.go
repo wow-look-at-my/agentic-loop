@@ -173,6 +173,7 @@ func fileRig() (Tools, *writableFolder) {
 	return NewFileTools(FileToolsConfig{
 		Folders:     map[string]Folder{"work": work, "repos": repos},
 		MountsBlurb: "/work is editable; /repos is read-only.",
+		Notes:       map[string]string{WriteFileToolName: "Writes stage locally."},
 		Unavailable: func(m string) string {
 			if m == "attachments" {
 				return "no files are attached to this conversation."
@@ -201,10 +202,16 @@ func TestFileToolsAdvertisedSurface(t *testing.T) {
 	}, reg.Names())
 
 	readonly := map[string]bool{}
+	descriptions := map[string]string{}
 	for _, d := range reg.Decls() {
 		readonly[d.Name] = d.Readonly
+		descriptions[d.Name] = d.Description
 		assert.Contains(t, d.Description, "/work is editable", "the host's mounts blurb rides every description")
 	}
+	// A per-tool note reaches ITS tool and no other: a write's warning has no
+	// business in every read's description.
+	assert.Contains(t, descriptions[WriteFileToolName], "Writes stage locally.")
+	assert.NotContains(t, descriptions[ReadFileToolName], "Writes stage locally.")
 	assert.True(t, readonly[GrepToolName])
 	assert.False(t, readonly[WriteFileToolName], "a write must never be in a sub-agent's default toolset")
 

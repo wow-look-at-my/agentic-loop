@@ -171,6 +171,13 @@ type FileToolsConfig struct {
 	// MountsBlurb is appended to every tool description: the host's own
 	// sentence naming what its mounts are, since the library cannot know.
 	MountsBlurb string
+	// Notes are appended to ONE tool's description, keyed by tool name, for
+	// facts about the host's mounts that only that tool needs -- that its grep
+	// searches a local copy and so is unmetered, that a write stages locally
+	// and must never be reported as pushed. MountsBlurb is what every tool
+	// gets; this is what one gets, and the split is what keeps a write's
+	// warning out of every read's description.
+	Notes map[string]string
 	// Unavailable explains a mount the model named that this run does not
 	// serve. It receives the mount name; a nil func gets a plain default.
 	Unavailable func(mount string) string
@@ -199,17 +206,25 @@ func NewFileTools(cfg FileToolsConfig) Tools {
 		return nil
 	}
 	e := &files{folders: mounted, unavailable: cfg.Unavailable, guard: cfg.Guard}
-	blurb := cfg.MountsBlurb
-	if blurb != "" && !strings.HasPrefix(blurb, " ") {
-		blurb = " " + blurb
+	describe := func(name, base string) string {
+		return base + sentence(cfg.MountsBlurb) + sentence(cfg.Notes[name])
 	}
 	return Tools{
-		NewTool(ToolDecl{Name: ListDirToolName, Description: listDirDescription + blurb, InputSchema: pathOnlySchema, Readonly: true}, e.listDir),
-		NewTool(ToolDecl{Name: ReadFileToolName, Description: readFileDescription + blurb, InputSchema: readSchema, Readonly: true}, e.readFile),
-		NewTool(ToolDecl{Name: FindFilesToolName, Description: findFilesDescription + blurb, InputSchema: findSchema, Readonly: true}, e.findFiles),
-		NewTool(ToolDecl{Name: GrepToolName, Description: grepDescription + blurb, InputSchema: grepSchema, Readonly: true}, e.grep),
-		NewTool(ToolDecl{Name: WriteFileToolName, Description: writeFileDescription + blurb, InputSchema: writeSchema}, e.writeFile),
-		NewTool(ToolDecl{Name: EditFileToolName, Description: editFileDescription + blurb, InputSchema: editSchema}, e.editFile),
-		NewTool(ToolDecl{Name: DeleteFileToolName, Description: deleteFileDescription + blurb, InputSchema: pathOnlySchema}, e.deleteFile),
+		NewTool(ToolDecl{Name: ListDirToolName, Description: describe(ListDirToolName, listDirDescription), InputSchema: pathOnlySchema, Readonly: true}, e.listDir),
+		NewTool(ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true}, e.readFile),
+		NewTool(ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true}, e.findFiles),
+		NewTool(ToolDecl{Name: GrepToolName, Description: describe(GrepToolName, grepDescription), InputSchema: grepSchema, Readonly: true}, e.grep),
+		NewTool(ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema}, e.writeFile),
+		NewTool(ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema}, e.editFile),
+		NewTool(ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema}, e.deleteFile),
 	}
+}
+
+// sentence prepares a host addendum for appending: nothing for an empty one,
+// and a separating space otherwise.
+func sentence(s string) string {
+	if s = strings.TrimSpace(s); s == "" {
+		return ""
+	}
+	return " " + s
 }
