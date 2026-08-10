@@ -3,6 +3,7 @@ package agentic
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,6 +59,35 @@ func TestRepoJobLogWindowIsAddressableSoTheWholeLogIsReachable(t *testing.T) {
 	assert.Contains(t, res.Content, `{"offset":11}`)
 	assert.Contains(t, res.Content, "line 1\n")
 	assert.NotContains(t, res.Content, "line 11\n")
+}
+
+// GitHub does not serve the log from the API host: it answers 302 with a
+// short-lived signed URL on storage. Following that is the whole read, and the
+// Authorization header must NOT cross to the other host -- the signature is the
+// credential there, and forwarding a PAT to storage would hand it over.
+func TestRepoJobLogFollowsTheRedirectToStorageWithoutForwardingTheToken(t *testing.T) {
+	var storageAuth string
+	var sawStorage bool
+	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawStorage = true
+		storageAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, "step failed\npanic: boom\n")
+	}))
+	t.Cleanup(storage.Close)
+
+	g, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}},
+		func(c ghCall) (int, string) {
+			require.Equal(t, "/repos/octo/hello/actions/jobs/8/logs", c.Path)
+			return http.StatusFound, ""
+		})
+	g.headers = func(ghCall) http.Header {
+		return http.Header{"Location": []string{storage.URL + "/signed"}}
+	}
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 8})
+	require.False(t, res.IsError, res.Content)
+	require.True(t, sawStorage, "the redirect was never followed, so no log was read")
+	assert.Empty(t, storageAuth, "the PAT was forwarded to the storage host")
+	assert.Contains(t, res.Content, "panic: boom")
 }
 
 func TestRepoJobLogNeedsAJobID(t *testing.T) {
