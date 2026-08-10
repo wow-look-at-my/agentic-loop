@@ -268,7 +268,17 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   output, full answer or full reasoning, so a host can show what the
   sub-agent actually read and said rather than a truncated hint. The
   sub-run's streaming never leaks into the parent's `StreamEvents` — the
-  parent sees only the final report and the activity feed. A final message
+  parent sees only the final report and the activity feed.
+  **`Runs *SubagentRuns` makes the tool ASYNCHRONOUS**: the call returns
+  `SubagentLaunchReceipt(description)` the moment the sub-agent starts, so a
+  model can fan several out in one turn and keep working, and each report is
+  delivered between turns instead of blocking the call. `Config.Subagents`
+  (the same registry) is what makes `Run` keep that promise: a turn that
+  would otherwise END while sub-agents are out waits for the next report and
+  appends it as a user message (`FormatSubagentDelivery`). Every failure past
+  the JSON parse — an unconfigured model, a misused argument — reaches the
+  model as that report rather than as the launch's result. A nil `Runs` keeps
+  the call synchronous: it blocks until the sub-agent answers. A final message
   that is really a leaked tool-call envelope (a backend that did not parse
   the model's tool-call template) is never passed off as findings: it is cut
   at the envelope and returned as an error result carrying

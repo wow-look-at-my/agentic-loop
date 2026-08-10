@@ -130,7 +130,8 @@ side of that line it falls on — do not put it on both.
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
   and allowed_tools error texts, `SubagentCutOffNote`,
-  `SubagentNoReportText`, the context-summary and web-summary
+  `SubagentNoReportText`, `SubagentLaunchReceipt` and the
+  `FormatSubagentDelivery` text, the context-summary and web-summary
   prompts, the web_fetch validation/cap/result texts, the todo_write
   description/schema/teaching errors and `RenderTodos`) are pinned by tests
   and by PARITY.md. Do not "improve" them.

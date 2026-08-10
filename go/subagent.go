@@ -3,6 +3,7 @@ package agentic
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -159,8 +160,17 @@ type SubagentConfig struct {
 	ParentSystem   string
 	ParentMessages []Message
 	// Gate bounds concurrent sub-agent execution (share one Gate across the
-	// executors that should share the limit). nil = no limit.
+	// tools that should share the limit). nil = no limit.
 	Gate *Gate
+	// Runs makes run_subagent ASYNCHRONOUS: the call returns a receipt as soon
+	// as the sub-agent is launched, so the orchestrator can fan several out in
+	// one turn and keep working, and each report is delivered between turns
+	// through this registry (Run drains it; a host driving its own loop calls
+	// Pending/Collect itself).
+	//
+	// nil keeps the call synchronous -- it blocks until the sub-agent answers,
+	// and one call can only ever produce one running sub-agent.
+	Runs *SubagentRuns
 	// SystemPrompt overrides DefaultSubagentSystemPrompt when non-empty.
 	SystemPrompt string
 	// OnActivity, when non-nil, receives live telemetry: a step per sub-agent
@@ -301,22 +311,63 @@ type subagentArgs struct {
 // an allowed_tools name that resolves to nothing — is a recoverable error
 // tool result that teaches the valid shape, never a Go error.
 func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (ToolResult, error) {
-	if e.cfg.Provider == nil || e.cfg.Model == "" {
-		return ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}, nil
-	}
+	// A body nobody can parse is the one failure still answered synchronously
+	// even in async mode: there is nothing to launch, and the model should
+	// learn that from the call it just made.
 	var in subagentArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return ToolResult{Content: "invalid run_subagent arguments: " + err.Error(), IsError: true}, nil
 	}
+	if e.cfg.Runs == nil {
+		return e.run(ctx, in), nil
+	}
+
+	// Asynchronous: register the run, hand back a receipt, and let the
+	// goroutine report through the registry. Every other failure -- an
+	// unconfigured model, a misused argument -- reaches the model as that
+	// report, one delivery later, rather than as this call's result.
+	callID := ToolCallID(ctx)
+	if callID == "" {
+		callID = e.cfg.Runs.nextID()
+	}
+	e.cfg.Runs.Launch(callID, in.Description, in.Prompt)
+	go e.launched(ctx, callID, in)
+	return ToolResult{Content: SubagentLaunchReceipt(in.Description)}, nil
+}
+
+// launched runs one asynchronously started sub-agent to completion and records
+// its outcome. It never returns anything to its caller -- the registry is the
+// only path back -- so every exit has to record something: a lost report would
+// leave the loop waiting on a promise nothing will keep. That includes a
+// panic, which on this goroutine would otherwise take the whole process down
+// rather than one turn.
+func (e *subagentTool) launched(ctx context.Context, callID string, in subagentArgs) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			e.cfg.Runs.Complete(callID, fmt.Sprintf("the sub-agent crashed: %v", rec), true)
+		}
+	}()
+	e.cfg.Runs.MarkRunning(callID)
+	res := e.run(WithToolCallID(ctx, callID), in)
+	e.cfg.Runs.Complete(callID, res.Content, res.IsError)
+}
+
+// run executes one sub-agent to completion. Every misuse — a bad
+// share_context selection, an allowed_tools name that resolves to nothing — is
+// a recoverable error tool result that teaches the valid shape.
+func (e *subagentTool) run(ctx context.Context, in subagentArgs) ToolResult {
+	if e.cfg.Provider == nil || e.cfg.Model == "" {
+		return ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}
+	}
 	if strings.TrimSpace(in.Prompt) == "" {
-		return ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}, nil
+		return ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}
 	}
 
 	// Serialize per the shared Gate. Acquisition is cancellable so a caller
 	// disconnect (or a stopped turn) while waiting returns promptly.
 	release, err := e.cfg.Gate.Acquire(ctx)
 	if err != nil {
-		return ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}, nil
+		return ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}
 	}
 	defer release()
 
@@ -330,7 +381,7 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (ToolR
 	if len(in.AllowedTools) > 0 {
 		keep, terr := resolveAllowedTools(grantableToolNames(e.grantableTools()), in.AllowedTools)
 		if terr != "" {
-			return ToolResult{Content: terr, IsError: true}, nil
+			return ToolResult{Content: terr, IsError: true}
 		}
 		subTools, granted = e.cfg.Tools.Subset(keep), true
 	}
@@ -340,7 +391,7 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (ToolR
 	// is a recoverable tool error so the model can correct the call.
 	block, errMsg := e.buildContextBlock(ctx, in)
 	if errMsg != "" {
-		return ToolResult{Content: errMsg, IsError: true}, nil
+		return ToolResult{Content: errMsg, IsError: true}
 	}
 	task := composeSubagentTask(block, in.Prompt)
 
@@ -352,12 +403,12 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (ToolR
 		Extra:     e.cfg.Extra,
 	})
 	if runErr != nil {
-		return ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}, nil
+		return ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}
 	}
 	// Not just the final text: a run that ended by emitting a tool-call
 	// envelope as TEXT never answered, and passing that up as findings is the
 	// one failure the orchestrator cannot detect for itself.
-	return subagentReport(res.Final.Content), nil
+	return subagentReport(res.Final.Content)
 }
 
 // unavailableTool is what a sub-agent is told when it names a tool this run
@@ -372,6 +423,22 @@ func (e *subagentTool) unavailableTool(granted bool) func(string) string {
 	return func(name string) string {
 		return "tool not available to subagent (read-only tools only): " + name
 	}
+}
+
+// SubagentLaunchReceipt is what the model gets back in place of an answer
+// when run_subagent is asynchronous. It has to carry its own weight: the model
+// is about to choose what to do with a turn it did not expect to have, and a
+// bare "started" invites it to either idle-poll or invent the findings.
+func SubagentLaunchReceipt(description string) string {
+	what := strings.TrimSpace(description)
+	if what == "" {
+		what = "(no description given)"
+	}
+	return "Sub-agent launched: " + what + ". It is running in the background and this call is already finished. " +
+		"Its report will be delivered to you automatically as a new message in this conversation when it lands -- " +
+		"there is nothing to poll and no way to wait for it here. Launch more sub-agents now if other areas need " +
+		"covering, get on with work that does not depend on this one, or, if nothing is left until the report " +
+		"arrives, say so in one short line and end your turn."
 }
 
 // runConfig assembles the nested Run's Config: the sub-agent's toolset, the

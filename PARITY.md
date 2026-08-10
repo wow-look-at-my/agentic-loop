@@ -738,6 +738,34 @@ FULL toolset; there is deliberately NO retry field — see §6), `parentSystem` 
   plus `SubagentCutOffNote`. Either way the result is `isError`. Matching
   is line-start only, so prose quoting those tokens mid-line is untouched.
 
+#### 10a-async. Asynchronous launches (`SubagentRuns`)
+
+`config.runs` (a `SubagentRuns`) flips run_subagent from blocking to
+launch-and-report. Contract:
+
+- **Only an unparseable body still answers synchronously**; an unconfigured
+  model, an empty prompt, a bad share_context and an unresolved allowed_tools
+  name all reach the model as the REPORT, one delivery later.
+- The launch answers `subagentLaunchReceipt(description)` (exact text).
+- **Registry states**: `queued` -> `running` -> `done`/`error`, plus
+  `abandoned` for a run stranded when the turn ended. Each transition fires
+  the `onUpdate` callback with `{callID, label, prompt?, state, report?,
+  isError?, duration?}` -- transient telemetry, never model context.
+- **Launch is idempotent per call id**; unknown ids on markRunning/complete are
+  ignored. A call with no id gets one minted (`subagent_<n>`, per registry).
+- **collect()** blocks for the next report and returns EVERY ready one (several
+  finishing together cost one delivery), returns the context error on cancel,
+  and returns nothing without blocking when nothing is outstanding.
+  **take()** drains what has arrived without waiting; **cancelRemaining()**
+  marks the rest abandoned and returns how many.
+- **pending()** counts unfinished PLUS undelivered; a nil/absent registry
+  answers 0 to everything so a loop can consult one it never got.
+- **The loop drains it**: a turn that produced no tool calls and would END
+  while `pending() > 0` collects instead, appends
+  `formatSubagentDelivery(reports, running, 0)` as a USER message, and loops.
+  The delivery text is contract (header, per-report `FAILED`/`finished`
+  wording, the empty-report and still-running/abandoned sentences).
+
 ### 10b. web_fetch (`NewWebFetchTool(WebFetchConfig)`)
 
 Config: `httpClient?` (nil ⇒ a 45 s-timeout client), `userAgent?` (sent on

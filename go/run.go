@@ -160,6 +160,13 @@ type Config struct {
 	Approver Approver
 	Events   Events
 
+	// Subagents is the registry an asynchronous run_subagent reports into (the
+	// same value given to SubagentConfig.Runs). When set, a turn that would
+	// otherwise END while sub-agents are still out instead waits for the next
+	// report and delivers it as a user message, so the loop keeps the promise
+	// the launch receipt made. nil means nothing was launched asynchronously.
+	Subagents *SubagentRuns
+
 	// DisableOutputDedup opts out of collapsing byte-identical read-only tool
 	// results into [unchanged] markers. On by default; only set when the full
 	// output must always reach the model.
@@ -366,6 +373,32 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
 			}
 			continue
+		}
+
+		// The model asked for no tools -- but sub-agents launched earlier in
+		// this run may still be out, and their launch receipt promised the
+		// model it would be notified. Deliver what has landed (waiting for the
+		// next report if none has) and keep looping, so the model actually
+		// sees them; that promise is the whole reason an asynchronous
+		// run_subagent may return before it has an answer.
+		if cfg.Subagents.Pending() > 0 {
+			reports, cerr := cfg.Subagents.Collect(ctx)
+			if cerr != nil {
+				res.Messages = transcript
+				return res, cerr
+			}
+			if len(reports) > 0 {
+				if strings.TrimSpace(assistant.Content) != "" {
+					answered := assistant
+					answered.ToolCalls = nil
+					transcript = append(transcript, answered)
+				}
+				transcript = append(transcript, Message{
+					Role:    RoleUser,
+					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+				})
+				continue
+			}
 		}
 
 		// The loop is ending: the model asked for no tools. ToolCalls is
