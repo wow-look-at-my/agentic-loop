@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // What an exhausted credential rotation reports. A 404 covers a repository no
@@ -49,4 +50,42 @@ func TestRepoFileWriteReadableButNotWritable(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "can read octo/hello but none of them could write to it")
 	assert.Contains(t, res.Content, "Contents: read & write")
+}
+
+// authTestBaseTip is a commit sha long enough that clipping it would show.
+const authTestBaseTip = "1111111111111111111111111111111111111111"
+
+func TestAuthFailureRankPrefersWhatExplains(t *testing.T) {
+	missing := GitHubAuthError{status: 404, what: "read the base commit " + authTestBaseTip, object: "commit " + authTestBaseTip}
+	denied := GitHubAuthError{status: 403, what: "create the tree"}
+	hidden := GitHubAuthError{status: 404, what: "create the tree"}
+	bad := GitHubAuthError{status: 401, what: "create the tree"}
+
+	// A named missing object is the only one of these that identifies a cause
+	// rather than a credential, so nothing displaces it.
+	for _, weaker := range []GitHubAuthError{denied, hidden, bad} {
+		assert.Equal(t, missing, MoreInformativeAuthFailure(missing, weaker), "%d must not displace a missing object", weaker.status)
+		assert.Equal(t, missing, MoreInformativeAuthFailure(weaker, missing), "a missing object must win from either side")
+	}
+	// A 401 only says the credential was rejected; a 403 says it was
+	// recognized and denied, which is a real signal about access.
+	assert.Equal(t, denied, MoreInformativeAuthFailure(denied, bad))
+	assert.Equal(t, denied, MoreInformativeAuthFailure(bad, denied))
+	// Nothing to compare against yet: the first failure is the best so far.
+	assert.Equal(t, bad, MoreInformativeAuthFailure(GitHubAuthError{}, bad))
+	// Equal rank keeps the later attempt, which is what the loop did before.
+	assert.Equal(t, hidden, MoreInformativeAuthFailure(GitHubAuthError{status: 404, what: "write x"}, hidden))
+}
+
+func TestCommitReadNamesTheWholeSHA(t *testing.T) {
+	// A 404 on the branch point makes that sha the thing the reader has to go
+	// and look up, so it is reported whole rather than clipped to ten
+	// characters by the message that reports it.
+	err := ClassifyObjectRead("read the base commit "+authTestBaseTip, "commit "+authTestBaseTip,
+		GHResponse{status: 404, body: []byte(`{"message":"Not Found"}`)})
+	var auth GitHubAuthError
+	require.ErrorAs(t, err, &auth)
+	assert.Equal(t, "commit "+authTestBaseTip, auth.object)
+	assert.Contains(t, auth.Error(), authTestBaseTip)
+	assert.NotEqual(t, shortSHA(authTestBaseTip), authTestBaseTip, "the sha is long enough for clipping to matter")
 }
