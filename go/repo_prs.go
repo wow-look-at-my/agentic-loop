@@ -132,9 +132,9 @@ func (e *repoTools) prRead(ctx context.Context, in repoReadArgs) ToolResult {
 			diffNote = fmt.Sprintf("(could not fetch diff: status %d)", dres.status)
 		default:
 			var truncated bool
-			diff, truncated = TruncateRunes(string(dres.body), repoDiffMaxRunes)
+			diff, truncated = TruncateRunes(string(dres.body), RepoDiffMaxRunes)
 			if truncated || dres.truncated {
-				diffNote = fmt.Sprintf("(diff truncated to %d characters)", repoDiffMaxRunes)
+				diffNote = fmt.Sprintf("(diff truncated to %d characters)", RepoDiffMaxRunes)
 			}
 		}
 	}

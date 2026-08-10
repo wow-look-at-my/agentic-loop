@@ -72,14 +72,14 @@ func TestRepoCommitDiffReturnsPatch(t *testing.T) {
 }
 
 func TestRepoCommitDiffTruncates(t *testing.T) {
-	huge := strings.Repeat("a", repoDiffMaxRunes+100)
+	huge := strings.Repeat("a", RepoDiffMaxRunes+100)
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		return http.StatusOK, huge
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "commit", Org: "octo", Repo: "hello", SHA: "abc"})
 	require.False(t, res.IsError, res.Content)
 	assert.Contains(t, res.Content, "(diff truncated to")
-	assert.Less(t, len(res.Content), repoDiffMaxRunes+200)
+	assert.Less(t, len(res.Content), RepoDiffMaxRunes+200)
 }
 
 func TestRepoCommitDiffRequiresSHA(t *testing.T) {

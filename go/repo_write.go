@@ -45,11 +45,11 @@ var repoFileWriteSchema = InferSchema[repoFileWriteArgs]()
 
 var repoPRCreateSchema = InferSchema[repoPRCreateArgs]()
 
-// ghAuthErr marks a write-flow step that failed in a way that may be
+// GitHubAuthError marks a write-flow step that failed in a way that may be
 // credential-specific — 401, 403, or 404 (GitHub reports resources a token
 // cannot access, or cannot write, as 404) — so the whole flow is retried with
 // the next token.
-type ghAuthErr struct {
+type GitHubAuthError struct {
 	status int
 	what   string
 	// object names the one git object this step READ, when the step was a
@@ -61,7 +61,7 @@ type ghAuthErr struct {
 	object string
 }
 
-func (a ghAuthErr) Error() string {
+func (a GitHubAuthError) Error() string {
 	return fmt.Sprintf("could not %s: status %d", a.what, a.status)
 }
 
@@ -70,7 +70,7 @@ func (a ghAuthErr) Error() string {
 // missing commit as a missing commit.
 func classifyObjectRead(what, object string, res GHResponse) error {
 	err := classifyWriteStatus(what, res)
-	var auth ghAuthErr
+	var auth GitHubAuthError
 	if errors.As(err, &auth) {
 		auth.object = object
 		return auth
@@ -85,12 +85,12 @@ type ghFatal struct{ msg string }
 
 func (f ghFatal) Error() string { return f.msg }
 
-// classifyWriteStatus turns a non-2xx write-flow response into a ghAuthErr
+// classifyWriteStatus turns a non-2xx write-flow response into a GitHubAuthError
 // (retry with the next credential) or a ghFatal carrying GitHub's own message.
 func classifyWriteStatus(what string, res GHResponse) error {
 	switch res.status {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
-		return ghAuthErr{status: res.status, what: what}
+		return GitHubAuthError{status: res.status, what: what}
 	}
 	if msg := ghErrorDetail(res.body); msg != "" {
 		return ghFatal{msg: fmt.Sprintf("could not %s: GitHub returned %d: %s", what, res.status, msg)}
@@ -129,7 +129,7 @@ func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 }
 
 // runWrite drives a write flow through writeTokenOrder: attempt runs the whole
-// flow with one token; a ghAuthErr falls through to the next credential (the
+// flow with one token; a GitHubAuthError falls through to the next credential (the
 // cached winner may have been discovered by a READ and lack write access), a
 // ghFatal or transport error stops immediately, and the first success caches
 // the winning token — so only a credential that completed a write is recorded.
@@ -145,7 +145,7 @@ func (e *repoTools) runWrite(ctx context.Context, toolName, cacheKey string, att
 		}
 		return ToolResult{Content: toolName + ` mutates GitHub and is never attempted unauthenticated — add a GitHub personal access token with write access in Settings -> github and enable "model can write" on it first.`, IsError: true}
 	}
-	var bestAuth ghAuthErr
+	var bestAuth GitHubAuthError
 	for _, att := range order {
 		text, err := attempt(att.token)
 		if err == nil {
@@ -154,7 +154,7 @@ func (e *repoTools) runWrite(ctx context.Context, toolName, cacheKey string, att
 			}
 			return ToolResult{Content: text}
 		}
-		var auth ghAuthErr
+		var auth GitHubAuthError
 		if errors.As(err, &auth) {
 			bestAuth = moreInformativeAuth(bestAuth, auth)
 			continue // this credential may simply lack access; try the next
@@ -174,7 +174,7 @@ type ghRepoMeta struct {
 }
 
 // repoMeta probes a repository with one credential and returns its metadata.
-// 401/403/404 come back as ghAuthErr so the caller tries the next credential
+// 401/403/404 come back as GitHubAuthError so the caller tries the next credential
 // (GitHub hides an inaccessible private repo behind 404).
 func (e *repoTools) repoMeta(ctx context.Context, token, org, repo string) (ghRepoMeta, error) {
 	res, err := e.gh.doGet(ctx, e.repoURL(org, repo), token, "application/vnd.github+json")

@@ -113,10 +113,10 @@ func (e *repoTools) commitRead(ctx context.Context, in repoReadArgs) ToolResult 
 	if res.status < 200 || res.status >= 300 {
 		return ToolResult{Content: describeResourceFailure("read", "commit "+sha+" of "+RepoPath(in.Org, in.Repo, ""), res, len(e.gh.tokens)), IsError: true}
 	}
-	diff, truncated := TruncateRunes(string(res.body), repoDiffMaxRunes)
+	diff, truncated := TruncateRunes(string(res.body), RepoDiffMaxRunes)
 	header := fmt.Sprintf("commit %s of %s", sha, RepoPath(in.Org, in.Repo, ""))
 	if truncated || res.truncated {
-		header += fmt.Sprintf("\n(diff truncated to %d characters)", repoDiffMaxRunes)
+		header += fmt.Sprintf("\n(diff truncated to %d characters)", RepoDiffMaxRunes)
 	}
 	return ToolResult{Content: header + "\n\n" + diff}
 }

@@ -26,7 +26,7 @@ const (
 
 	repoListDefaultPerPage = 10      // default page size for the list reads
 	repoListMaxPerPage     = 30      // hard cap on a list read's per_page
-	repoDiffMaxRunes       = 200_000 // cap on a commit/PR diff fed back to the model
+	RepoDiffMaxRunes       = 200_000 // cap on a commit/PR diff fed back to the model
 	repoBodyMaxRunes       = 20_000  // cap on one PR/issue body
 	repoCommentMaxRunes    = 5_000   // cap on one issue comment body
 

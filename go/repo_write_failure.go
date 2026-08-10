@@ -26,7 +26,7 @@ import (
 // point only by a 404 that names an object, so one later token rejecting its
 // own credentials erased the finding and put the push back on the
 // write-access guess this file exists to retire.
-func moreInformativeAuth(best, next ghAuthErr) ghAuthErr {
+func moreInformativeAuth(best, next GitHubAuthError) GitHubAuthError {
 	if best.status == 0 {
 		return next
 	}
@@ -40,7 +40,7 @@ func moreInformativeAuth(best, next ghAuthErr) ghAuthErr {
 // cause it pins down. A 404 naming an object is the only one that identifies
 // something about the REPOSITORY -- the object is not there -- while every
 // other status describes one credential.
-func authFailureRank(a ghAuthErr) int {
+func authFailureRank(a GitHubAuthError) int {
 	switch {
 	case a.status == http.StatusNotFound && a.object != "":
 		return 30 // "this commit/branch is gone" -- a cause, not a credential
@@ -59,7 +59,7 @@ func authFailureRank(a ghAuthErr) int {
 // the cause sends a user to Settings to fix a token that was never the
 // problem. One extra read separates "cannot see it" from the rest, and a 404
 // on a step that read one named object reports that object.
-func (e *repoTools) explainExhaustedWrite(ctx context.Context, toolName, cacheKey string, order []tokenAttempt, bestAuth ghAuthErr) string {
+func (e *repoTools) explainExhaustedWrite(ctx context.Context, toolName, cacheKey string, order []tokenAttempt, bestAuth GitHubAuthError) string {
 	repo := cacheKey
 	if repo == "" {
 		repo = "this repository"

@@ -1,6 +1,7 @@
 package agentic
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -168,3 +169,33 @@ func RepoPath(org, repo, inner string) string {
 // reads differently when none is configured than when three were refused, and
 // only the client knows which.
 func (e *GitHub) TokenCount() int { return len(e.tokens) }
+
+// WriteCredentials is Credentials for a WRITE: the cached winner when it is
+// write-capable, then every write token, and NEVER an anonymous attempt. A
+// host pushing with git runs the same rotation this returns, so a push reaches
+// exactly the repositories the write tools do.
+func (e *GitHub) WriteCredentials(cacheKey string) []Credential {
+	order := e.writeTokenOrder(cacheKey)
+	out := make([]Credential, 0, len(order))
+	for _, a := range order {
+		out = append(out, Credential{ID: a.id, Name: a.name, Token: a.token})
+	}
+	return out
+}
+
+// Get performs one GET with ONE credential, for a host running its own
+// rotation. The rotating reads (Fetch, FetchURL) are what a caller wants
+// otherwise.
+func (e *GitHub) Get(ctx context.Context, target, token, accept string) (GHResponse, error) {
+	return e.doGet(ctx, target, token, accept)
+}
+
+// Status is the HTTP status behind a credential-specific failure.
+func (a GitHubAuthError) Status() int { return a.status }
+
+// Object names the one git object the failing step read, when it read one. A
+// 404 there means EITHER that the credential cannot see the repository OR that
+// the object is not in it, and nothing in the response distinguishes them --
+// which is why the two are told apart after every credential has been tried,
+// never during.
+func (a GitHubAuthError) Object() string { return a.object }
