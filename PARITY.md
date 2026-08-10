@@ -926,7 +926,11 @@ the tool's outbound requests), `tikaURL?`, `provider`/`model`/`maxTokens`/
 ### 10c. The task-list tools (`NewTodoTools(TodoConfig)`)
 
 Config: `write: (todos) => void | error` — the host's store. A nil/absent
-`write` refuses every call.
+`write` refuses every call. `initial: Todo[]` — the list the toolset starts
+holding, which a host that persists the list across runs MUST pass back. It is
+COPIED (mutating the list never reaches the caller's array), and the next id
+minted is one above the largest id in it, so a restored task and a newly added
+one can never collide. Absent ⇒ an empty list and ids from 1.
 
 - Tool names exactly `todo_add`, `todo_edit`, `todo_cancel`,
   `todo_complete`; each is a separate Tool in one flat `Tools` slice sharing
