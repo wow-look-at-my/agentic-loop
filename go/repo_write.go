@@ -78,24 +78,24 @@ func classifyObjectRead(what, object string, res GHResponse) error {
 	return err
 }
 
-// ghFatal marks a write-flow failure no other credential can fix (bad
+// GitHubFatalError marks a write-flow failure no other credential can fix (bad
 // arguments, a missing base branch, validation errors, conflicts); its message
 // goes back to the model as a recoverable tool error.
-type ghFatal struct{ msg string }
+type GitHubFatalError struct{ msg string }
 
-func (f ghFatal) Error() string { return f.msg }
+func (f GitHubFatalError) Error() string { return f.msg }
 
 // classifyWriteStatus turns a non-2xx write-flow response into a GitHubAuthError
-// (retry with the next credential) or a ghFatal carrying GitHub's own message.
+// (retry with the next credential) or a GitHubFatalError carrying GitHub's own message.
 func classifyWriteStatus(what string, res GHResponse) error {
 	switch res.status {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
 		return GitHubAuthError{status: res.status, what: what}
 	}
 	if msg := ghErrorDetail(res.body); msg != "" {
-		return ghFatal{msg: fmt.Sprintf("could not %s: GitHub returned %d: %s", what, res.status, msg)}
+		return GitHubFatalError{msg: fmt.Sprintf("could not %s: GitHub returned %d: %s", what, res.status, msg)}
 	}
-	return ghFatal{msg: fmt.Sprintf("could not %s: GitHub returned status %d", what, res.status)}
+	return GitHubFatalError{msg: fmt.Sprintf("could not %s: GitHub returned status %d", what, res.status)}
 }
 
 // writeTokenOrder is the credential order for mutating calls, drawn ONLY from
@@ -131,7 +131,7 @@ func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 // runWrite drives a write flow through writeTokenOrder: attempt runs the whole
 // flow with one token; a GitHubAuthError falls through to the next credential (the
 // cached winner may have been discovered by a READ and lack write access), a
-// ghFatal or transport error stops immediately, and the first success caches
+// GitHubFatalError or transport error stops immediately, and the first success caches
 // the winning token — so only a credential that completed a write is recorded.
 // An empty write list is a recoverable teaching error: these are the
 // model-initiated write tools, so the fix is the user flagging (or adding) a
@@ -159,7 +159,7 @@ func (e *repoTools) runWrite(ctx context.Context, toolName, cacheKey string, att
 			bestAuth = moreInformativeAuth(bestAuth, auth)
 			continue // this credential may simply lack access; try the next
 		}
-		var fatal ghFatal
+		var fatal GitHubFatalError
 		if errors.As(err, &fatal) {
 			return ToolResult{Content: fatal.msg, IsError: true}
 		}
@@ -209,7 +209,7 @@ func (e *repoTools) resolveRefSHA(ctx context.Context, token, org, repo, ref str
 		return "", err
 	}
 	if res.status == http.StatusNotFound {
-		return "", ghFatal{msg: fmt.Sprintf("base ref %q does not exist in %s/%s — pass an existing branch, tag, or SHA as create_branch_from (or omit it to use the default branch)", ref, org, repo)}
+		return "", GitHubFatalError{msg: fmt.Sprintf("base ref %q does not exist in %s/%s — pass an existing branch, tag, or SHA as create_branch_from (or omit it to use the default branch)", ref, org, repo)}
 	}
 	if res.status < 200 || res.status >= 300 {
 		return "", classifyWriteStatus("resolve base ref "+ref, res)
@@ -221,7 +221,7 @@ func (e *repoTools) resolveRefSHA(ctx context.Context, token, org, repo, ref str
 		return "", uerr
 	}
 	if out.SHA == "" {
-		return "", ghFatal{msg: fmt.Sprintf("could not resolve base ref %q to a commit SHA", ref)}
+		return "", GitHubFatalError{msg: fmt.Sprintf("could not resolve base ref %q to a commit SHA", ref)}
 	}
 	return out.SHA, nil
 }
@@ -301,14 +301,14 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 	switch {
 	case res.status == http.StatusNotFound:
 		if !in.CreateBranch {
-			return "", ghFatal{msg: fmt.Sprintf("branch %q does not exist in %s/%s. Pass create_branch=true to create it (from create_branch_from, default: the repository's default branch %q), or commit to an existing branch.", in.Branch, in.Org, in.Repo, meta.DefaultBranch)}
+			return "", GitHubFatalError{msg: fmt.Sprintf("branch %q does not exist in %s/%s. Pass create_branch=true to create it (from create_branch_from, default: the repository's default branch %q), or commit to an existing branch.", in.Branch, in.Org, in.Repo, meta.DefaultBranch)}
 		}
 		base := strings.TrimSpace(in.CreateBranchFrom)
 		if base == "" {
 			base = meta.DefaultBranch
 		}
 		if base == "" {
-			return "", ghFatal{msg: "could not determine a base branch for the new branch — pass create_branch_from explicitly"}
+			return "", GitHubFatalError{msg: "could not determine a base branch for the new branch — pass create_branch_from explicitly"}
 		}
 		sha, serr := e.resolveRefSHA(ctx, token, in.Org, in.Repo, base)
 		if serr != nil {
@@ -324,21 +324,21 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 
 	// CREATE-ONLY gate: the path must not exist on the ref the content would
 	// come from (2xx = it does; 404 = genuinely new).
-	contentsURL := repoURL + "/contents/" + EscapeSegments(in.Path)
-	fres, err := e.gh.doGet(ctx, contentsURL+"?ref="+url.QueryEscape(checkRef), token, "application/vnd.github+json")
+	ContentsURL := repoURL + "/contents/" + EscapeSegments(in.Path)
+	fres, err := e.gh.doGet(ctx, ContentsURL+"?ref="+url.QueryEscape(checkRef), token, "application/vnd.github+json")
 	if err != nil {
 		return "", err
 	}
 	switch {
 	case fres.status >= 200 && fres.status < 300:
 		if t := bytes.TrimSpace(fres.body); len(t) > 0 && t[0] == '[' {
-			return "", ghFatal{msg: fmt.Sprintf("%s is a directory in %s/%s — repo_file_write writes a single file", in.Path, in.Org, in.Repo)}
+			return "", GitHubFatalError{msg: fmt.Sprintf("%s is a directory in %s/%s — repo_file_write writes a single file", in.Path, in.Org, in.Repo)}
 		}
 		where := fmt.Sprintf("on branch %q", checkRef)
 		if needBranch {
 			where = fmt.Sprintf("on %q (the ref branch %q would be created from)", checkRef, in.Branch)
 		}
-		return "", ghFatal{msg: fmt.Sprintf("%s already exists in %s/%s %s — repo_file_write only creates new files, it never overwrites. To change an existing file, ask the user to pull the pull request (or open one for the branch) into a conversation workspace from the files pane, then edit it with workspace_edit's replace.", in.Path, in.Org, in.Repo, where)}
+		return "", GitHubFatalError{msg: fmt.Sprintf("%s already exists in %s/%s %s — repo_file_write only creates new files, it never overwrites. To change an existing file, ask the user to pull the pull request (or open one for the branch) into a conversation workspace from the files pane, then edit it with workspace_edit's replace.", in.Path, in.Org, in.Repo, where)}
 	case fres.status == http.StatusNotFound:
 		// Genuinely new — proceed.
 	default:
@@ -363,7 +363,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 		"branch":  in.Branch,
 	}
 	body, _ := json.Marshal(put)
-	pres, err := e.gh.doRequest(ctx, http.MethodPut, contentsURL, token, "application/vnd.github+json", body)
+	pres, err := e.gh.doRequest(ctx, http.MethodPut, ContentsURL, token, "application/vnd.github+json", body)
 	if err != nil {
 		return "", err
 	}

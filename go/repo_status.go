@@ -125,10 +125,18 @@ func (e *repoTools) statusRead(ctx context.Context, in repoReadArgs) ToolResult 
 //
 // The returned GHResponse is the combined-status response, carried back only so
 // the caller can append its token-expiry note.
+// CIStatusReport renders a commit's CI state -- legacy commit statuses and
+// Actions check runs together, every failing check explained. A host reporting
+// a working copy's own CI calls this, so what it shows and what
+// repo_read what=status shows are one rendering rather than two.
+func (e *GitHub) CIStatusReport(ctx context.Context, org, repo, ref string) (string, GHResponse, error) {
+	return (&repoTools{gh: e}).ciStatusReport(ctx, org, repo, ref)
+}
+
 func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (string, GHResponse, error) {
 	resource := RepoPath(org, repo, "") + "@" + ref
 
-	statusTarget := fmt.Sprintf("%s/commits/%s/status", e.repoURL(org, repo), EscapeSegments(ref))
+	statusTarget := fmt.Sprintf("%s/commits/%s/status", e.gh.RepoURL(org, repo), EscapeSegments(ref))
 	statusRes, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), statusTarget, "application/vnd.github+json")
 	if err != nil {
 		return "", GHResponse{}, fmt.Errorf("reading the CI status of %s failed: %w", resource, err)
@@ -141,7 +149,7 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 		return "", GHResponse{}, fmt.Errorf("could not parse GitHub's status response for %s: %w", resource, uerr)
 	}
 
-	checksTarget := fmt.Sprintf("%s/commits/%s/check-runs", e.repoURL(org, repo), EscapeSegments(ref))
+	checksTarget := fmt.Sprintf("%s/commits/%s/check-runs", e.gh.RepoURL(org, repo), EscapeSegments(ref))
 	checksRes, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), checksTarget, "application/vnd.github+json")
 	var checks ghCheckRunsResponse
 	var checksNote string
@@ -194,7 +202,7 @@ func (e *repoTools) explainFailures(ctx context.Context, org, repo string, runs 
 
 // fetchCheckRun reads one check run by id.
 func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int64) (ghCheckRun, error) {
-	target := fmt.Sprintf("%s/check-runs/%d", e.repoURL(org, repo), id)
+	target := fmt.Sprintf("%s/check-runs/%d", e.gh.RepoURL(org, repo), id)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")
 	if err != nil {
 		return ghCheckRun{}, err
@@ -333,7 +341,7 @@ func (e *repoTools) checkRunRead(ctx context.Context, in repoReadArgs) ToolResul
 // note rather than as an error: the check's own output is still worth having,
 // and a silently empty annotation list would read as "no errors were flagged".
 func (e *repoTools) fetchAnnotations(ctx context.Context, org, repo string, id int64) ([]ghAnnotation, string) {
-	target := fmt.Sprintf("%s/check-runs/%d/annotations?per_page=%d", e.repoURL(org, repo), id, checkRunAnnotationLimit)
+	target := fmt.Sprintf("%s/check-runs/%d/annotations?per_page=%d", e.gh.RepoURL(org, repo), id, checkRunAnnotationLimit)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")
 	if err != nil {
 		return nil, "the request failed: " + err.Error()

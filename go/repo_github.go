@@ -61,7 +61,7 @@ type FetchOptions struct {
 // exported because a host mounting /repos as a folder reads files through the
 // same credential rotation the tools do.
 func (e *GitHub) Fetch(ctx context.Context, org, repo, inner, ref, accept string) (GHResponse, error) {
-	return e.FetchURL(ctx, RepoCacheKey(org, repo), e.contentsURL(org, repo, inner, ref), accept)
+	return e.FetchURL(ctx, RepoCacheKey(org, repo), e.ContentsURL(org, repo, inner, ref), accept)
 }
 
 // FetchURL performs a GET against an arbitrary API URL with the default
@@ -168,7 +168,7 @@ func findToken(list []GitHubToken, id string) (GitHubToken, bool) {
 	return GitHubToken{}, false
 }
 
-func (e *GitHub) contentsURL(org, repo, inner, ref string) string {
+func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 	u := e.base + "/repos/" + url.PathEscape(org) + "/" + url.PathEscape(repo) + "/contents"
 	if inner != "" {
 		u += "/" + EscapeSegments(inner)
