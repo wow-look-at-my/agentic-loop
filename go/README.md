@@ -796,6 +796,20 @@ Two properties run through all of it:
   fails it reports the MOST INFORMATIVE one** — never the anonymous attempt's
   401, whose only content is that no credential was sent. That is how a spent
   rate limit stopped reading as a permanent auth problem.
+- **`what=status` answers "why is CI red" from whichever API the credential can
+  read.** The Checks API (`/commits/{sha}/check-runs`) needs the `checks`
+  permission, which a GitHub App installation can hold and a fine-grained
+  personal access token cannot — its repository-permission list has no
+  "Checks" entry — so a token-backed host is refused there routinely. When
+  that read fails, the report falls back to the Actions API
+  (`/actions/runs?head_sha=`, then each run's jobs) and renders the workflow
+  runs, their jobs, and the failed steps inside each failed job; `actions` IS
+  a permission a token can hold. Which endpoint answered is plumbing and the
+  report never mentions it: the reader wanted the verdict, not a permissions
+  lecture they may be unable to act on. The fallback runs only after a
+  failure, so a readable Checks API costs no extra requests, and only when
+  NEITHER answers — the one case where there is genuinely no verdict — are
+  both failures reported.
 - **A write never falls through to anonymous** and uses ONLY `WriteTokens`.
   Filtering that list by initiator is the host's job: a model-facing toolset
   gets `ModelWriteTokens(...)`, a user-initiated action gets everything.

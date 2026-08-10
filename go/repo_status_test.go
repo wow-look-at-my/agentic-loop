@@ -2,6 +2,7 @@ package agentic
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,8 +58,8 @@ func TestRepoStatusWithNoRefUsesTheDefaultBranchHead(t *testing.T) {
 	assert.Contains(t, res.Content, "Check runs: (none)")
 }
 
-// A check-runs failure (a token without Checks API access is common) is
-// noted, not fatal — the legacy status is still a real, useful answer.
+// A check-runs failure (a token granted `actions` and not `checks` is the
+// common case) is noted, not fatal — the legacy status is still a real answer.
 func TestRepoStatusCheckRunsFailureIsNotedNotFatal(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -66,6 +67,8 @@ func TestRepoStatusCheckRunsFailureIsNotedNotFatal(t *testing.T) {
 			return http.StatusOK, `{"state":"pending","sha":"abc","statuses":[]}`
 		case "/repos/octo/hello/commits/main/check-runs":
 			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
+		case "/repos/octo/hello/actions/runs":
+			return http.StatusOK, `{"total_count":0,"workflow_runs":[]}`
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -76,6 +79,148 @@ func TestRepoStatusCheckRunsFailureIsNotedNotFatal(t *testing.T) {
 	assert.Contains(t, res.Content, "Commit status: PENDING")
 	assert.Contains(t, res.Content, "Check runs: unavailable")
 	assert.Contains(t, res.Content, "lack the required permission")
+}
+
+// The bug: a token without `checks` got "CI is red" and no reason, which is
+// the whole question. The same runs are readable through the Actions API on
+// the `actions` permission, so a failed job and the step that failed inside it
+// must still reach the reader.
+func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
+	g, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/commits/main/status":
+			return http.StatusOK, `{"state":"failure","sha":"0123456789abcdef","statuses":[
+				{"context":"all-builds","state":"failure","description":"1/2 builds failed"}
+			]}`
+		case "/repos/octo/hello/commits/main/check-runs":
+			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
+		case "/repos/octo/hello/actions/runs":
+			assert.Equal(t, "0123456789abcdef", c.Query.Get("head_sha"), "the Actions read must be scoped to the same commit")
+			return http.StatusOK, `{"total_count":1,"workflow_runs":[
+				{"id":77,"name":"CI","status":"completed","conclusion":"failure","html_url":"https://example.com/run/77"}
+			]}`
+		case "/repos/octo/hello/actions/runs/77/jobs":
+			return http.StatusOK, `{"total_count":2,"jobs":[
+				{"name":"build","status":"completed","conclusion":"failure","html_url":"https://example.com/job/1","steps":[
+					{"name":"checkout","status":"completed","conclusion":"success","number":1},
+					{"name":"go-toolchain","status":"completed","conclusion":"failure","number":2}
+				]},
+				{"name":"smoke","status":"completed","conclusion":"success","html_url":"https://example.com/job/2","steps":[]}
+			]}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	// The header GitHub really sends on a Checks API 403.
+	g.headers = func(c ghCall) http.Header {
+		h := http.Header{}
+		if strings.HasSuffix(c.Path, "/check-runs") {
+			h.Set("X-Accepted-GitHub-Permissions", "checks=read")
+		}
+		return h
+	}
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, "Workflow runs:")
+	assert.Contains(t, res.Content, "CI: failure (https://example.com/run/77)")
+	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
+	// Which endpoint answered is plumbing. A reader who got their CI verdict is
+	// told nothing about permissions, and is never sent to change a setting.
+	assert.NotContains(t, res.Content, "permission")
+	assert.NotContains(t, res.Content, "unavailable")
+	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
+	assert.Contains(t, res.Content, "step 2 failed: go-toolchain (failure)")
+	// A passing job names no steps: the reader is after what broke.
+	assert.Contains(t, res.Content, "smoke: success")
+	assert.NotContains(t, res.Content, "step 1 failed")
+}
+
+// Neither API answered, so the reader has no CI verdict — that is the one case
+// where both failures are reported instead of a result.
+func TestRepoStatusReportsBothFailuresWhenNeitherAPIAnswers(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/commits/main/status":
+			return http.StatusOK, `{"state":"failure","sha":"abc","statuses":[]}`
+		case "/repos/octo/hello/commits/main/check-runs", "/repos/octo/hello/actions/runs":
+			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, "Check runs: unavailable")
+	assert.Contains(t, res.Content, "Workflow runs: unavailable")
+}
+
+// The fallback's own failure is stated. Falling through to silence would leave
+// the check-runs note reading as the last word, which is the defect again.
+func TestRepoStatusActionsFallbackFailureIsStated(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/commits/main/status":
+			return http.StatusOK, `{"state":"failure","sha":"abc","statuses":[]}`
+		case "/repos/octo/hello/commits/main/check-runs":
+			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
+		case "/repos/octo/hello/actions/runs":
+			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, "Workflow runs: unavailable")
+	assert.Contains(t, res.Content, "could not read the workflow runs of /repos/octo/hello@abc")
+}
+
+// A jobs read that fails says so under its run, rather than rendering a run
+// with no jobs — which reads as a run that did nothing.
+func TestRepoStatusActionsJobsFailureIsStatedUnderItsRun(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/commits/main/status":
+			return http.StatusOK, `{"state":"failure","sha":"abc","statuses":[]}`
+		case "/repos/octo/hello/commits/main/check-runs":
+			return http.StatusForbidden, `{"message":"no"}`
+		case "/repos/octo/hello/actions/runs":
+			return http.StatusOK, `{"total_count":1,"workflow_runs":[
+				{"id":9,"name":"CI","status":"completed","conclusion":"failure","html_url":"https://example.com/run/9"}
+			]}`
+		case "/repos/octo/hello/actions/runs/9/jobs":
+			return http.StatusInternalServerError, `{"message":"boom"}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, "CI: failure")
+	assert.Contains(t, res.Content, "jobs unavailable --")
+}
+
+// Readable check runs are the whole answer: the Actions API is not consulted,
+// so a working Checks permission costs no extra requests.
+func TestRepoStatusDoesNotCallActionsWhenCheckRunsAreReadable(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/commits/main/status":
+			return http.StatusOK, `{"state":"failure","sha":"abc","statuses":[]}`
+		case "/repos/octo/hello/commits/main/check-runs":
+			return http.StatusOK, `{"check_runs":[{"name":"build","status":"completed","conclusion":"success"}]}`
+		default:
+			t.Fatalf("unexpected path %q -- the Actions fallback must not run when the check runs are readable", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "status", Org: "octo", Repo: "hello", Ref: "main"})
+	require.False(t, res.IsError, res.Content)
+	assert.NotContains(t, res.Content, "Workflow runs")
 }
 
 func TestRepoStatusCombinedStatusFailureIsFatal(t *testing.T) {

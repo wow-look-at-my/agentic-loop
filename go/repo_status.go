@@ -164,8 +164,22 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 		}
 	}
 
+	// A token accepted for `actions` and refused for `checks` is the ordinary
+	// case for a fine-grained PAT, and the two APIs describe the same runs. So
+	// when the check runs cannot be read, ask the Actions API instead: "CI is
+	// red" without a reason is the report that leaves the reader exactly where
+	// they started.
+	var actions, actionsNote string
+	if checksNote != "" {
+		sha := combined.SHA
+		if sha == "" {
+			sha = ref
+		}
+		actions, actionsNote = e.actionsReport(ctx, org, repo, sha)
+	}
+
 	details, undetailed := e.explainFailures(ctx, org, repo, checks.CheckRuns)
-	return formatStatus(org, repo, ref, combined, checks, checksNote, details, undetailed), statusRes, nil
+	return formatStatus(org, repo, ref, combined, checks, checksNote, actions, actionsNote, details, undetailed), statusRes, nil
 }
 
 // errStr is an error whose text is exactly the message given: the failure
@@ -220,7 +234,7 @@ func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int6
 // formatStatus renders both CI mechanisms as one report. A check-runs failure
 // is noted, not fatal — a token can read the legacy status and lack Checks API
 // access (or vice versa), and a partial answer beats none.
-func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote string, details map[int64]ghCheckRun, undetailed []string) string {
+func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote, actions, actionsNote string, details map[int64]ghCheckRun, undetailed []string) string {
 	sha := combined.SHA
 	if sha == "" {
 		sha = ref
@@ -249,10 +263,21 @@ func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghChe
 		}
 	}
 
+	// The Checks API and the Actions API describe the same runs behind two
+	// permissions, and a host holding only one of them is ordinary. So which
+	// endpoint answered is plumbing: the report shows the runs from whichever
+	// did, and a permission is named only when NEITHER could answer and the
+	// reader is genuinely left without a CI verdict.
+	if checksNote != "" && actionsNote == "" {
+		fmt.Fprintf(&b, "\nWorkflow runs:\n%s\n", actions)
+		return finishStatus(&b, org, repo, checks, undetailed)
+	}
+
 	b.WriteString("\nCheck runs")
 	switch {
 	case checksNote != "":
 		fmt.Fprintf(&b, ": unavailable -- %s\n", checksNote)
+		fmt.Fprintf(&b, "Workflow runs: unavailable -- %s\n", actionsNote)
 	case len(checks.CheckRuns) == 0:
 		b.WriteString(": (none)\n")
 	default:
@@ -273,12 +298,17 @@ func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghChe
 			b.WriteString(formatFailureDetail(details[c.ID]))
 		}
 	}
+	return finishStatus(&b, org, repo, checks, undetailed)
+}
+
+// finishStatus appends the drill-down pointers every rendering ends with.
+func finishStatus(b *strings.Builder, org, repo string, checks ghCheckRunsResponse, undetailed []string) string {
 	if len(undetailed) > 0 {
-		fmt.Fprintf(&b, "\nNot explained here: %s. Read each with %s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id>}.\n",
+		fmt.Fprintf(b, "\nNot explained here: %s. Read each with %s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id>}.\n",
 			strings.Join(undetailed, ", "), RepoReadToolName, org, repo)
 	}
 	if anyFailed(checks.CheckRuns) {
-		fmt.Fprintf(&b, "\n%s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id from above>} gives one check's full output and its error annotations.\n",
+		fmt.Fprintf(b, "\n%s {\"what\":\"check_run\",\"org\":%q,\"repo\":%q,\"id\":<id from above>} gives one check's full output and its error annotations.\n",
 			RepoReadToolName, org, repo)
 	}
 	return strings.TrimRight(b.String(), "\n")
