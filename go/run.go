@@ -245,23 +245,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 	advertised := cfg.Tools.Decls()
 
-	// Output dedup: build the readonly-tool name set from the advertised list
-	// and create one deduper for the whole run, so an unchanged read-only
-	// result collapses to a marker instead of re-dumping a huge output.
-	var readonlyTools map[string]bool
+	// Output dedup: one deduper for the whole run, so an unchanged read-only
+	// result collapses to a marker instead of re-dumping a huge output. What
+	// is eligible is the deduper's own decision -- it reads the declaration.
 	var deduper *OutputDeduper
 	if !cfg.DisableOutputDedup {
-		for _, t := range advertised {
-			if t.Readonly && t.Name != "" {
-				if readonlyTools == nil {
-					readonlyTools = map[string]bool{}
-				}
-				readonlyTools[t.Name] = true
-			}
-		}
-		if len(readonlyTools) > 0 {
-			deduper = NewOutputDeduper()
-		}
+		deduper = NewOutputDeduper()
 	}
 
 	transcript := make([]Message, len(req.Messages), len(req.Messages)+8)
@@ -357,9 +346,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					return abortBatch(cberr)
 				}
 				content := result.Content
-				if deduper != nil && readonlyTools[call.Name] && !result.IsError {
-					if collapsed, deduped := deduper.Collapse(call.Name, result); deduped {
-						content = collapsed
+				if deduper != nil {
+					if tool, known := cfg.Tools.Find(call.Name); known {
+						if collapsed, deduped := deduper.Collapse(tool.Decl(), result); deduped {
+							content = collapsed
+						}
 					}
 				}
 				transcript = append(transcript, Message{

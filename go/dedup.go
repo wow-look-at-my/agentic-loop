@@ -61,20 +61,26 @@ func (d *OutputDeduper) Reset() {
 // The first time a (tool, byte-identical content) pair is seen it returns
 // result.Content unchanged with deduped=false; each repeat returns the
 // [unchanged] marker with deduped=true and the occurrence count incremented
-// (2, 3, ...). An IsError result is always returned unchanged with deduped=false.
-func (d *OutputDeduper) Collapse(tool string, result ToolResult) (content string, deduped bool) {
-	if result.IsError {
+// (2, 3, ...).
+//
+// It takes the tool's DECLARATION, not just its name, because what may
+// collapse is this type's decision and not each caller's: a tool that is not
+// read-only never collapses (a marker must never hide a side effect), nor does
+// an IsError result (it must never hide a failure). A caller re-deriving that
+// rule is a second copy of it that nothing keeps in agreement.
+func (d *OutputDeduper) Collapse(tool ToolDecl, result ToolResult) (content string, deduped bool) {
+	if !tool.Readonly || tool.Name == "" || result.IsError {
 		return result.Content, false
 	}
 	hash := sha256.Sum256([]byte(result.Content))
-	key := tool + "\x00" + hex.EncodeToString(hash[:])
+	key := tool.Name + "\x00" + hex.EncodeToString(hash[:])
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if n, ok := d.seen[key]; ok {
 		next := n + 1
 		d.seen[key] = next
-		return unchangedMarker(tool, next), true
+		return unchangedMarker(tool.Name, next), true
 	}
 	d.seen[key] = 1
 	d.keys = append(d.keys, key)

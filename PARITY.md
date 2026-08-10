@@ -590,10 +590,14 @@ gone there is nothing left to diverge on.
   unchanged: a marker must never stand in for a failure, and a transient
   failure a caller means to retry must not be collapsed into "nothing
   changed".
-- Only read-only tools are eligible; `Reset` clears everything, and is
-  called when earlier outputs leave the model's context (compaction, a
-  rewound thread), since the marker only means anything while the full
-  output it refers to is still there.
+- **Eligibility is the deduper's own decision, not the caller's**:
+  `Collapse` takes the tool's DECLARATION and returns the content unchanged
+  for anything not `readonly` (a marker must never stand in for a side
+  effect) or unnamed. A loop re-deriving that rule before calling is a second
+  copy of it that nothing keeps in agreement.
+- `Reset` clears everything, and is called when earlier outputs leave the
+  model's context (compaction, a rewound thread), since the marker only means
+  anything while the full output it refers to is still there.
 - The marker text may claim ONLY that the output repeated, never that the
   arguments did — the deduper hashes output and does not see arguments, and
   identical output is equally what a tool that ignores an argument
