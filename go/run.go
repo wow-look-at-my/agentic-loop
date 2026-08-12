@@ -356,80 +356,67 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				}
 			}
 
-			// Collect every call's result. OnToolCall already fired;
-			// resolveCall blocks on approval when needed and returns
-			// (ToolResult, error). The error is non-nil ONLY when an
-			// approval decision never arrived (Approver.Ask failed), which
-			// ends the run.
+			// Dispatch: read-only ungated calls run concurrently via
+			// goroutines; mutating or gated calls run sequentially in call
+			// order. Each mutating call is a barrier -- it waits for every
+			// in-flight read-only call to finish first, so workspace state
+			// is consistent at the start of each mutation. When no
+			// read-only calls are present the entire batch runs sequentially
+			// on the calling goroutine.
+			//
+			// resolveCall returns a non-nil error ONLY when an approval
+			// decision never arrived (Approver.Ask failed). Read-only
+			// ungated calls skip approval entirely, so they never produce
+			// that error -- but the guard is kept for robustness.
 			results := make([]ToolResult, len(calls))
-			var firstErr error
-
-			// Dispatch: read-only ungated calls run concurrently; mutating
-			// or gated calls run sequentially in call order once all
-			// in-flight reads have drained, so a mutating call never races
-			// with a concurrent read. When no read-only calls are present
-			// the entire batch runs sequentially on the calling goroutine.
 			var mu sync.Mutex
-			var wg sync.WaitGroup
-			readsInFlight := 0
-			readsDrained := make(chan struct{})
-			close(readsDrained) // start open so the first mutating call does not block
+			var firstErr error
+			var wg sync.WaitGroup    // all goroutines, for the abort path
+			var reads sync.WaitGroup // read-only calls since the last barrier
 
 			for i, call := range calls {
 				tool, known := cfg.Tools.Find(call.Name)
 				readonly := known && tool.Decl().Readonly && !tool.NeedsApproval()
 
 				if readonly {
-					mu.Lock()
-					readsInFlight++
-					mu.Unlock()
+					reads.Add(1)
 					wg.Add(1)
 					go func(idx int, c ToolCall) {
 						defer wg.Done()
+						defer reads.Done()
 						r, aerr := resolveCall(ctx, &cfg, c)
-						mu.Lock()
-						defer mu.Unlock()
 						results[idx] = r
-						if aerr != nil && firstErr == nil {
-							firstErr = aerr
-						}
-						readsInFlight--
-						if readsInFlight == 0 {
-							select {
-							case <-readsDrained:
-							default:
-								close(readsDrained)
+						if aerr != nil {
+							mu.Lock()
+							if firstErr == nil {
+								firstErr = aerr
 							}
+							mu.Unlock()
 						}
 					}(i, call)
 					continue
 				}
 
-				// Mutating or gated: wait for every in-flight read-only
-				// call to finish so the sequential execution has a
-				// consistent view of workspace state.
-				<-readsDrained
+				// Mutating or gated: barrier -- wait for every in-flight
+				// read-only call to finish so the sequential execution has
+				// a consistent view of workspace state.
+				reads.Wait()
 
 				result, aerr := resolveCall(ctx, &cfg, call)
 				results[i] = result
 				if aerr != nil {
+					mu.Lock()
 					if firstErr == nil {
 						firstErr = aerr
 					}
-					// Drain remaining in-flight reads before aborting so
-					// wg.Wait below never blocks.
-					mu.Lock()
-					if readsInFlight == 0 {
-						mu.Unlock()
-					} else {
-						drain := readsDrained
-						mu.Unlock()
-						<-drain
-					}
+					mu.Unlock()
 					break
 				}
 			}
 
+			// Wait for all goroutines (including any still in flight when a
+			// mutating call errored above) before reading results or
+			// aborting, so no goroutine outlives the batch.
 			wg.Wait()
 			if firstErr != nil {
 				return abortBatch(firstErr)
