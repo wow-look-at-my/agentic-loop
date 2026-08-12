@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // There is deliberately NO turn cap. A counted cap cannot tell "looping
@@ -225,6 +226,16 @@ type Result struct {
 // run are fed back as a short [unchanged] marker instead of the full content
 // (see OutputDeduper; Config.DisableOutputDedup opts out).
 //
+// Within a batch, read-only ungated tool calls (ToolDecl.Readonly set, no
+// NeedsApproval) execute concurrently via goroutines. Mutating or gated calls
+// execute sequentially in call order; each mutating call waits for every
+// in-flight read-only call to finish first, so workspace state is consistent
+// at the start of each mutation. OnToolCall fires for every call in call
+// order before any execution begins; OnToolResult and transcript append
+// happen in call order after every call has resolved. The only observable
+// nondeterminism is the execution order among read-only calls; the
+// transcript, event callbacks, and exec count on abort are all deterministic.
+//
 // A model-call error ENDS the run -- the loop assumes any failure reaching it
 // is permanent (see Config). Transient failures never get this far: the
 // Provider rides them out, and a retried call is one turn here because Run
@@ -334,21 +345,109 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				res.Final = cleared
 				return res, cause
 			}
+			// Fire OnToolCall for every requested call in call order before
+			// dispatching any execution, so the callback can observe the
+			// full batch and abort before side effects begin. A callback
+			// error stops the batch here: no tool has run yet, but the
+			// assistant message is already appended (cleared by abortBatch).
 			for _, call := range calls {
 				if cberr := cfg.Events.emitToolCall(call); cberr != nil {
 					return abortBatch(cberr)
 				}
-				result, aerr := resolveCall(ctx, &cfg, call)
-				if aerr != nil {
-					return abortBatch(aerr)
+			}
+
+			// Collect every call's result. OnToolCall already fired;
+			// resolveCall blocks on approval when needed and returns
+			// (ToolResult, error). The error is non-nil ONLY when an
+			// approval decision never arrived (Approver.Ask failed), which
+			// ends the run.
+			results := make([]ToolResult, len(calls))
+			var firstErr error
+
+			// Dispatch: read-only ungated calls run concurrently; mutating
+			// or gated calls run sequentially in call order once all
+			// in-flight reads have drained, so a mutating call never races
+			// with a concurrent read. When no read-only calls are present
+			// the entire batch runs sequentially on the calling goroutine.
+			var mu sync.Mutex
+			var wg sync.WaitGroup
+			readsInFlight := 0
+			readsDrained := make(chan struct{})
+			close(readsDrained) // start open so the first mutating call does not block
+
+			for i, call := range calls {
+				tool, known := cfg.Tools.Find(call.Name)
+				readonly := known && tool.Decl().Readonly && !tool.NeedsApproval()
+
+				if readonly {
+					mu.Lock()
+					readsInFlight++
+					mu.Unlock()
+					wg.Add(1)
+					go func(idx int, c ToolCall) {
+						defer wg.Done()
+						r, aerr := resolveCall(ctx, &cfg, c)
+						mu.Lock()
+						defer mu.Unlock()
+						results[idx] = r
+						if aerr != nil && firstErr == nil {
+							firstErr = aerr
+						}
+						readsInFlight--
+						if readsInFlight == 0 {
+							select {
+							case <-readsDrained:
+							default:
+								close(readsDrained)
+							}
+						}
+					}(i, call)
+					continue
 				}
-				if cberr := cfg.Events.emitToolResult(call, result); cberr != nil {
+
+				// Mutating or gated: wait for every in-flight read-only
+				// call to finish so the sequential execution has a
+				// consistent view of workspace state.
+				<-readsDrained
+
+				result, aerr := resolveCall(ctx, &cfg, call)
+				results[i] = result
+				if aerr != nil {
+					if firstErr == nil {
+						firstErr = aerr
+					}
+					// Drain remaining in-flight reads before aborting so
+					// wg.Wait below never blocks.
+					mu.Lock()
+					if readsInFlight == 0 {
+						mu.Unlock()
+					} else {
+						drain := readsDrained
+						mu.Unlock()
+						<-drain
+					}
+					break
+				}
+			}
+
+			wg.Wait()
+			if firstErr != nil {
+				return abortBatch(firstErr)
+			}
+
+			// Record every result in call order: OnToolResult fires
+			// sequentially in call order, the transcript messages are
+			// appended in call order, and the deduper collapses byte-
+			// identical read-only results. This keeps the transcript fully
+			// deterministic regardless of goroutine completion order.
+			for i, call := range calls {
+				if cberr := cfg.Events.emitToolResult(call, results[i]); cberr != nil {
 					return abortBatch(cberr)
 				}
-				content := result.Content
+				content := results[i].Content
 				if deduper != nil {
 					if tool, known := cfg.Tools.Find(call.Name); known {
-						if collapsed, deduped := deduper.Collapse(tool.Decl(), result); deduped {
+						if collapsed, deduped := deduper.Collapse(tool.Decl(), results[i]); deduped {
 							content = collapsed
 						}
 					}
@@ -357,7 +456,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					Role:        RoleTool,
 					Content:     content,
 					ToolCallID:  call.ID,
-					ToolIsError: result.IsError,
+					ToolIsError: results[i].IsError,
 				})
 			}
 			if repeats == StuckNudgeAt {
