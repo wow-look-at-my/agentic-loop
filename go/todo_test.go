@@ -57,7 +57,6 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 		assert.Equalf(t, name, decl.Name, "tool advertises its own name")
 		assert.Falsef(t, decl.Readonly,
 			"%s writes host state the host shows; a sub-agent inheriting it would overwrite its parent's plan", name)
-		assert.Falsef(t, byName[name].NeedsApproval(), "%s is not approval-gated", name)
 	}
 
 	// The state enum is the only thing stopping a model inventing a fourth

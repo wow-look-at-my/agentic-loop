@@ -28,7 +28,6 @@ func TestWebFetchAdvertisement(t *testing.T) {
 		"Optionally provide summary_prompt to have the same model summarize the cleaned content before it is returned.",
 		tool.Description)
 	assert.Contains(t, string(tool.InputSchema), `"summary_prompt"`)
-	assert.False(t, exec.NeedsApproval())
 }
 
 func TestWebFetchSuccessCleansHTML(t *testing.T) {
@@ -191,6 +190,68 @@ func TestWebFetchSummaryPath(t *testing.T) {
 	input := sum.Messages[0].Content
 	assert.True(t, strings.HasPrefix(input, "Fetched URL:\n"+srv.URL+"/doc\n\nSummary instructions:\nlist the key points\n\nCleaned fetched content:\n"))
 	assert.Contains(t, input, "page body")
+}
+
+// The summary is a real model call whose only visible output is text, so
+// OnCompletion is the one route out for what it cost -- a host without it
+// charges every summarized fetch as free.
+func TestWebFetchOnCompletionReportsTheSummaryCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "page body")
+	}))
+	defer srv.Close()
+
+	cost := 0.25
+	comp := assistantComp("a fine summary")
+	comp.UsageReported = true
+	comp.CostUsd = &cost
+	provider := &scriptProvider{steps: []scriptStep{{comp: comp}}}
+	var got []*Completion
+	exec := NewWebFetchTool(WebFetchConfig{
+		Provider: provider, Model: "m",
+		OnCompletion: func(c *Completion) { got = append(got, c) },
+	})
+
+	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL, "summary_prompt": "sum"})))
+	require.NoError(t, err)
+	assert.False(t, res.IsError)
+	require.Len(t, got, 1)
+	assert.Equal(t, 15, got[0].Usage.TotalTokens)
+	assert.True(t, got[0].UsageReported)
+	require.NotNil(t, got[0].CostUsd)
+	assert.InDelta(t, cost, *got[0].CostUsd, 1e-9)
+}
+
+// A fetch with no summary_prompt makes no model call, so there is nothing to
+// report -- and a summary that FAILED after streaming still spent tokens, so
+// there is.
+func TestWebFetchOnCompletionFiresOnlyForARealCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "page body")
+	}))
+	defer srv.Close()
+
+	var got []*Completion
+	record := func(c *Completion) { got = append(got, c) }
+
+	exec := NewWebFetchTool(WebFetchConfig{
+		Provider: &scriptProvider{}, Model: "m", OnCompletion: record,
+	})
+	_, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL})))
+	require.NoError(t, err)
+	assert.Empty(t, got, "no summary was asked for, so no call was made")
+
+	partial := &Completion{Message: Message{Role: RoleAssistant, Content: "half a sum"}, Usage: Usage{TotalTokens: 7}}
+	exec = NewWebFetchTool(WebFetchConfig{
+		Provider:     &scriptProvider{steps: []scriptStep{{comp: partial, err: context.Canceled}}},
+		Model:        "m",
+		OnCompletion: record,
+	})
+	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL, "summary_prompt": "sum"})))
+	require.NoError(t, err)
+	assert.True(t, res.IsError, "the fetch reports the failed summary to the model")
+	require.Len(t, got, 1, "a partial completion is still spend")
+	assert.Equal(t, 7, got[0].Usage.TotalTokens)
 }
 
 func TestWebFetchSummaryErrors(t *testing.T) {

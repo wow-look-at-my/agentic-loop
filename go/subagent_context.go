@@ -121,13 +121,16 @@ const contextSummarySystemPrompt = "You condense a conversation into a briefing 
 // generateContextSummary asks the same model to summarize a parent
 // conversation into a briefing a sub-agent can use: one bounded
 // (subagentSummaryTimeout), tool-less call with no retry, via OneShot. An
-// empty transcript yields an empty summary with no model call.
-func generateContextSummary(ctx context.Context, p Provider, model string, msgs []Message, maxTokens int, extra map[string]any) (string, error) {
+// empty transcript yields an empty summary and a nil completion, with no model
+// call. The completion is returned rather than dropped because this briefing is
+// part of what the sub-agent run spent, and it rides up with the sub-run's own
+// usages.
+func generateContextSummary(ctx context.Context, p Provider, model string, msgs []Message, maxTokens int, extra map[string]any) (string, *Completion, error) {
 	transcript := RenderTranscript(msgs)
 	if strings.TrimSpace(transcript) == "" {
-		return "", nil
+		return "", nil, nil
 	}
-	text, _, err := OneShot(ctx, p, Request{
+	comp, err := OneShot(ctx, p, Request{
 		Model:  model,
 		System: contextSummarySystemPrompt,
 		Messages: []Message{
@@ -137,9 +140,9 @@ func generateContextSummary(ctx context.Context, p Provider, model string, msgs 
 		Extra:     extra,
 	}, subagentSummaryTimeout)
 	if err != nil {
-		return "", err
+		return "", comp, err
 	}
-	return text, nil
+	return strings.TrimSpace(comp.Message.Content), comp, nil
 }
 
 // composeSubagentTask folds an optional shared-context block into the

@@ -157,8 +157,8 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}, {Name: "beta"}}}
 	fails := 0
-	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
-		OnToolCall: func(c ToolCall) error {
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: Events{
+		OnToolCall: func(c *ToolCall) error {
 			if c.Name == "beta" {
 				fails++
 				return errSink
@@ -190,8 +190,8 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
-	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
-		OnToolResult: func(ToolCall, ToolResult) error { return errSink },
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: Events{
+		OnToolResult: func(ToolCall, ToolResult, Message) error { return errSink },
 	}}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
@@ -201,6 +201,126 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	require.Len(t, res.Messages, 2, "the executed result is dropped so the transcript stays replayable")
 	assert.Nil(t, res.Messages[1].ToolCalls)
 	assert.Equal(t, RoleAssistant, res.Messages[1].Role)
+}
+
+// A hook rewrites a call's arguments: the rewrite is what the Approver judges
+// and what the tool executes, while the transcript keeps recording what the
+// MODEL asked for. Both facts matter, so neither is overwritten by the other.
+func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "bash", Arguments: `{"cmd":"rm -rf /"}`})},
+		{comp: assistantComp("done")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "bash"}}}
+	var judged []string
+	approver := approverFunc(func(_ context.Context, c ToolCall) (Approval, error) {
+		judged = append(judged, c.Arguments)
+		return Approval{OK: true}, nil
+	})
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: approver, Events: Events{
+		OnToolCall: func(c *ToolCall) error {
+			c.Arguments = `{"cmd":"ls"}`
+			return nil
+		},
+	}}
+
+	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	require.NoError(t, err)
+
+	require.Len(t, exec.executed, 1)
+	assert.Equal(t, `{"cmd":"ls"}`, exec.executed[0].Arguments, "the tool receives the rewritten bytes")
+	assert.Equal(t, []string{`{"cmd":"ls"}`}, judged,
+		"the approver decides on what will actually run, not on what the model asked for")
+
+	assistant := res.Messages[1]
+	require.Len(t, assistant.ToolCalls, 1)
+	assert.Equal(t, `{"cmd":"rm -rf /"}`, assistant.ToolCalls[0].Arguments,
+		"the transcript records the model's own request; a mutation never rewrites history")
+	assert.Equal(t, "c1", res.Messages[2].ToolCallID, "the result still answers the id the model minted")
+}
+
+// A rewritten id must never become the id the tool result answers: the
+// transcript's assistant message carries the model's, and a mismatch is an
+// orphan tool call no upstream will replay.
+func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+		{comp: assistantComp("done")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
+		OnToolCall: func(c *ToolCall) error { c.ID = "hijacked"; return nil },
+	}}
+
+	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	require.NoError(t, err)
+	assert.Equal(t, "c1", res.Messages[0].ToolCalls[0].ID)
+	assert.Equal(t, "c1", res.Messages[1].ToolCallID)
+}
+
+// The tool returned one thing and the transcript recorded another: dedup
+// replaced the repeat with a marker. OnToolResult reports both, so a host that
+// persists the transcript stores what the model actually saw instead of
+// re-deriving it by diffing Result.Messages afterwards.
+func TestRunOnToolResultCarriesTheRecordedMessage(t *testing.T) {
+	const fullOutput = "the huge status diff"
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("", ToolCall{ID: "c2", Name: "status", Arguments: "{}"})},
+		{comp: assistantComp("done")},
+	}}
+	exec := identicalExec([]ToolDecl{{Name: "status", Readonly: true}}, fullOutput)
+	var results []ToolResult
+	var recorded []Message
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
+		OnToolResult: func(_ ToolCall, r ToolResult, m Message) error {
+			results = append(results, r)
+			recorded = append(recorded, m)
+			return nil
+		},
+	}}
+
+	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	require.NoError(t, err)
+
+	require.Len(t, results, 2)
+	require.Len(t, recorded, 2)
+	assert.Equal(t, fullOutput, results[0].Content)
+	assert.Equal(t, fullOutput, recorded[0].Content, "the first occurrence is recorded whole")
+
+	assert.Equal(t, fullOutput, results[1].Content, "the tool's own result is reported unchanged")
+	assert.Contains(t, recorded[1].Content, UnchangedPrefix, "what the model saw was the marker")
+	assert.Equal(t, "c2", recorded[1].ToolCallID)
+	assert.False(t, recorded[1].ToolIsError)
+
+	// And it is the transcript's own entry, not an approximation of it.
+	msgs := toolMessages(t, res)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, msgs[0], recorded[0])
+	assert.Equal(t, msgs[1], recorded[1])
+}
+
+// A refused call reports the denial as the recorded message too: a host
+// persisting the transcript needs the refusal in it, not a gap.
+func TestRunOnToolResultCarriesADeniedMessage(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
+		{comp: assistantComp("ok")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}}
+	var recorded []Message
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: Events{
+		OnToolResult: func(_ ToolCall, _ ToolResult, m Message) error {
+			recorded = append(recorded, m)
+			return nil
+		},
+	}}
+
+	_, err := Run(context.Background(), cfg, Request{Model: "m"})
+	require.NoError(t, err)
+	require.Len(t, recorded, 1)
+	assert.Equal(t, DeniedMessage, recorded[0].Content)
+	assert.True(t, recorded[0].ToolIsError)
 }
 
 func TestWrapCallbackErrIdempotentAndTransparent(t *testing.T) {

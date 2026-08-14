@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// repo_pr_create, and the properties both write tools share: they always ask
-// for approval, they never reach a subagent's readonly view, and they can be
-// turned off like any other tool.
+// repo_pr_create, and the properties both write tools share: they are not
+// Readonly (so every call goes to the Approver and a run without one refuses
+// them), they never reach a subagent's readonly view, and they can be turned
+// off like any other tool.
 
 func TestRepoPRCreateDefaultsToDraftAndDefaultBranch(t *testing.T) {
 	cache := newMemCache()

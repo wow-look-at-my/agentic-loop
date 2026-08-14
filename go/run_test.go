@@ -63,12 +63,18 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}, {Name: "beta"}}}
 	var calls []ToolCall
 	var results []ToolResult
+	var recorded []Message
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
+		Approver: allowAll,
 		Events: Events{
-			OnToolCall:   func(c ToolCall) error { calls = append(calls, c); return nil },
-			OnToolResult: func(_ ToolCall, r ToolResult) error { results = append(results, r); return nil },
+			OnToolCall: func(c *ToolCall) error { calls = append(calls, *c); return nil },
+			OnToolResult: func(_ ToolCall, r ToolResult, m Message) error {
+				results = append(results, r)
+				recorded = append(recorded, m)
+				return nil
+			},
 		},
 	}
 	req := Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "go"}},
@@ -96,6 +102,11 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	assert.Equal(t, "beta", calls[1].Name)
 	require.Len(t, results, 2)
 	assert.Equal(t, "ran alpha", results[0].Content)
+	// Each result event also carries the message the loop appended for it --
+	// here identical to the transcript's own entries.
+	require.Len(t, recorded, 2)
+	assert.Equal(t, res.Messages[2], recorded[0])
+	assert.Equal(t, res.Messages[3], recorded[1])
 
 	// The loop advertises the executor's tools, overriding req.Tools; the
 	// second request replays the assistant tool calls and the tool results.
@@ -121,7 +132,7 @@ func TestRunExecuteErrorBecomesTeachingResult(t *testing.T) {
 		tools:   []ToolDecl{{Name: "explode"}},
 		execute: func(context.Context, ToolCall) (ToolResult, error) { return ToolResult{}, errors.New("boom") },
 	}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err, "the loop never aborts on tool failure")
 	toolMsg := res.Messages[1]
 	assert.Equal(t, RoleTool, toolMsg.Role)
@@ -135,45 +146,133 @@ func TestRunApprovalDeny(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
 		{comp: assistantComp("understood")},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
-	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return false, nil })
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}}
+	approver := approverFunc(func(context.Context, ToolCall) (Approval, error) { return Approval{}, nil })
 
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
 	require.NoError(t, err)
 	toolMsg := res.Messages[1]
-	assert.Equal(t, DeniedMessage, toolMsg.Content, "exact denial text recorded as the tool result")
+	assert.Equal(t, DeniedMessage, toolMsg.Content, "a denial with no reason keeps the exact denial text")
 	assert.True(t, toolMsg.ToolIsError)
 	assert.Empty(t, exec.executed, "denied call never executes")
 	assert.Equal(t, "understood", res.Final.Content, "the loop continues so the model can react")
 }
 
-type approverFunc func(ctx context.Context, call ToolCall) (bool, error)
+type approverFunc func(ctx context.Context, call ToolCall) (Approval, error)
 
-func (f approverFunc) Ask(ctx context.Context, call ToolCall) (bool, error) { return f(ctx, call) }
+func (f approverFunc) Ask(ctx context.Context, call ToolCall) (Approval, error) { return f(ctx, call) }
 
+// allowAll is the toolset-wide yes a host with no policy of its own would
+// give. Every call reaches an Approver now, so a Run that means to execute
+// tools needs one.
+var allowAll = approverFunc(func(context.Context, ToolCall) (Approval, error) { return Approval{OK: true}, nil })
+
+// A denial says WHY, and that reason is what the model is told: "the user
+// denied permission" is a false statement about a person when a policy, not a
+// person, refused -- and it sends the model to ask that person to reconsider a
+// decision they never made.
+func TestRunDenialCarriesItsReason(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
+		{comp: assistantComp("understood")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}}
+	const why = "plan mode: no writes until the plan is approved. Nobody was asked."
+	approver := approverFunc(func(context.Context, ToolCall) (Approval, error) {
+		return Approval{Reason: why}, nil
+	})
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
+	require.NoError(t, err)
+	toolMsg := res.Messages[1]
+	assert.Equal(t, why, toolMsg.Content, "the approver's reason replaces DeniedMessage")
+	assert.True(t, toolMsg.ToolIsError)
+	assert.Empty(t, exec.executed)
+	assert.Equal(t, "understood", res.Final.Content)
+}
+
+// A Reason that is only whitespace is no reason at all, and must not be
+// recorded as the model's entire explanation.
+func TestRunBlankDenialReasonFallsBackToDeniedMessage(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
+		{comp: assistantComp("ok")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}}
+	approver := approverFunc(func(context.Context, ToolCall) (Approval, error) {
+		return Approval{Reason: "  \n "}, nil
+	})
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
+	require.NoError(t, err)
+	assert.Equal(t, DeniedMessage, res.Messages[1].Content)
+}
+
+// An Approval that is OK carries no Reason to record: a call that ran is not
+// explained away.
 func TestRunApprovalAllow(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
 		{comp: assistantComp("done")},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
-	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return true, nil })
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}}
+	approver := approverFunc(func(context.Context, ToolCall) (Approval, error) {
+		return Approval{OK: true, Reason: "allowed by rule 3"}, nil
+	})
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Len(t, exec.executed, 1)
 	assert.Equal(t, "ran danger", res.Messages[1].Content)
 }
 
-func TestRunNilApproverDeniesGatedCalls(t *testing.T) {
+// With nobody to ask, the declaration decides: a tool that only reads runs,
+// and anything that can change state is refused with the exact denial text.
+func TestRunNilApproverAllowsReadonlyAndDeniesTheRest(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
+		{comp: assistantComp("",
+			ToolCall{ID: "c1", Name: "look", Arguments: "{}"},
+			ToolCall{ID: "c2", Name: "touch", Arguments: "{}"})},
 		{comp: assistantComp("ok")},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "look", Readonly: true}, {Name: "touch"}}}
+
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
 	require.NoError(t, err)
-	assert.Equal(t, DeniedMessage, res.Messages[1].Content, "no approver means gated calls fail closed")
-	assert.Empty(t, exec.executed)
+	assert.Equal(t, "ran look", res.Messages[1].Content, "a read-only call needs no approver")
+	assert.Equal(t, DeniedMessage, res.Messages[2].Content, "no approver means anything else fails closed")
+	require.Len(t, exec.executed, 1)
+	assert.Equal(t, "look", exec.executed[0].Name)
+}
+
+// The whole point of item 4: a host's deny rules reach EVERY call. A tool that
+// considers itself unremarkable used never to be asked about, so a deny rule
+// could not fire on it at all.
+func TestRunApproverIsAskedAboutReadonlyCallsToo(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("",
+			ToolCall{ID: "c1", Name: "look", Arguments: `{"p":1}`},
+			ToolCall{ID: "c2", Name: "touch", Arguments: "{}"})},
+		{comp: assistantComp("ok")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "look", Readonly: true}, {Name: "touch"}}}
+	var asked []ToolCall
+	approver := approverFunc(func(_ context.Context, c ToolCall) (Approval, error) {
+		asked = append(asked, c)
+		if c.Name == "look" {
+			return Approval{Reason: "reading that path is blocked by policy"}, nil
+		}
+		return Approval{OK: true}, nil
+	})
+
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
+	require.NoError(t, err)
+	require.Len(t, asked, 2, "every call is put to the approver, read-only included")
+	assert.Equal(t, "look", asked[0].Name)
+	assert.Equal(t, `{"p":1}`, asked[0].Arguments, "the approver judges the arguments, not just the name")
+	assert.Equal(t, "reading that path is blocked by policy", res.Messages[1].Content)
+	assert.Equal(t, "ran touch", res.Messages[2].Content)
+	require.Len(t, exec.executed, 1, "the refused read never ran")
+	assert.Equal(t, "touch", exec.executed[0].Name)
 }
 
 func TestRunApprovalAskError(t *testing.T) {
@@ -188,9 +287,14 @@ func TestRunApprovalAskError(t *testing.T) {
 			},
 		}, StopReason: StopToolUse}},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "safe"}, {Name: "danger"}}, ask: map[string]bool{"danger": true}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "safe"}, {Name: "danger"}}}
 	interrupted := errors.New("stream closed")
-	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return false, interrupted })
+	approver := approverFunc(func(_ context.Context, c ToolCall) (Approval, error) {
+		if c.Name == "danger" {
+			return Approval{}, interrupted
+		}
+		return Approval{OK: true}, nil
+	})
 
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
@@ -198,8 +302,8 @@ func TestRunApprovalAskError(t *testing.T) {
 	assert.ErrorIs(t, err, interrupted)
 	require.NotNil(t, res, "partial Result returned alongside the error")
 
-	// The first (ungated) call executed and its result was appended, then the
-	// gated call's Ask failed: the batch is cleared — the assistant message
+	// The first call was approved and executed and its result was appended,
+	// then the second call's Ask failed: the batch is cleared — the assistant message
 	// keeps content and reasoning but loses its tool calls, and the executed
 	// result is dropped from the transcript so no orphans remain.
 	require.Len(t, res.Messages, 2)
@@ -218,7 +322,7 @@ func TestRunAdvertisesToolsOnEveryTurn(t *testing.T) {
 		{comp: assistantComp("answer")},
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 2)
 	for i, r := range provider.reqs {
@@ -234,7 +338,7 @@ func TestRunStallFallbackSynthesizes(t *testing.T) {
 		{comp: assistantComp("synthesized report")},
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()},
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}}})
 	require.NoError(t, err)
 
@@ -259,7 +363,7 @@ func TestRunStallFallbackToReasoning(t *testing.T) {
 	emptyAgain := &Completion{Message: Message{Role: RoleAssistant}, StopReason: StopEndTurn}
 	provider := &scriptProvider{steps: []scriptStep{{comp: stalled}, {comp: emptyAgain}}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "the reasoning", res.Final.Content, "reasoning is the fallback answer")
 }
@@ -306,7 +410,7 @@ func TestRunHasNoTurnCap(t *testing.T) {
 	steps = append(steps, scriptStep{comp: assistantComp("finished on its own terms")})
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, noTurnCapProbe, res.Turns, "the loop ends when the model stops asking, not on a count")
 	assert.Equal(t, "finished on its own terms", res.Final.Content)
@@ -322,7 +426,7 @@ func TestRunContentAlongsideToolCallsStillRunsThem(t *testing.T) {
 		{comp: assistantComp("done")},
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, exec.executed, 1, "a call is never dropped just because the turn also had prose")
 	assert.Equal(t, "done", res.Final.Content)
@@ -421,7 +525,7 @@ func TestRunStuckNudgeUnsticksTheLoop(t *testing.T) {
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "unstuck", res.Final.Content)
 	assert.Len(t, exec.executed, StuckNudgeAt, "every nudged batch still ran")
@@ -446,7 +550,7 @@ func TestRunStuckFailsAfterNudge(t *testing.T) {
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.ErrorIs(t, err, ErrStuck)
 	require.NotNil(t, res, "the partial transcript rides alongside the error")
 	assert.Contains(t, err.Error(), fmt.Sprintf("%d identical turns in a row", StuckFailAt))
@@ -471,7 +575,7 @@ func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
 	provider := &scriptProvider{steps: steps}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
 	assert.Equal(t, 2*StuckFailAt+1, res.Turns)
@@ -554,7 +658,7 @@ func TestRunDedupsReadonlyToolAcrossTurns(t *testing.T) {
 	}}
 	exec := identicalExec([]ToolDecl{{Name: "status", Readonly: true}}, fullOutput)
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 
 	msgs := toolMessages(t, res)
@@ -574,7 +678,7 @@ func TestRunNeverDedupsNonReadonlyTools(t *testing.T) {
 	}}
 	exec := identicalExec([]ToolDecl{{Name: "write_file"}}, fullOutput) // no Readonly flag
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 
 	msgs := toolMessages(t, res)
@@ -593,7 +697,7 @@ func TestRunDisableOutputDedup(t *testing.T) {
 	exec := identicalExec([]ToolDecl{{Name: "status", Readonly: true}}, fullOutput)
 
 	res, err := Run(context.Background(),
-		Config{Provider: provider, Tools: exec.registry(), DisableOutputDedup: true}, Request{Model: "m"})
+		Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, DisableOutputDedup: true}, Request{Model: "m"})
 	require.NoError(t, err)
 
 	msgs := toolMessages(t, res)
@@ -616,7 +720,7 @@ func TestRunReadonlyToolErrorNeverDedupsNorSeeds(t *testing.T) {
 		},
 	}
 
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
+	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll}, Request{Model: "m"})
 	require.NoError(t, err)
 
 	msgs := toolMessages(t, res)

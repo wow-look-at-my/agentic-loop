@@ -41,7 +41,7 @@ func TestSubagentRunsLifecycleEmitsUpdates(t *testing.T) {
 	assert.Equal(t, 1, runs.Pending())
 	assert.Equal(t, 1, runs.Running())
 	runs.MarkRunning("call_a")
-	runs.Complete("call_a", "the middleware is fine", false)
+	runs.Complete("call_a", "the middleware is fine", false, nil)
 
 	// Still pending: a report nobody has delivered yet is not done with.
 	assert.Equal(t, 1, runs.Pending())
@@ -62,8 +62,8 @@ func TestSubagentRunsCollectDrainsEveryReadyReport(t *testing.T) {
 	for _, id := range []string{"a", "b", "c"} {
 		runs.Launch(id, id, "p")
 	}
-	runs.Complete("a", "ra", false)
-	runs.Complete("b", "rb", true)
+	runs.Complete("a", "ra", false, nil)
+	runs.Complete("b", "rb", true, nil)
 
 	// Two finished together, so they cost ONE delivery, not two.
 	reports, err := runs.Collect(context.Background())
@@ -79,7 +79,7 @@ func TestSubagentRunsCollectWaitsForTheNextReport(t *testing.T) {
 	runs.Launch("slow", "dig", "p")
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		runs.Complete("slow", "found it", false)
+		runs.Complete("slow", "found it", false, nil)
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -124,7 +124,7 @@ func TestSubagentRunsIgnoreUnknownAndDuplicateCalls(t *testing.T) {
 	runs.Launch("a", "one", "p")
 	runs.Launch("a", "again", "p") // one tool call executes once
 	runs.MarkRunning("ghost")
-	runs.Complete("ghost", "from nowhere", false)
+	runs.Complete("ghost", "from nowhere", false, nil)
 
 	// One launch, one outstanding run, and nothing ready: the ghost report was
 	// not adopted (Collect would block on the real run, which is the point).
@@ -149,7 +149,7 @@ func TestSubagentRunsCancelRemainingIsVisible(t *testing.T) {
 	runs := NewSubagentRuns(log.record)
 	runs.Launch("a", "one", "p")
 	runs.Launch("b", "two", "p")
-	runs.Complete("a", "done", false)
+	runs.Complete("a", "done", false, nil)
 
 	assert.Len(t, runs.Take(), 1)
 	assert.Equal(t, 1, runs.CancelRemaining())
@@ -221,6 +221,64 @@ func TestSubagentToolLaunchesAsynchronously(t *testing.T) {
 	assert.Equal(t, "audit auth", reports[0].Label)
 }
 
+// What the sub-agent spent rides up with its report, so a host that watches
+// only lifecycle still gets the total. A sub-agent answers in text; nothing
+// else in the result carries a number, and money that was never emitted cannot
+// be recovered after the run.
+func TestAsyncSubagentReportCarriesItsUsages(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "s1", Name: "Repo__read", Arguments: "{}"})},
+		{comp: assistantComp("no defects found")},
+	}}
+	runs := NewSubagentRuns(nil)
+	log := &updateLog{}
+	runs.onUpdate = log.record
+	tool := NewSubagentTool(SubagentConfig{
+		Provider: provider, Model: "m", Tools: subParentExec().registry(), Runs: runs,
+	})
+
+	_, err := tool.Execute(WithToolCallID(context.Background(), "call_1"), []byte(`{"prompt":"look"}`))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	reports, cerr := runs.Collect(ctx)
+	require.NoError(t, cerr)
+	require.Len(t, reports, 1)
+	require.Len(t, reports[0].Usages, 2, "one entry per nested model call, in order, never summed")
+	assert.Equal(t, 15, reports[0].Usages[0].TotalTokens)
+
+	// The lifecycle update carries the same numbers.
+	terminal := log.ups[len(log.ups)-1]
+	assert.Equal(t, SubagentDone, terminal.State)
+	assert.Equal(t, reports[0].Usages, terminal.Usages)
+}
+
+// The share_context=summary briefing is a model call the sub-agent's own run
+// made, so it is charged to that run rather than vanishing.
+func TestAsyncSubagentUsagesIncludeTheContextBriefing(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("a briefing")}, // the share_context=summary call
+		{comp: assistantComp("no defects found")},
+	}}
+	runs := NewSubagentRuns(nil)
+	tool := NewSubagentTool(SubagentConfig{
+		Provider: provider, Model: "m", Runs: runs,
+		ParentMessages: []Message{{Role: RoleUser, Content: "the parent asked something"}},
+	})
+
+	_, err := tool.Execute(WithToolCallID(context.Background(), "call_1"),
+		[]byte(`{"prompt":"look","share_context":"summary"}`))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	reports, cerr := runs.Collect(ctx)
+	require.NoError(t, cerr)
+	require.Len(t, reports, 1)
+	assert.Len(t, reports[0].Usages, 2, "the briefing call plus the run's one turn")
+}
+
 // A misused argument still teaches the model -- one delivery later, as the
 // report, instead of as the launch's result.
 func TestAsyncSubagentMisuseArrivesAsTheReport(t *testing.T) {
@@ -251,7 +309,7 @@ func TestRunDeliversAnOutstandingSubagentReport(t *testing.T) {
 	runs.Launch("call_a", "audit auth", "look")
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		runs.Complete("call_a", "no defects found", false)
+		runs.Complete("call_a", "no defects found", false, nil)
 	}()
 
 	res, err := Run(context.Background(), Config{Provider: provider, Subagents: runs}, Request{Model: "m"})

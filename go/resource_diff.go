@@ -103,9 +103,6 @@ func (e *resourceDiffTool) Decl() ToolDecl {
 	}
 }
 
-// NeedsApproval always reports false: approval wiring stays the caller's.
-func (e *resourceDiffTool) NeedsApproval() bool { return false }
-
 // Execute resolves one change id. Every failure is a recoverable error result
 // that names the ids the model could have used instead.
 func (e *resourceDiffTool) Execute(ctx context.Context, raw json.RawMessage) (ToolResult, error) {

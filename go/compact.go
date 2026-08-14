@@ -9,16 +9,23 @@ import (
 
 // OneShot runs a single bounded, tool-less completion — the title/summary
 // pattern: tools are stripped from the request, the call is made exactly once
-// (no retry), and a positive timeout bounds it. It returns the trimmed final
-// text and the call's usage.
+// (no retry), and a positive timeout bounds it.
+//
+// It returns the whole *Completion, not a projection of it. A bare Usage
+// cannot tell an upstream that reported all-zero usage from one that reported
+// none (that is what Completion.UsageReported is for), and it drops CostUsd,
+// ReasoningTokens, RawUsage, Timings and Streamed — every number a caller
+// needs to charge this call correctly. The answer is
+// strings.TrimSpace(comp.Message.Content). A failure after data arrived
+// returns the partial completion alongside the error, like Complete itself.
 //
 // For fire-and-forget work that must survive the parent request ending (an
 // auto-title after the response streamed), pass a detached context:
 //
-//	text, usage, err := agentic.OneShot(context.WithoutCancel(ctx), p, req, 30*time.Second)
-func OneShot(ctx context.Context, p Provider, req Request, timeout time.Duration) (string, Usage, error) {
+//	comp, err := agentic.OneShot(context.WithoutCancel(ctx), p, req, 30*time.Second)
+func OneShot(ctx context.Context, p Provider, req Request, timeout time.Duration) (*Completion, error) {
 	if p == nil {
-		return "", Usage{}, badRequestErr("agentic: OneShot requires a Provider")
+		return nil, badRequestErr("agentic: OneShot requires a Provider")
 	}
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -27,14 +34,7 @@ func OneShot(ctx context.Context, p Provider, req Request, timeout time.Duration
 	}
 	r := req
 	r.Tools = nil
-	comp, err := p.Complete(ctx, r, nil)
-	if err != nil {
-		if comp != nil {
-			return "", comp.Usage, err
-		}
-		return "", Usage{}, err
-	}
-	return strings.TrimSpace(comp.Message.Content), comp.Usage, nil
+	return p.Complete(ctx, r, nil)
 }
 
 // CompactRequestText is the instruction that triggers a compaction summary.
@@ -45,11 +45,17 @@ const CompactRequestText = "Summarize this entire conversation in detail for a f
 
 // CompactResult is the outcome of a Compact call: the summary text, the
 // two-message replacement round that stands in for the whole history, and the
-// summarize call's usage.
+// summarize call's whole Completion.
+//
+// Completion, not Usage: compaction is a real model call on the entire history,
+// so it is one of the most expensive calls a session makes, and a caller
+// charging it needs UsageReported, CostUsd and the rest rather than a value
+// type that cannot say whether the upstream reported anything at all. It is
+// never nil on a successful Compact.
 type CompactResult struct {
-	Summary  string
-	Messages []Message
-	Usage    Usage
+	Summary    string
+	Messages   []Message
+	Completion *Completion
 }
 
 // Compact asks the model to summarize the conversation for a self-handoff:
@@ -85,6 +91,6 @@ func Compact(ctx context.Context, p Provider, req Request) (*CompactResult, erro
 			{Role: RoleUser, Content: CompactRequestText},
 			{Role: RoleAssistant, Content: summary},
 		},
-		Usage: comp.Usage,
+		Completion: comp,
 	}, nil
 }

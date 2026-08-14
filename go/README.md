@@ -4,7 +4,7 @@ A reusable agentic loop for chat-model APIs, with three provider dialects —
 OpenAI-compatible chat completions, the OpenAI Responses API, and the
 Anthropic Messages API — plus the
 machinery a production tool loop needs: streaming callbacks that can abort
-the call, tool execution with approval gating, transient-failure retry,
+the call, tool execution with a per-call approval seam, transient-failure retry,
 rejected-parameter recovery, prompt caching on both dialects, conversation
 compaction, and two optional built-in tools (a sub-agent and a web fetcher).
 
@@ -294,13 +294,36 @@ dialect has no equivalent and never fires it.
 type Tool interface {
 	Decl() ToolDecl
 	Execute(ctx context.Context, args json.RawMessage) (ToolResult, error)
-	NeedsApproval() bool
 }
 type Tools []Tool // the flat set one run offers
+type Approval struct {
+	OK     bool
+	Reason string // when !OK, recorded instead of DeniedMessage
+}
 type Approver interface {
-	Ask(ctx context.Context, call ToolCall) (bool, error)
+	Ask(ctx context.Context, call ToolCall) (Approval, error)
 }
 ```
+
+**A tool has no say in whether it is asked about.** `Config.Approver` is
+consulted for EVERY call. A tool declaring itself unremarkable used to skip the
+approver entirely, which meant a host's deny rules could not fire on read-only
+tools at all -- a permission engine that silently does not apply to most calls
+is a lie about what it protects. It also could not express the decision being
+made: approval is per-CALL (`bash git status` and `bash rm -rf` are one tool),
+and the old `NeedsApproval() bool` took no arguments. `ToolDecl.Readonly` is
+now the single declaration of what a tool does to state, and a nil `Approver`
+reads it: a `Readonly` call runs, anything else is denied. That is the old
+fail-closed default, expressed once instead of maintained by hand in a wrapper.
+
+**A denial says why.** `Approval.Reason`, when a refusal carries one, is
+recorded as the tool result in place of `DeniedMessage`. A model refused
+because the write was outside the workspace should retry inside it; a model
+refused because the program is banned should stop and ask. Told the same
+sentence about a user either way, it cannot tell them apart, and in plan mode
+that sentence is also false -- no user was asked. An empty (or whitespace-only)
+`Reason` keeps `DeniedMessage`, which is still the right sentence for the case
+it was written for: a user pressing deny.
 
 A tool is an individual thing, and nothing groups them. Every tool a run
 offers -- a built-in below, or one a host discovered on an MCP server -- is one
@@ -318,7 +341,8 @@ A `ToolResult` is `Content` (the text the MODEL is fed), `IsError`, and
 embedded files, or a block a tool and its host agree on. Parts never reach the
 model, so a result can hand a front end a megabyte of image while costing the
 context only what `Content` says. `Run` passes the whole result to
-`Events.OnToolResult`; nothing else in the loop reads them.
+`Events.OnToolResult`, alongside the message it recorded for it; nothing else in
+the loop reads them.
 
 Restricting a toolset is filtering a slice, so `Tools` carries the four
 helpers the loop and the sub-agent tool need:
@@ -333,8 +357,8 @@ helpers the loop and the sub-agent tool need:
   list is part of the prompt-cache prefix, so it must not depend on the
   caller's argument order).
 
-`NewTool(decl, run)` is the shorthand for a plain function tool; a host that
-gates a tool implements `Tool` itself, since only it knows its own settings.
+`NewTool(decl, run)` is the shorthand for a plain function tool. Gating it is
+not part of building it: the host's `Approver` sees the call either way.
 
 ### Built-in tools (the plugin pattern)
 
@@ -375,8 +399,13 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   recoverable teaching error listing the valid options. A shared `*Gate`
   (`NewGate(n)`, a context-cancellable cap-n semaphore; nil = unlimited)
   bounds concurrency, and `OnActivity` streams live
-  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, Content, IsError}`
-  steps (kinds `turn`/`tool_call`/`tool_result`/`text`/`thinking`). `Detail`
+  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, Content, IsError, Completion}`
+  steps (kinds `turn`/`tool_call`/`tool_result`/`text`/`thinking`/`turn_end`).
+  `turn_end` carries the finished turn's whole `*Completion` — a sub-agent
+  answers its parent in text, so this and the report's `Usages` are the only
+  routes out for what it spent, and a host without them charges every
+  sub-agent, briefing and web summary as free. It fires once per model call
+  that produced a completion. `Detail`
   is the one-line preview — whitespace-flattened, capped at 160 runes —
   and `Content` is the same thing WHOLE: the full arguments, full tool
   output, full answer or full reasoning, so a host can show what the
@@ -389,7 +418,11 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   delivered between turns instead of blocking the call. `Config.Subagents`
   (the same registry) is what makes `Run` keep that promise: a turn that
   would otherwise END while sub-agents are out waits for the next report and
-  appends it as a user message (`FormatSubagentDelivery`). Every failure past
+  appends it as a user message (`FormatSubagentDelivery`). `SubagentReport` and
+  the terminal `SubagentUpdate` carry `Usages []Usage` — one entry per model
+  call the sub-run made, plus the `share_context=summary` briefing when there
+  was one, in order and never summed — so a host that watches only lifecycle
+  still gets the total. Every failure past
   the JSON parse — an unconfigured model, a misused argument — reaches the
   model as that report rather than as the launch's result. A nil `Runs` keeps
   the call synchronous: it blocks until the sub-agent answers. A final message
@@ -405,7 +438,10 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   fallback) and rune-capped at 200 000 with an explicit truncation note. An
   optional `summary_prompt` argument runs one bounded, tool-less call to the
   configured `Provider`/`Model` to summarize the cleaned content
-  (`OneShot`, 2 min timeout). `BlockURL func(url string) string` is the
+  (`OneShot`, 2 min timeout); `OnCompletion func(*Completion)` is handed that
+  call's completion — including a partial one from a failed call, because those
+  tokens were spent too — since the tool itself answers only with text.
+  `BlockURL func(url string) string` is the
   injectable refusal seam: return a non-empty teaching message to refuse a
   fetch (the source application used it to redirect fetches of its
   workspace repository); the library ships the hook, not the policy. The
@@ -436,9 +472,15 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   is never reported as stored. NOT `Readonly` — they write state the host
   shows, and a sub-agent inheriting them would overwrite its parent's plan.
 
-No built-in tool is approval-gated (`NeedsApproval` is always false) —
-approval wiring stays the caller's concern; wrap the tool if launching
-sub-agents, fetching, or writing the task list should be gated.
+No built-in tool gates itself — each one only declares `Readonly` truthfully,
+and `Config.Approver` decides every call. Which means a run with a nil
+`Approver` executes the read-only built-ins (`repo_read`, the four read file
+tools, `web_fetch`, `mcp_resource_diff`) and refuses the rest
+(`repo_file_write`, `repo_pr_create`, `write_file`/`edit_file`/`delete_file`,
+the four task-list tools, and `run_subagent`) with `DeniedMessage`. A host that
+wants any of those runnable wires an `Approver`; the sub-agent tool's own nested
+run already carries an approve-everything one, because a tool the sub-agent
+holds was authorized when it was granted.
 
 The two model-calling built-ins use the `Provider` you hand them exactly as given — the
 library never wraps it. In the source application every one of these model
@@ -471,10 +513,30 @@ requested tools, feed the results back, repeat. Key behaviors:
   the model asks for clears the count; call IDs are excluded from the
   comparison, since providers mint a fresh one per call.
 - **Tool failures never abort the loop.** An `Execute` error becomes a
-  `tool execution failed: ...` error result; a denied approval records
-  exactly `DeniedMessage` ("The user denied permission to run this tool.");
-  a call to a name the run does not offer gets `unknown tool: ...`. In every
-  case the loop continues so the model can react.
+  `tool execution failed: ...` error result; a refused call records the
+  `Approval.Reason`, or exactly `DeniedMessage` ("The user denied permission to
+  run this tool.") when the refusal gave none; a call to a name the run does
+  not offer gets `unknown tool: ...`. In every case the loop continues so the
+  model can react.
+- **One pass over every call, in a fixed order.** `OnToolCall(call *ToolCall)`
+  observes and may REWRITE the call (its `Arguments`, in practice), then
+  `Approver.Ask` decides on the rewritten call, then the tool executes it. The
+  order is load-bearing: an approver judging the original while a hook rewrote
+  the command would be a hole with a process around it. The transcript keeps
+  recording what the MODEL asked for — what was requested and what ran are two
+  different facts, and a mutation that silently rewrote history would be worse
+  than no mutation at all, so a host that needs the executed version records it
+  alongside. The tool result answers the model's own call id either way; a
+  rewritten id is ignored, since a mismatch there is an orphan no upstream will
+  replay.
+- **`OnToolResult(call, result, recorded)` reports both halves of the event.**
+  `recorded` is the `RoleTool` message the loop actually appended — after output
+  dedup has possibly replaced the content with an `[unchanged]` marker, carrying
+  the `ToolCallID` and `ToolIsError` as recorded, and equal to the corresponding
+  entry in `Result.Messages`. A host that persists the transcript must store
+  what the model saw, and the loop is the only thing that knows it: deriving it
+  by diffing `Result.Messages` against the events afterwards is a second copy of
+  dedup's rules, in another repository, wrong the day they change.
 - **Callbacks can abort.** `Events.OnToolCall`/`OnToolResult` (like the
   stream callbacks) return an error; a non-nil return ends the run the way a
   cancellation does — the pending batch is cleared (the assistant message
@@ -493,12 +555,14 @@ requested tools, feed the results back, repeat. Key behaviors:
   other callback error: `OnTurnBegin` aborts before the call, `OnTurnEnd`
   after it with the completed data kept. The internal subagent telemetry
   hook is unaffected.
-- **Approval**: a tool whose `NeedsApproval(name)` is true pauses for
-  `Approver.Ask`. A nil `Approver` fails closed (denies). If `Ask` returns an
-  error (the decision never arrived), the run ends with the pending batch
+- **Approval**: every call pauses for `Approver.Ask` — read-only ones
+  included, so a host's deny rules cover the whole toolset. A nil `Approver`
+  fails closed on anything that is not `Readonly`. A refusal records
+  `Approval.Reason`, or `DeniedMessage` when it carried none. If `Ask` returns
+  an error (the decision never arrived), the run ends with the pending batch
   cleared exactly as above.
 - **Stall fallback**: if the loop ends with no written answer (a
-  thinking-only turn, or the cap hit mid-research) and tools were in play,
+  thinking-only turn, or a run its ctx cut short) and tools were in play,
   one extra tool-less wrap-up turn forces the model to synthesize its answer
   from what it gathered; failing that, the final content falls back to the
   accumulated reasoning, then to a clear placeholder.
@@ -680,10 +744,25 @@ cr, err := agentic.Compact(ctx, provider, agentic.Request{
 
 `Compact` sends the whole history with the summarize instruction as the
 trailing user message and no tools; you replace your history with the
-returned two-message round. `OneShot(ctx, p, req, timeout)` is the bounded
-tool-less single call (titles, micro-summaries); compose it with
+returned two-message round. `CompactResult.Completion` is that call's whole
+completion — compaction reads the entire history, so it is one of the most
+expensive calls a session makes and charging it needs more than a `Usage`
+value could say. `OneShot(ctx, p, req, timeout) (*Completion, error)` is the
+bounded tool-less single call (titles, micro-summaries); the answer is
+`strings.TrimSpace(comp.Message.Content)`. Compose it with
 `context.WithoutCancel(parent)` for fire-and-forget work that must survive
 the parent request ending.
+
+**Every entry point that makes a model call surfaces its `*Completion`, not a
+projection of it.** A `Usage` return cannot distinguish an upstream that
+reported all-zero usage from one that reported none — that is exactly what
+`Completion.UsageReported` is for — and it silently drops `CostUsd`,
+`ReasoningTokens`, `RawUsage`, `Timings` and `Streamed`. Under-counting money
+is not a rounding error, and it cannot be repaired afterwards, because the
+numbers were never emitted. That principle is why `OneShot` returns a
+completion, why `CompactResult` carries one, why `SubagentActivity` has a
+`turn_end` kind, why `WebFetchConfig` has `OnCompletion`, and why
+`SubagentReport`/`SubagentUpdate` carry `Usages`.
 
 ## Concurrency
 
@@ -776,8 +855,9 @@ folder that could only cover part of what the path named.
 `NewGitHub(GitHubConfig)` is a credential-rotating GitHub REST client, and
 `NewRepoTools(RepoToolsConfig{GitHub: gh})` are the three tools over it:
 `repo_read` (commits, one commit's diff, pull requests, issues, CI status,
-one check run, one Actions job's log), plus the approval-gated
-`repo_file_write` and `repo_pr_create`.
+one check run, one Actions job's log), plus the two non-`Readonly` writes
+`repo_file_write` and `repo_pr_create` (so a run without an `Approver` refuses
+them).
 A nil client yields no tools — a run with no GitHub access is never offered one
 that could only fail.
 

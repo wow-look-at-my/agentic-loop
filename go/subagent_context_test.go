@@ -81,8 +81,9 @@ func TestComposeSubagentTask(t *testing.T) {
 
 func TestGenerateContextSummaryEmptyTranscriptSkipsModel(t *testing.T) {
 	provider := &scriptProvider{} // any call would fail with "script exhausted"
-	got, err := generateContextSummary(context.Background(), provider, "m", nil, 0, nil)
+	got, comp, err := generateContextSummary(context.Background(), provider, "m", nil, 0, nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
+	assert.Nil(t, comp, "no call was made, so there is nothing to charge for")
 	assert.Empty(t, provider.reqs, "an empty transcript makes no model call")
 }

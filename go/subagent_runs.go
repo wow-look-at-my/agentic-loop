@@ -57,6 +57,15 @@ type SubagentReport struct {
 	// Text is the sub-agent's final report (or the error text).
 	Text    string
 	IsError bool
+	// Usages is what this sub-agent spent: one entry per model call the nested
+	// run made, in order, plus the share_context=summary briefing when there was
+	// one. Deliberately not summed, for the same reason Result.Usages is not --
+	// successive turns re-send an overlapping prompt.
+	//
+	// A sub-agent answers its parent in text, so without this a host's session
+	// cost silently omitted every sub-agent, and money that was never emitted
+	// cannot be recovered afterwards.
+	Usages []Usage
 	// Duration is wall-clock from launch to report. Reported to the browser
 	// only — the delivered text stays deterministic.
 	Duration time.Duration
@@ -80,10 +89,12 @@ type SubagentUpdate struct {
 	// Prompt is the task text, carried on the first (queued) update only.
 	Prompt string
 	State  SubagentState
-	// Report and IsError are set on the terminal update; Duration is
-	// wall-clock from launch to report.
+	// Report and IsError are set on the terminal update; Usages is what the run
+	// spent (see SubagentReport.Usages), so a host watching only lifecycle still
+	// gets the total; Duration is wall-clock from launch to report.
 	Report   string
 	IsError  bool
+	Usages   []Usage
 	Duration time.Duration
 }
 
@@ -166,10 +177,12 @@ func (r *SubagentRuns) MarkRunning(callID string) {
 }
 
 // Complete records a finished sub-agent's report and wakes any Collect waiting
-// on it. The report stays pending until Collect hands it to the loop, so a
-// sub-agent that finishes while the model is mid-turn is delivered at the end
-// of that turn rather than lost. Unknown call ids are ignored.
-func (r *SubagentRuns) Complete(callID, text string, isErr bool) {
+// on it. usages is what the run spent, in order (nil for a run that never got
+// as far as a model call). The report stays pending until Collect hands it to
+// the loop, so a sub-agent that finishes while the model is mid-turn is
+// delivered at the end of that turn rather than lost. Unknown call ids are
+// ignored.
+func (r *SubagentRuns) Complete(callID, text string, isErr bool, usages []Usage) {
 	r.mu.Lock()
 	run, ok := r.active[callID]
 	if !ok {
@@ -179,6 +192,7 @@ func (r *SubagentRuns) Complete(callID, text string, isErr bool) {
 	delete(r.active, callID)
 	rep := SubagentReport{
 		CallID: callID, Label: run.label, Text: text, IsError: isErr,
+		Usages:   usages,
 		Duration: r.now().Sub(run.startedAt),
 	}
 	r.ready = append(r.ready, rep)
@@ -190,7 +204,7 @@ func (r *SubagentRuns) Complete(callID, text string, isErr bool) {
 	}
 	r.emit(SubagentUpdate{
 		CallID: callID, Label: rep.Label, State: state,
-		Report: text, IsError: isErr, Duration: rep.Duration,
+		Report: text, IsError: isErr, Usages: usages, Duration: rep.Duration,
 	})
 	select {
 	case r.signal <- struct{}{}:
