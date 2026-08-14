@@ -562,7 +562,7 @@ requested tools, feed the results back, repeat. Key behaviors:
   an error (the decision never arrived), the run ends with the pending batch
   cleared exactly as above.
 - **Stall fallback**: if the loop ends with no written answer (a
-  thinking-only turn, or the cap hit mid-research) and tools were in play,
+  thinking-only turn, or a run its ctx cut short) and tools were in play,
   one extra tool-less wrap-up turn forces the model to synthesize its answer
   from what it gathered; failing that, the final content falls back to the
   accumulated reasoning, then to a clear placeholder.

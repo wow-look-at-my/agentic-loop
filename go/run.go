@@ -259,7 +259,7 @@ type Result struct {
 // transcript accumulated so far.
 //
 // If the loop ends with the model having produced no content (a
-// thinking-only turn, or the cap hit mid-research), one extra tool-less
+// thinking-only turn, or a run its ctx cut short), one extra tool-less
 // wrap-up turn asks it to synthesize an answer from what it gathered; failing
 // that, the final content falls back to the accumulated reasoning, then to a
 // clear placeholder.
@@ -436,7 +436,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 
 		// The model stopped without writing an answer -- it produced only
-		// reasoning, or hit the turn cap mid-research. When tools were in
+		// reasoning. When tools were in
 		// play (so it may already have gathered useful results), make one
 		// final tool-less request that forces it to synthesize an answer from
 		// what it has. The stalling turn's assistant message is deliberately
