@@ -6,9 +6,10 @@ Notes for Claude working in this repository.
 
 `agentic-loop` — reusable agentic-loop libraries for OpenAI-compatible and
 Anthropic chat APIs. `go/` holds the Go library (package `agentic`, a single
-package); `ts/` is a planned TypeScript port whose specification is
-[PARITY.md](PARITY.md) — keep that file in sync with any behavioral change
-to the Go code.
+package); `ts/` is a planned TypeScript port, and the Go source plus
+`go/README.md` are its specification. There is no PARITY.md: it was deleted
+deliberately, so do not recreate one — a second declaration of the Go
+package's behavior is a copy nothing keeps true.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
@@ -40,7 +41,7 @@ redesign — check these when a behavior question comes up):
 
 The Responses dialect has NO source repo — it was written here, against the
 API's own shapes. Do not go looking for the semantics somewhere else; the
-answers are `go/README.md`, PARITY.md §4a, and `responses_test.go`.
+answers are `go/README.md` and `responses_test.go`.
 
 ## Build & test
 
@@ -109,7 +110,7 @@ side of that line it falls on — do not put it on both.
   own default (third-party retention is the caller's decision to make out
   loud), `previous_response_id` is never sent (the transcript is the caller's),
   and detection can never name this dialect, since the model list looks
-  identical. Depth: `go/README.md`, PARITY.md §4a.
+  identical. Depth: `go/README.md`, `responses_test.go`.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
   end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
   nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
@@ -174,7 +175,7 @@ side of that line it falls on — do not put it on both.
   prompts, the web_fetch validation/cap/result texts, the task-list tools'
   descriptions/schemas/teaching errors and `RenderTodos`, and every word the
   seven file tools render — descriptions, schemas, the cap announcements,
-  and grep's real-negative sentence) are pinned by tests and by PARITY.md.
+  and grep's real-negative sentence) are pinned by tests.
   Do not "improve" them.
 - **A tool's schema is INFERRED from the struct its handler decodes**
   (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go` because
@@ -318,5 +319,5 @@ Concretely:
 
 ## Documentation upkeep
 
-When changing the API surface or any behavior: update `go/README.md`,
-`PARITY.md` (the ts/ port contract), and this file in the same commit.
+When changing the API surface or any behavior: update `go/README.md` and this
+file in the same commit.
