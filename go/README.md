@@ -341,7 +341,8 @@ A `ToolResult` is `Content` (the text the MODEL is fed), `IsError`, and
 embedded files, or a block a tool and its host agree on. Parts never reach the
 model, so a result can hand a front end a megabyte of image while costing the
 context only what `Content` says. `Run` passes the whole result to
-`Events.OnToolResult`; nothing else in the loop reads them.
+`Events.OnToolResult`, alongside the message it recorded for it; nothing else in
+the loop reads them.
 
 Restricting a toolset is filtering a slice, so `Tools` carries the four
 helpers the loop and the sub-agent tool need:
@@ -505,6 +506,25 @@ requested tools, feed the results back, repeat. Key behaviors:
   run this tool.") when the refusal gave none; a call to a name the run does
   not offer gets `unknown tool: ...`. In every case the loop continues so the
   model can react.
+- **One pass over every call, in a fixed order.** `OnToolCall(call *ToolCall)`
+  observes and may REWRITE the call (its `Arguments`, in practice), then
+  `Approver.Ask` decides on the rewritten call, then the tool executes it. The
+  order is load-bearing: an approver judging the original while a hook rewrote
+  the command would be a hole with a process around it. The transcript keeps
+  recording what the MODEL asked for — what was requested and what ran are two
+  different facts, and a mutation that silently rewrote history would be worse
+  than no mutation at all, so a host that needs the executed version records it
+  alongside. The tool result answers the model's own call id either way; a
+  rewritten id is ignored, since a mismatch there is an orphan no upstream will
+  replay.
+- **`OnToolResult(call, result, recorded)` reports both halves of the event.**
+  `recorded` is the `RoleTool` message the loop actually appended — after output
+  dedup has possibly replaced the content with an `[unchanged]` marker, carrying
+  the `ToolCallID` and `ToolIsError` as recorded, and equal to the corresponding
+  entry in `Result.Messages`. A host that persists the transcript must store
+  what the model saw, and the loop is the only thing that knows it: deriving it
+  by diffing `Result.Messages` against the events afterwards is a second copy of
+  dedup's rules, in another repository, wrong the day they change.
 - **Callbacks can abort.** `Events.OnToolCall`/`OnToolResult` (like the
   stream callbacks) return an error; a non-nil return ends the run the way a
   cancellation does — the pending batch is cleared (the assistant message

@@ -177,7 +177,7 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
 	cfg.Events = Events{
-		OnToolCall: func(c ToolCall) error {
+		OnToolCall: func(c *ToolCall) error {
 			act(SubagentActivity{
 				CallID:  callID,
 				Kind:    SubagentActivityToolCall,
@@ -187,7 +187,7 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 			})
 			return nil
 		},
-		OnToolResult: func(c ToolCall, r ToolResult) error {
+		OnToolResult: func(c ToolCall, r ToolResult, _ Message) error {
 			act(SubagentActivity{
 				CallID:  callID,
 				Kind:    SubagentActivityToolResult,

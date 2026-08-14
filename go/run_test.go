@@ -63,13 +63,18 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}, {Name: "beta"}}}
 	var calls []ToolCall
 	var results []ToolResult
+	var recorded []Message
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
 		Events: Events{
-			OnToolCall:   func(c ToolCall) error { calls = append(calls, c); return nil },
-			OnToolResult: func(_ ToolCall, r ToolResult) error { results = append(results, r); return nil },
+			OnToolCall:   func(c *ToolCall) error { calls = append(calls, *c); return nil },
+			OnToolResult: func(_ ToolCall, r ToolResult, m Message) error {
+				results = append(results, r)
+				recorded = append(recorded, m)
+				return nil
+			},
 		},
 	}
 	req := Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "go"}},
@@ -97,6 +102,11 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	assert.Equal(t, "beta", calls[1].Name)
 	require.Len(t, results, 2)
 	assert.Equal(t, "ran alpha", results[0].Content)
+	// Each result event also carries the message the loop appended for it --
+	// here identical to the transcript's own entries.
+	require.Len(t, recorded, 2)
+	assert.Equal(t, res.Messages[2], recorded[0])
+	assert.Equal(t, res.Messages[3], recorded[1])
 
 	// The loop advertises the executor's tools, overriding req.Tools; the
 	// second request replays the assistant tool calls and the tool results.

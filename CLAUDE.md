@@ -196,6 +196,15 @@ side of that line it falls on — do not put it on both.
 - **`SubagentActivity.Content` is the whole text; `Detail` is the preview.**
   Hosts render the former; do not cap it, and do not drop it back to a
   preview — a 160-rune hint of a file listing tells a reader nothing.
+- **The tool-call seam is one ordered pass, and the transcript is not part of
+  it.** `OnToolCall(*ToolCall)` may rewrite the call, `Approver.Ask` then judges
+  the REWRITTEN call, and `Execute` receives it — reordering those puts a hook's
+  rewrite past the decision that was supposed to cover it. The assistant message
+  keeps the model's own arguments (what was asked and what ran are two facts),
+  and the tool result answers the model's own call id, so a rewritten `ID` is
+  ignored rather than allowed to orphan the result. `OnToolResult` carries the
+  RECORDED `Message` as a third argument, because dedup may have replaced the
+  content with an `UnchangedPrefix` marker and only the loop knows that.
 - Callback errors (`StreamEvents.On*`, `Events.OnToolCall/OnToolResult`
   returning non-nil) must keep their contract: abort + partial
   result/completion, `errors.Is`-reachable, never `*APIError`, never
