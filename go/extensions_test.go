@@ -28,6 +28,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
+		Approver: allowAll,
 		Events: Events{
 			// Wind-down injection: append a notice to THIS call's request only,
 			// on a fresh copy (the TS `[...messages, notice]` shape) so the
@@ -75,6 +76,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
+		Approver: allowAll,
 		Events: Events{
 			OnTurnEnd: func(turn int, comp *Completion, err error) error {
 				turns = append(turns, turn)
@@ -153,6 +155,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
+		Approver: allowAll,
 		Events: Events{
 			OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil },
 			OnTurnEnd:   func(turn int, _ *Completion, _ error) error { ends = append(ends, turn); return nil },
@@ -180,6 +183,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
+		Approver: allowAll,
 		Events:   Events{OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil }},
 	}
 	cfg.turnHook = func(turn int) { internal = append(internal, turn) }

@@ -14,8 +14,8 @@ import (
 
 // repo_file_write and repo_pr_create are the two mutating repo tools. They
 // differ from the read tools in four deliberate ways:
-//   - they always require the user's approval (alwaysAsk in the tool table, so
-//     NeedsApproval returns true regardless of the ask_tools setting);
+//   - they are not Readonly, so a run without an Approver refuses them and one
+//     with an Approver puts every call to it;
 //   - they never fall through to an unauthenticated attempt (writeTokenOrder);
 //   - they draw from the client's separate WRITE credential list only —
 //     for these model-initiated tools that is the allow_model_writes-flagged

@@ -160,9 +160,8 @@ func SubagentLaunchReceipt(description string) string {
 
 // runConfig assembles the nested Run's Config: the sub-agent's toolset, the
 // approve-everything Approver (the explicit allowed_tools grant is itself the
-// authorization — the source loop never consulted NeedsApproval), and, when
-// the host listens, the activity telemetry hooks stamped with the parent
-// call's ID.
+// authorization — the source loop gated no sub-agent call), and, when the host
+// listens, the activity telemetry hooks stamped with the parent call's ID.
 func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Config {
 	cfg := Config{
 		Provider:    e.cfg.Provider,
@@ -248,11 +247,13 @@ func thinkingText(blocks []ThinkingBlock) string {
 // approveAll is the nested run's Approver: a tool the sub-agent holds is
 // authorized by construction (read-only by default, or explicitly granted via
 // allowed_tools), so nothing is gated — matching the source loop, which
-// executed sub-agent tool calls without consulting the approval flow.
+// executed sub-agent tool calls without consulting the approval flow. It is
+// also what keeps an explicitly granted non-Readonly tool runnable, now that a
+// nil Approver would refuse one.
 type approveAll struct{}
 
 // Ask always allows.
-func (approveAll) Ask(context.Context, ToolCall) (bool, error) { return true, nil }
+func (approveAll) Ask(context.Context, ToolCall) (Approval, error) { return Approval{OK: true}, nil }
 
 // parentContext is the parent conversation's full input context: the system
 // prompt (when non-empty) followed by the messages — the same list shape the

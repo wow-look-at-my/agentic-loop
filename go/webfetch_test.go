@@ -28,7 +28,6 @@ func TestWebFetchAdvertisement(t *testing.T) {
 		"Optionally provide summary_prompt to have the same model summarize the cleaned content before it is returned.",
 		tool.Description)
 	assert.Contains(t, string(tool.InputSchema), `"summary_prompt"`)
-	assert.False(t, exec.NeedsApproval())
 }
 
 func TestWebFetchSuccessCleansHTML(t *testing.T) {

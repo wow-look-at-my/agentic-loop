@@ -120,7 +120,7 @@ side of that line it falls on — do not put it on both.
   knows whether a call streamed anything, which is what makes re-sending
   safe.
 - **A tool is an individual thing, and nothing groups them.** `Tool` is
-  `Decl`/`Execute`/`NeedsApproval`, and a run's toolset is a flat `Tools`
+  `Decl`/`Execute`, and a run's toolset is a flat `Tools`
   slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
   composite, and no view wrapper: concatenating toolsets is `append`, and
   restricting one is `Readonly()`/`Subset()` returning a shorter slice. A
@@ -128,6 +128,15 @@ side of that line it falls on — do not put it on both.
   this replaced -- do not reintroduce it. The call id being answered is not
   an `Execute` argument: it rides the context (`WithToolCallID`/`ToolCallID`),
   which `Run` sets around every call, because almost no tool wants it.
+- **A tool does not decide whether it is asked about.** `Config.Approver` is
+  consulted for EVERY call, read-only included — a deny rule that cannot fire
+  on part of the toolset is a lie about what it protects — and `ToolDecl.Readonly`
+  is the ONE declaration of what a tool does to state. Do not put a
+  `NeedsApproval` back on `Tool`, and do not reintroduce a gating wrapper: a nil
+  `Approver` allows a `Readonly` call and denies the rest, which is the same
+  fail-closed default expressed once. A denial carries `Approval.Reason`, and
+  only an empty one falls back to `DeniedMessage` — an optional reason is one
+  that goes missing exactly when a rule was written in a hurry.
 - **There is NO turn cap, and adding one back is a regression.** No
   `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
   tools-withheld final turn. A counted cap cannot tell a model looping

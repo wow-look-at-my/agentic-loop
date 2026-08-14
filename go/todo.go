@@ -188,10 +188,6 @@ func (e *todoTool) Decl() ToolDecl {
 	}
 }
 
-// NeedsApproval always reports false: approval wiring stays the caller's
-// concern, as with every built-in tool.
-func (e *todoTool) NeedsApproval() bool { return false }
-
 // schema is inferred from the tool's argument struct, per the hard rule that a
 // tool's schema is never hand-written. closedState constrains the state field
 // to the enum a host can render.

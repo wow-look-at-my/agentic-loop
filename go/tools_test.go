@@ -14,7 +14,6 @@ import (
 // ran, and hands out the individual Tool values a Config takes.
 type fakeExec struct {
 	tools    []ToolDecl
-	ask      map[string]bool
 	execute  func(ctx context.Context, call ToolCall) (ToolResult, error)
 	executed []ToolCall
 	results  map[string]ToolResult
@@ -35,8 +34,7 @@ type fakeTool struct {
 	decl  ToolDecl
 }
 
-func (t *fakeTool) Decl() ToolDecl      { return t.decl }
-func (t *fakeTool) NeedsApproval() bool { return t.owner.ask[t.decl.Name] }
+func (t *fakeTool) Decl() ToolDecl { return t.decl }
 
 func (t *fakeTool) Execute(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	call := ToolCall{ID: ToolCallID(ctx), Name: t.decl.Name, Arguments: string(args)}
@@ -136,8 +134,7 @@ func TestNewTool(t *testing.T) {
 			return ToolResult{Content: string(args)}, nil
 		})
 	assert.Equal(t, "echo", tool.Decl().Name)
-	assert.True(t, tool.Decl().Readonly)
-	assert.False(t, tool.NeedsApproval(), "a host that gates a tool implements Tool itself")
+	assert.True(t, tool.Decl().Readonly, "gating is Config.Approver's, and Readonly is all a tool declares about it")
 
 	res, err := tool.Execute(context.Background(), json.RawMessage(`{"a":1}`))
 	require.NoError(t, err)

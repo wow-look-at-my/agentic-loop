@@ -93,8 +93,9 @@ type webFetchTool struct {
 // NewWebFetchTool builds the web_fetch tool: an unauthenticated, plain HTTP
 // GET returning cleaned page content, with an optional model-backed summarize
 // path. Append it to the rest of the toolset like any other tool. The tool is
-// Readonly (a sub-agent's default toolset includes it) and NeedsApproval
-// always reports false — wrap it to gate it.
+// Readonly, so a sub-agent's default toolset includes it and a run with no
+// Approver lets it run; gating it is Config.Approver's decision, like every
+// other call.
 func NewWebFetchTool(cfg WebFetchConfig) Tool {
 	hc := cfg.HTTPClient
 	if hc == nil {
@@ -117,10 +118,6 @@ func (e *webFetchTool) Decl() ToolDecl {
 		Readonly:    true,
 	}
 }
-
-// NeedsApproval always reports false: approval wiring stays the caller's
-// concern (the source application keyed it to a user setting).
-func (e *webFetchTool) NeedsApproval() bool { return false }
 
 // webFetchArgs is the web_fetch argument payload.
 type webFetchArgs struct {

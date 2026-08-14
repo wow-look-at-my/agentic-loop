@@ -4,7 +4,7 @@ A reusable agentic loop for chat-model APIs, with three provider dialects —
 OpenAI-compatible chat completions, the OpenAI Responses API, and the
 Anthropic Messages API — plus the
 machinery a production tool loop needs: streaming callbacks that can abort
-the call, tool execution with approval gating, transient-failure retry,
+the call, tool execution with a per-call approval seam, transient-failure retry,
 rejected-parameter recovery, prompt caching on both dialects, conversation
 compaction, and two optional built-in tools (a sub-agent and a web fetcher).
 
@@ -294,13 +294,36 @@ dialect has no equivalent and never fires it.
 type Tool interface {
 	Decl() ToolDecl
 	Execute(ctx context.Context, args json.RawMessage) (ToolResult, error)
-	NeedsApproval() bool
 }
 type Tools []Tool // the flat set one run offers
+type Approval struct {
+	OK     bool
+	Reason string // when !OK, recorded instead of DeniedMessage
+}
 type Approver interface {
-	Ask(ctx context.Context, call ToolCall) (bool, error)
+	Ask(ctx context.Context, call ToolCall) (Approval, error)
 }
 ```
+
+**A tool has no say in whether it is asked about.** `Config.Approver` is
+consulted for EVERY call. A tool declaring itself unremarkable used to skip the
+approver entirely, which meant a host's deny rules could not fire on read-only
+tools at all -- a permission engine that silently does not apply to most calls
+is a lie about what it protects. It also could not express the decision being
+made: approval is per-CALL (`bash git status` and `bash rm -rf` are one tool),
+and the old `NeedsApproval() bool` took no arguments. `ToolDecl.Readonly` is
+now the single declaration of what a tool does to state, and a nil `Approver`
+reads it: a `Readonly` call runs, anything else is denied. That is the old
+fail-closed default, expressed once instead of maintained by hand in a wrapper.
+
+**A denial says why.** `Approval.Reason`, when a refusal carries one, is
+recorded as the tool result in place of `DeniedMessage`. A model refused
+because the write was outside the workspace should retry inside it; a model
+refused because the program is banned should stop and ask. Told the same
+sentence about a user either way, it cannot tell them apart, and in plan mode
+that sentence is also false -- no user was asked. An empty (or whitespace-only)
+`Reason` keeps `DeniedMessage`, which is still the right sentence for the case
+it was written for: a user pressing deny.
 
 A tool is an individual thing, and nothing groups them. Every tool a run
 offers -- a built-in below, or one a host discovered on an MCP server -- is one
@@ -333,8 +356,8 @@ helpers the loop and the sub-agent tool need:
   list is part of the prompt-cache prefix, so it must not depend on the
   caller's argument order).
 
-`NewTool(decl, run)` is the shorthand for a plain function tool; a host that
-gates a tool implements `Tool` itself, since only it knows its own settings.
+`NewTool(decl, run)` is the shorthand for a plain function tool. Gating it is
+not part of building it: the host's `Approver` sees the call either way.
 
 ### Built-in tools (the plugin pattern)
 
@@ -436,9 +459,15 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   is never reported as stored. NOT `Readonly` — they write state the host
   shows, and a sub-agent inheriting them would overwrite its parent's plan.
 
-No built-in tool is approval-gated (`NeedsApproval` is always false) —
-approval wiring stays the caller's concern; wrap the tool if launching
-sub-agents, fetching, or writing the task list should be gated.
+No built-in tool gates itself — each one only declares `Readonly` truthfully,
+and `Config.Approver` decides every call. Which means a run with a nil
+`Approver` executes the read-only built-ins (`repo_read`, the four read file
+tools, `web_fetch`, `mcp_resource_diff`) and refuses the rest
+(`repo_file_write`, `repo_pr_create`, `write_file`/`edit_file`/`delete_file`,
+the four task-list tools, and `run_subagent`) with `DeniedMessage`. A host that
+wants any of those runnable wires an `Approver`; the sub-agent tool's own nested
+run already carries an approve-everything one, because a tool the sub-agent
+holds was authorized when it was granted.
 
 The two model-calling built-ins use the `Provider` you hand them exactly as given — the
 library never wraps it. In the source application every one of these model
@@ -471,10 +500,11 @@ requested tools, feed the results back, repeat. Key behaviors:
   the model asks for clears the count; call IDs are excluded from the
   comparison, since providers mint a fresh one per call.
 - **Tool failures never abort the loop.** An `Execute` error becomes a
-  `tool execution failed: ...` error result; a denied approval records
-  exactly `DeniedMessage` ("The user denied permission to run this tool.");
-  a call to a name the run does not offer gets `unknown tool: ...`. In every
-  case the loop continues so the model can react.
+  `tool execution failed: ...` error result; a refused call records the
+  `Approval.Reason`, or exactly `DeniedMessage` ("The user denied permission to
+  run this tool.") when the refusal gave none; a call to a name the run does
+  not offer gets `unknown tool: ...`. In every case the loop continues so the
+  model can react.
 - **Callbacks can abort.** `Events.OnToolCall`/`OnToolResult` (like the
   stream callbacks) return an error; a non-nil return ends the run the way a
   cancellation does — the pending batch is cleared (the assistant message
@@ -493,9 +523,11 @@ requested tools, feed the results back, repeat. Key behaviors:
   other callback error: `OnTurnBegin` aborts before the call, `OnTurnEnd`
   after it with the completed data kept. The internal subagent telemetry
   hook is unaffected.
-- **Approval**: a tool whose `NeedsApproval(name)` is true pauses for
-  `Approver.Ask`. A nil `Approver` fails closed (denies). If `Ask` returns an
-  error (the decision never arrived), the run ends with the pending batch
+- **Approval**: every call pauses for `Approver.Ask` — read-only ones
+  included, so a host's deny rules cover the whole toolset. A nil `Approver`
+  fails closed on anything that is not `Readonly`. A refusal records
+  `Approval.Reason`, or `DeniedMessage` when it carried none. If `Ask` returns
+  an error (the decision never arrived), the run ends with the pending batch
   cleared exactly as above.
 - **Stall fallback**: if the loop ends with no written answer (a
   thinking-only turn, or the cap hit mid-research) and tools were in play,
@@ -776,8 +808,9 @@ folder that could only cover part of what the path named.
 `NewGitHub(GitHubConfig)` is a credential-rotating GitHub REST client, and
 `NewRepoTools(RepoToolsConfig{GitHub: gh})` are the three tools over it:
 `repo_read` (commits, one commit's diff, pull requests, issues, CI status,
-one check run, one Actions job's log), plus the approval-gated
-`repo_file_write` and `repo_pr_create`.
+one check run, one Actions job's log), plus the two non-`Readonly` writes
+`repo_file_write` and `repo_pr_create` (so a run without an `Approver` refuses
+them).
 A nil client yields no tools — a run with no GitHub access is never offered one
 that could only fail.
 

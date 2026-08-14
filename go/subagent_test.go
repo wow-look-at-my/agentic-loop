@@ -43,7 +43,6 @@ func TestSubagentAdvertisement(t *testing.T) {
 	assert.Equal(t, SubagentToolName, tool.Name)
 	assert.False(t, tool.Readonly, "run_subagent is NOT read-only, so ReadonlyView drops it (no recursion)")
 	assert.Contains(t, tool.Description, "Launch a sub-agent")
-	assert.False(t, exec.NeedsApproval(), "approval gating stays the caller's concern")
 
 	var schema map[string]any
 	require.NoError(t, json.Unmarshal(tool.InputSchema, &schema))

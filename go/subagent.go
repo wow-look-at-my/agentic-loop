@@ -189,8 +189,8 @@ type subagentTool struct {
 // NewSubagentTool builds the run_subagent tool: one tool that runs a nested,
 // in-memory agentic loop (this package's Run) on cfg.Provider and reports back
 // only the sub-agent's final answer. Append it to the rest of the toolset like
-// any other tool. NeedsApproval always reports false — wrap it if launching
-// sub-agents should be approval-gated.
+// any other tool. It is not Readonly, so a run with no Approver refuses it —
+// launching a sub-agent is the host's call, made in the host's Approver.
 func NewSubagentTool(cfg SubagentConfig) Tool {
 	system := strings.TrimSpace(cfg.SystemPrompt)
 	if system == "" {
@@ -208,10 +208,6 @@ func (e *subagentTool) Decl() ToolDecl {
 		InputSchema: e.advertisedSchema(e.grantableTools()),
 	}
 }
-
-// NeedsApproval always reports false: approval wiring stays the caller's
-// concern (the source application keyed it to a user setting).
-func (e *subagentTool) NeedsApproval() bool { return false }
 
 // grantableTools returns the tools allowed_tools may name, in deterministic
 // order: every tool in the full toolset EXCEPT run_subagent itself (excluding

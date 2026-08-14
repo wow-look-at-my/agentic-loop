@@ -136,9 +136,9 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
 }
 
 // Config wires one Run: the Provider to call, the Tools advertised and
-// executed (empty runs tool-less), the Approver consulted for calls a tool
-// flags via NeedsApproval (nil denies gated calls with DeniedMessage), and
-// the event callbacks. There is deliberately no turn cap
+// executed (empty runs tool-less), the Approver consulted for EVERY tool call
+// (nil allows a Readonly tool and denies anything else with DeniedMessage),
+// and the event callbacks. There is deliberately no turn cap
 // -- see the note above wrapUpInstruction for what bounds a run instead.
 //
 // Output dedup is ON by default: a read-only tool result whose content is
@@ -203,13 +203,15 @@ type Result struct {
 // the results back, and stops when the model answers with text.
 //
 // Each turn advertises cfg.Tools.Decls(); req.Tools is ignored and
-// overwritten (an empty cfg.Tools advertises no tools). On the final permitted
-// turn tools are WITHHELD so the model must answer rather than request
-// another never-executed call. Tool failures never abort the loop: an
-// Execute error becomes a recoverable "tool execution failed: ..." error
-// result, a call the model hallucinated with no executor configured gets an
-// "unknown tool: ..." error result, and a denied approval records
-// DeniedMessage -- in every case the loop continues so the model can react.
+// overwritten (an empty cfg.Tools advertises no tools). Every requested call
+// goes to cfg.Approver first -- read-only ones included, so a host's deny
+// rules apply to the whole toolset -- and a nil Approver allows a Readonly
+// tool and denies the rest. Tool failures never abort the loop: an Execute
+// error becomes a recoverable "tool execution failed: ..." error result, a
+// call the model hallucinated with no executor configured gets an "unknown
+// tool: ..." error result, and a refused call records the Approval's Reason,
+// or DeniedMessage when it carried none -- in every case the loop continues so
+// the model can react.
 //
 // An Approver.Ask error (the decision never arrived) ends the run: the
 // current assistant message keeps its content and reasoning but its ToolCalls
@@ -472,9 +474,10 @@ func runModelCall(
 }
 
 // resolveCall produces the recorded ToolResult for one requested call:
-// executed, denied, or a teaching error. The returned error is non-nil ONLY
-// when an approval decision never arrived (Approver.Ask failed), which ends
-// the run.
+// executed, denied, or a teaching error. EVERY call is put to the Approver --
+// a tool has no say in whether it is asked about, so a host's deny rule
+// reaches read-only calls too. The returned error is non-nil ONLY when an
+// approval decision never arrived (Approver.Ask failed), which ends the run.
 func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, error) {
 	tool, known := cfg.Tools.Find(call.Name)
 	if !known {
@@ -486,17 +489,18 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 		}
 		return ToolResult{Content: text, IsError: true}, nil
 	}
-	if tool.NeedsApproval() {
-		if cfg.Approver == nil {
-			// Fail closed: a gated tool with nobody to ask is denied.
+	if cfg.Approver == nil {
+		// Nobody to ask: read, but change nothing.
+		if !tool.Decl().Readonly {
 			return ToolResult{Content: DeniedMessage, IsError: true}, nil
 		}
-		allowed, aerr := cfg.Approver.Ask(ctx, call)
+	} else {
+		verdict, aerr := cfg.Approver.Ask(ctx, call)
 		if aerr != nil {
 			return ToolResult{}, fmt.Errorf("agentic: tool approval interrupted: %w", aerr)
 		}
-		if !allowed {
-			return ToolResult{Content: DeniedMessage, IsError: true}, nil
+		if !verdict.OK {
+			return ToolResult{Content: deniedText(verdict.Reason), IsError: true}, nil
 		}
 	}
 	// The id is threaded on the context, where it is known -- the Tool
@@ -508,6 +512,15 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 		return ToolResult{Content: "tool execution failed: " + exErr.Error(), IsError: true}, nil
 	}
 	return result, nil
+}
+
+// deniedText is what a refused call records: the approver's own reason, and
+// DeniedMessage when it gave none.
+func deniedText(reason string) string {
+	if r := strings.TrimSpace(reason); r != "" {
+		return r
+	}
+	return DeniedMessage
 }
 
 // fallbackOutput picks the text to surface when the loop ends without a
