@@ -57,8 +57,10 @@ type RepoToolsConfig struct {
 	Blocked func(org, repo string) *ToolResult
 }
 
-// NewRepoTools returns repo_read plus the two approval-gated writes. The
-// writes declare NeedsApproval: they reach GitHub, and no undo exists.
+// NewRepoTools returns repo_read plus the two writes. The writes are not
+// Readonly, which is the whole of what they declare: they reach GitHub and no
+// undo exists, so Config.Approver decides each call and a run with no Approver
+// refuses them.
 func NewRepoTools(cfg RepoToolsConfig) Tools {
 	if cfg.GitHub == nil {
 		return nil
@@ -69,14 +71,14 @@ func NewRepoTools(cfg RepoToolsConfig) Tools {
 			Name: RepoReadToolName, Description: repoReadDescription,
 			InputSchema: repoReadSchema, Readonly: true,
 		}, wrapRepoTool(e.repoRead)),
-		approvalTool{NewTool(ToolDecl{
+		NewTool(ToolDecl{
 			Name: RepoFileWriteToolName, Description: repoFileWriteDescription,
 			InputSchema: repoFileWriteSchema,
-		}, wrapRepoTool(e.fileWrite))},
-		approvalTool{NewTool(ToolDecl{
+		}, wrapRepoTool(e.fileWrite)),
+		NewTool(ToolDecl{
 			Name: RepoPRCreateToolName, Description: repoPRCreateDescription,
 			InputSchema: repoPRCreateSchema,
-		}, wrapRepoTool(e.prCreate))},
+		}, wrapRepoTool(e.prCreate)),
 	}
 }
 
@@ -91,12 +93,6 @@ type repoTools struct {
 func wrapRepoTool(run func(context.Context, json.RawMessage) ToolResult) func(context.Context, json.RawMessage) (ToolResult, error) {
 	return func(ctx context.Context, args json.RawMessage) (ToolResult, error) { return run(ctx, args), nil }
 }
-
-// approvalTool is a tool whose every call is gated. A host may still override
-// the answer -- the preference is the tool's, the decision is the user's.
-type approvalTool struct{ Tool }
-
-func (t approvalTool) NeedsApproval() bool { return true }
 
 // block asks the host whether this repository is off limits for a write.
 func (e *repoTools) block(org, repo string) *ToolResult {

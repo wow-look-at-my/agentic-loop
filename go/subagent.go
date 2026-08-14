@@ -109,6 +109,13 @@ const (
 	SubagentActivityToolResult = "tool_result" // a sub-agent tool returned
 	SubagentActivityText       = "text"        // the sub-agent's own answer for a turn
 	SubagentActivityThinking   = "thinking"    // its reasoning for a turn
+	// SubagentActivityTurnEnd reports one finished sub-agent turn, carrying its
+	// *Completion. It is the live route out for what a sub-agent is spending
+	// while it runs -- the report at the end carries the totals, but a host
+	// showing cost as it accrues cannot wait for that. Fires only for a turn
+	// that produced a completion; a call that failed before producing one has
+	// nothing to report.
+	SubagentActivityTurnEnd = "turn_end"
 )
 
 // SubagentActivity is one progress step from a running sub-agent. CallID is
@@ -130,6 +137,12 @@ type SubagentActivity struct {
 	// and keep Detail for the one-line summary.
 	Content string
 	IsError bool // tool_result only: the tool reported an error
+	// Completion is the finished turn's whole completion, on the
+	// SubagentActivityTurnEnd step and nowhere else. Whole, not a Usage: only
+	// UsageReported distinguishes an upstream that reported zeros from one that
+	// reported nothing, and CostUsd, Timings and the rest are what a host needs
+	// to charge the turn at all.
+	Completion *Completion
 }
 
 // SubagentConfig configures NewSubagentTool.
@@ -189,8 +202,8 @@ type subagentTool struct {
 // NewSubagentTool builds the run_subagent tool: one tool that runs a nested,
 // in-memory agentic loop (this package's Run) on cfg.Provider and reports back
 // only the sub-agent's final answer. Append it to the rest of the toolset like
-// any other tool. NeedsApproval always reports false — wrap it if launching
-// sub-agents should be approval-gated.
+// any other tool. It is not Readonly, so a run with no Approver refuses it —
+// launching a sub-agent is the host's call, made in the host's Approver.
 func NewSubagentTool(cfg SubagentConfig) Tool {
 	system := strings.TrimSpace(cfg.SystemPrompt)
 	if system == "" {
@@ -208,10 +221,6 @@ func (e *subagentTool) Decl() ToolDecl {
 		InputSchema: e.advertisedSchema(e.grantableTools()),
 	}
 }
-
-// NeedsApproval always reports false: approval wiring stays the caller's
-// concern (the source application keyed it to a user setting).
-func (e *subagentTool) NeedsApproval() bool { return false }
 
 // grantableTools returns the tools allowed_tools may name, in deterministic
 // order: every tool in the full toolset EXCEPT run_subagent itself (excluding

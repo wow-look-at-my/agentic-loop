@@ -78,8 +78,9 @@ func batchFingerprint(calls []ToolCall) string {
 // may mutate -- the transcript, system, or Extra it is about to send), OnTurnEnd
 // fires after each call (with the turn number, the Completion -- nil when the
 // call failed before producing one -- and the call's error), OnToolCall fires
-// before each requested tool call is handled, and OnToolResult fires with its
-// recorded result (executed, denied, or a teaching error). All optional.
+// before each requested tool call is handled and may rewrite it, and
+// OnToolResult fires with the outcome (executed, refused, or a teaching error)
+// and the message recorded for it. All optional.
 //
 // Turns are numbered from 1; the stall wrap-up call fires as one past the
 // turn that stalled. Like the stream callbacks, OnTurnBegin and OnTurnEnd may
@@ -95,10 +96,28 @@ func batchFingerprint(calls []ToolCall) string {
 // classified transient).
 type Events struct {
 	StreamEvents
-	OnTurnBegin  func(turn int, req *Request) error
-	OnTurnEnd    func(turn int, comp *Completion, err error) error
-	OnToolCall   func(ToolCall) error
-	OnToolResult func(ToolCall, ToolResult) error
+	OnTurnBegin func(turn int, req *Request) error
+	OnTurnEnd   func(turn int, comp *Completion, err error) error
+	// OnToolCall receives a POINTER to the call about to be handled, and
+	// mutations to it -- Arguments, in practice -- are what actually runs: the
+	// Approver judges the rewritten call and the tool executes it. Rewriting a
+	// tool's input is a first-class feature of the hook ecosystems this library
+	// is used behind, and with no per-tool wrapper left there is nowhere else to
+	// do it.
+	//
+	// The transcript keeps recording what the MODEL asked for, unmutated. Those
+	// are two different facts -- what was requested and what ran -- and a
+	// mutation that silently rewrote history would be worse than no mutation at
+	// all, so a host that needs the executed version records it alongside.
+	OnToolCall func(call *ToolCall) error
+	// OnToolResult receives the call as EXECUTED (any OnToolCall rewrite
+	// included), the tool's own result, and the RoleTool message the loop
+	// appended -- which is not always the result: output dedup may have
+	// replaced its content with an UnchangedPrefix marker. A host that persists
+	// the transcript must store what the model actually saw, and deriving that
+	// by diffing Result.Messages afterwards is a second copy of a rule only the
+	// loop knows.
+	OnToolResult func(call ToolCall, result ToolResult, recorded Message) error
 }
 
 // emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.
@@ -119,26 +138,29 @@ func (e *Events) emitTurnEnd(turn int, comp *Completion, err error) error {
 	return wrapCallbackErr(e.OnTurnEnd(turn, comp, err))
 }
 
-// emitToolCall forwards a requested tool call, tolerating nil callbacks.
-func (e *Events) emitToolCall(c ToolCall) error {
+// emitToolCall forwards the call about to be handled, tolerating nil
+// callbacks. The hook may rewrite what it points at; the caller then resolves
+// the rewritten call.
+func (e *Events) emitToolCall(c *ToolCall) error {
 	if e == nil || e.OnToolCall == nil {
 		return nil
 	}
 	return wrapCallbackErr(e.OnToolCall(c))
 }
 
-// emitToolResult forwards a recorded tool result, tolerating nil callbacks.
-func (e *Events) emitToolResult(c ToolCall, r ToolResult) error {
+// emitToolResult forwards a tool result together with the message the loop
+// recorded for it, tolerating nil callbacks.
+func (e *Events) emitToolResult(c ToolCall, r ToolResult, recorded Message) error {
 	if e == nil || e.OnToolResult == nil {
 		return nil
 	}
-	return wrapCallbackErr(e.OnToolResult(c, r))
+	return wrapCallbackErr(e.OnToolResult(c, r, recorded))
 }
 
 // Config wires one Run: the Provider to call, the Tools advertised and
-// executed (empty runs tool-less), the Approver consulted for calls a tool
-// flags via NeedsApproval (nil denies gated calls with DeniedMessage), and
-// the event callbacks. There is deliberately no turn cap
+// executed (empty runs tool-less), the Approver consulted for EVERY tool call
+// (nil allows a Readonly tool and denies anything else with DeniedMessage),
+// and the event callbacks. There is deliberately no turn cap
 // -- see the note above wrapUpInstruction for what bounds a run instead.
 //
 // Output dedup is ON by default: a read-only tool result whose content is
@@ -203,13 +225,15 @@ type Result struct {
 // the results back, and stops when the model answers with text.
 //
 // Each turn advertises cfg.Tools.Decls(); req.Tools is ignored and
-// overwritten (an empty cfg.Tools advertises no tools). On the final permitted
-// turn tools are WITHHELD so the model must answer rather than request
-// another never-executed call. Tool failures never abort the loop: an
-// Execute error becomes a recoverable "tool execution failed: ..." error
-// result, a call the model hallucinated with no executor configured gets an
-// "unknown tool: ..." error result, and a denied approval records
-// DeniedMessage -- in every case the loop continues so the model can react.
+// overwritten (an empty cfg.Tools advertises no tools). Every requested call
+// goes to cfg.Approver first -- read-only ones included, so a host's deny
+// rules apply to the whole toolset -- and a nil Approver allows a Readonly
+// tool and denies the rest. Tool failures never abort the loop: an Execute
+// error becomes a recoverable "tool execution failed: ..." error result, a
+// call the model hallucinated with no executor configured gets an "unknown
+// tool: ..." error result, and a refused call records the Approval's Reason,
+// or DeniedMessage when it carried none -- in every case the loop continues so
+// the model can react.
 //
 // An Approver.Ask error (the decision never arrived) ends the run: the
 // current assistant message keeps its content and reasoning but its ToolCalls
@@ -235,7 +259,7 @@ type Result struct {
 // transcript accumulated so far.
 //
 // If the loop ends with the model having produced no content (a
-// thinking-only turn, or the cap hit mid-research), one extra tool-less
+// thinking-only turn, or a run its ctx cut short), one extra tool-less
 // wrap-up turn asks it to synthesize an answer from what it gathered; failing
 // that, the final content falls back to the accumulated reasoning, then to a
 // clear placeholder.
@@ -334,16 +358,18 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				res.Final = cleared
 				return res, cause
 			}
-			for _, call := range calls {
-				if cberr := cfg.Events.emitToolCall(call); cberr != nil {
+			for _, asked := range calls {
+				// The hook sees a copy, not the transcript's own entry: what
+				// the model asked for is already recorded above and stays that
+				// way, while everything downstream from here -- the approval
+				// decision and the execution -- uses whatever the hook left.
+				call := asked
+				if cberr := cfg.Events.emitToolCall(&call); cberr != nil {
 					return abortBatch(cberr)
 				}
 				result, aerr := resolveCall(ctx, &cfg, call)
 				if aerr != nil {
 					return abortBatch(aerr)
-				}
-				if cberr := cfg.Events.emitToolResult(call, result); cberr != nil {
-					return abortBatch(cberr)
 				}
 				content := result.Content
 				if deduper != nil {
@@ -353,12 +379,20 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 						}
 					}
 				}
-				transcript = append(transcript, Message{
+				// The id answered is the MODEL's, never a rewritten one: it
+				// pairs this message with the tool_call already in the
+				// transcript, and a mismatch there is an orphan no upstream
+				// will replay.
+				recorded := Message{
 					Role:        RoleTool,
 					Content:     content,
-					ToolCallID:  call.ID,
+					ToolCallID:  asked.ID,
 					ToolIsError: result.IsError,
-				})
+				}
+				if cberr := cfg.Events.emitToolResult(call, result, recorded); cberr != nil {
+					return abortBatch(cberr)
+				}
+				transcript = append(transcript, recorded)
 			}
 			if repeats == StuckNudgeAt {
 				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
@@ -402,7 +436,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 
 		// The model stopped without writing an answer -- it produced only
-		// reasoning, or hit the turn cap mid-research. When tools were in
+		// reasoning. When tools were in
 		// play (so it may already have gathered useful results), make one
 		// final tool-less request that forces it to synthesize an answer from
 		// what it has. The stalling turn's assistant message is deliberately
@@ -472,9 +506,10 @@ func runModelCall(
 }
 
 // resolveCall produces the recorded ToolResult for one requested call:
-// executed, denied, or a teaching error. The returned error is non-nil ONLY
-// when an approval decision never arrived (Approver.Ask failed), which ends
-// the run.
+// executed, denied, or a teaching error. EVERY call is put to the Approver --
+// a tool has no say in whether it is asked about, so a host's deny rule
+// reaches read-only calls too. The returned error is non-nil ONLY when an
+// approval decision never arrived (Approver.Ask failed), which ends the run.
 func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, error) {
 	tool, known := cfg.Tools.Find(call.Name)
 	if !known {
@@ -486,17 +521,18 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 		}
 		return ToolResult{Content: text, IsError: true}, nil
 	}
-	if tool.NeedsApproval() {
-		if cfg.Approver == nil {
-			// Fail closed: a gated tool with nobody to ask is denied.
+	if cfg.Approver == nil {
+		// Nobody to ask: read, but change nothing.
+		if !tool.Decl().Readonly {
 			return ToolResult{Content: DeniedMessage, IsError: true}, nil
 		}
-		allowed, aerr := cfg.Approver.Ask(ctx, call)
+	} else {
+		verdict, aerr := cfg.Approver.Ask(ctx, call)
 		if aerr != nil {
 			return ToolResult{}, fmt.Errorf("agentic: tool approval interrupted: %w", aerr)
 		}
-		if !allowed {
-			return ToolResult{Content: DeniedMessage, IsError: true}, nil
+		if !verdict.OK {
+			return ToolResult{Content: deniedText(verdict.Reason), IsError: true}, nil
 		}
 	}
 	// The id is threaded on the context, where it is known -- the Tool
@@ -508,6 +544,15 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 		return ToolResult{Content: "tool execution failed: " + exErr.Error(), IsError: true}, nil
 	}
 	return result, nil
+}
+
+// deniedText is what a refused call records: the approver's own reason, and
+// DeniedMessage when it gave none.
+func deniedText(reason string) string {
+	if r := strings.TrimSpace(reason); r != "" {
+		return r
+	}
+	return DeniedMessage
 }
 
 // fallbackOutput picks the text to surface when the loop ends without a

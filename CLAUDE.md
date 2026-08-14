@@ -6,9 +6,10 @@ Notes for Claude working in this repository.
 
 `agentic-loop` — reusable agentic-loop libraries for OpenAI-compatible and
 Anthropic chat APIs. `go/` holds the Go library (package `agentic`, a single
-package); `ts/` is a planned TypeScript port whose specification is
-[PARITY.md](PARITY.md) — keep that file in sync with any behavioral change
-to the Go code.
+package); `ts/` is a planned TypeScript port, and the Go source plus
+`go/README.md` are its specification. There is no PARITY.md: it was deleted
+deliberately, so do not recreate one — a second declaration of the Go
+package's behavior is a copy nothing keeps true.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
@@ -40,7 +41,7 @@ redesign — check these when a behavior question comes up):
 
 The Responses dialect has NO source repo — it was written here, against the
 API's own shapes. Do not go looking for the semantics somewhere else; the
-answers are `go/README.md`, PARITY.md §4a, and `responses_test.go`.
+answers are `go/README.md` and `responses_test.go`.
 
 ## Build & test
 
@@ -109,7 +110,7 @@ side of that line it falls on — do not put it on both.
   own default (third-party retention is the caller's decision to make out
   loud), `previous_response_id` is never sent (the transcript is the caller's),
   and detection can never name this dialect, since the model list looks
-  identical. Depth: `go/README.md`, PARITY.md §4a.
+  identical. Depth: `go/README.md`, `responses_test.go`.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
   end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
   nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
@@ -120,7 +121,7 @@ side of that line it falls on — do not put it on both.
   knows whether a call streamed anything, which is what makes re-sending
   safe.
 - **A tool is an individual thing, and nothing groups them.** `Tool` is
-  `Decl`/`Execute`/`NeedsApproval`, and a run's toolset is a flat `Tools`
+  `Decl`/`Execute`, and a run's toolset is a flat `Tools`
   slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
   composite, and no view wrapper: concatenating toolsets is `append`, and
   restricting one is `Readonly()`/`Subset()` returning a shorter slice. A
@@ -128,6 +129,15 @@ side of that line it falls on — do not put it on both.
   this replaced -- do not reintroduce it. The call id being answered is not
   an `Execute` argument: it rides the context (`WithToolCallID`/`ToolCallID`),
   which `Run` sets around every call, because almost no tool wants it.
+- **A tool does not decide whether it is asked about.** `Config.Approver` is
+  consulted for EVERY call, read-only included — a deny rule that cannot fire
+  on part of the toolset is a lie about what it protects — and `ToolDecl.Readonly`
+  is the ONE declaration of what a tool does to state. Do not put a
+  `NeedsApproval` back on `Tool`, and do not reintroduce a gating wrapper: a nil
+  `Approver` allows a `Readonly` call and denies the rest, which is the same
+  fail-closed default expressed once. A denial carries `Approval.Reason`, and
+  only an empty one falls back to `DeniedMessage` — an optional reason is one
+  that goes missing exactly when a rule was written in a hurry.
 - **There is NO turn cap, and adding one back is a regression.** No
   `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
   tools-withheld final turn. A counted cap cannot tell a model looping
@@ -138,6 +148,16 @@ side of that line it falls on — do not put it on both.
   What bounds a run is `ErrStuck` (repetition is the only mechanically
   detectable form of not-progressing) and the caller's `ctx`.
   `TestRunHasNoTurnCap` guards this.
+- **Every entry point that makes a model call surfaces its `*Completion`.**
+  Never a `Usage`, never a bare string: only `Completion.UsageReported`
+  separates "reported zeros" from "reported nothing", and a projection drops
+  `CostUsd`, `ReasoningTokens`, `RawUsage`, `Timings` and `Streamed`. So
+  `OneShot` returns `(*Completion, error)`, `CompactResult` carries
+  `Completion`, `SubagentActivity` has the `turn_end` kind, `WebFetchConfig`
+  has `OnCompletion`, and `SubagentReport`/`SubagentUpdate` carry `Usages`
+  (the sub-run's turns plus its `share_context=summary` briefing, in order,
+  never summed). Under-counted money cannot be recovered later — the numbers
+  were never emitted.
 - **Retrying must stay observable.** 10 attempts of uncapped backoff is
   ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
   the failure and the wait. A retry notification is not a stream event and
@@ -155,7 +175,7 @@ side of that line it falls on — do not put it on both.
   prompts, the web_fetch validation/cap/result texts, the task-list tools'
   descriptions/schemas/teaching errors and `RenderTodos`, and every word the
   seven file tools render — descriptions, schemas, the cap announcements,
-  and grep's real-negative sentence) are pinned by tests and by PARITY.md.
+  and grep's real-negative sentence) are pinned by tests.
   Do not "improve" them.
 - **A tool's schema is INFERRED from the struct its handler decodes**
   (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go` because
@@ -187,6 +207,15 @@ side of that line it falls on — do not put it on both.
 - **`SubagentActivity.Content` is the whole text; `Detail` is the preview.**
   Hosts render the former; do not cap it, and do not drop it back to a
   preview — a 160-rune hint of a file listing tells a reader nothing.
+- **The tool-call seam is one ordered pass, and the transcript is not part of
+  it.** `OnToolCall(*ToolCall)` may rewrite the call, `Approver.Ask` then judges
+  the REWRITTEN call, and `Execute` receives it — reordering those puts a hook's
+  rewrite past the decision that was supposed to cover it. The assistant message
+  keeps the model's own arguments (what was asked and what ran are two facts),
+  and the tool result answers the model's own call id, so a rewritten `ID` is
+  ignored rather than allowed to orphan the result. `OnToolResult` carries the
+  RECORDED `Message` as a third argument, because dedup may have replaced the
+  content with an `UnchangedPrefix` marker and only the loop knows that.
 - Callback errors (`StreamEvents.On*`, `Events.OnToolCall/OnToolResult`
   returning non-nil) must keep their contract: abort + partial
   result/completion, `errors.Is`-reachable, never `*APIError`, never
@@ -290,5 +319,5 @@ Concretely:
 
 ## Documentation upkeep
 
-When changing the API surface or any behavior: update `go/README.md`,
-`PARITY.md` (the ts/ port contract), and this file in the same commit.
+When changing the API surface or any behavior: update `go/README.md` and this
+file in the same commit.

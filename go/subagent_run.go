@@ -48,19 +48,19 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (ToolR
 func (e *subagentTool) launched(ctx context.Context, callID string, in subagentArgs) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			e.cfg.Runs.Complete(callID, fmt.Sprintf("the sub-agent crashed: %v", rec), true)
+			e.cfg.Runs.Complete(callID, fmt.Sprintf("the sub-agent crashed: %v", rec), true, nil)
 		}
 	}()
 	release, err := e.cfg.Gate.Acquire(ctx)
 	if err != nil {
-		e.cfg.Runs.Complete(callID, "the sub-agent was cancelled while waiting for a free slot: "+err.Error(), true)
+		e.cfg.Runs.Complete(callID, "the sub-agent was cancelled while waiting for a free slot: "+err.Error(), true, nil)
 		return
 	}
 	defer release()
 	e.cfg.Runs.MarkRunning(callID)
 
-	res := e.runGated(WithToolCallID(ctx, callID), in)
-	e.cfg.Runs.Complete(callID, res.Content, res.IsError)
+	res, spent := e.runGated(WithToolCallID(ctx, callID), in)
+	e.cfg.Runs.Complete(callID, res.Content, res.IsError, spent)
 }
 
 // run executes one sub-agent to completion. Every misuse — a bad
@@ -76,16 +76,22 @@ func (e *subagentTool) run(ctx context.Context, in subagentArgs) ToolResult {
 		return ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}
 	}
 	defer release()
-	return e.runGated(ctx, in)
+	// The synchronous path has no registry to report usages through; the host
+	// sees each nested turn's Completion on the SubagentActivityTurnEnd step.
+	res, _ := e.runGated(ctx, in)
+	return res
 }
 
-// runGated executes one sub-agent with its concurrency slot already held.
-func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) ToolResult {
+// runGated executes one sub-agent with its concurrency slot already held. It
+// returns the report AND every usage the run spent -- the nested loop's turns
+// plus the share_context=summary briefing, in order -- because a sub-agent
+// answers its parent in text, so nothing else carries what it cost.
+func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (ToolResult, []Usage) {
 	if e.cfg.Provider == nil || e.cfg.Model == "" {
-		return ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}
+		return ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}, nil
 	}
 	if strings.TrimSpace(in.Prompt) == "" {
-		return ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}
+		return ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}, nil
 	}
 
 	// Pick the sub-agent's toolset. Default: the read-only subset only. When
@@ -98,7 +104,7 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) ToolResult
 	if len(in.AllowedTools) > 0 {
 		keep, terr := resolveAllowedTools(grantableToolNames(e.grantableTools()), in.AllowedTools)
 		if terr != "" {
-			return ToolResult{Content: terr, IsError: true}
+			return ToolResult{Content: terr, IsError: true}, nil
 		}
 		subTools, granted = e.cfg.Tools.Subset(keep), true
 	}
@@ -106,9 +112,13 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) ToolResult
 	// Build the optional parent-context block the orchestrator asked to share
 	// and fold it into the task. A bad selection (e.g. last_n without a count)
 	// is a recoverable tool error so the model can correct the call.
-	block, errMsg := e.buildContextBlock(ctx, in)
+	block, brief, errMsg := e.buildContextBlock(ctx, in)
+	var spent []Usage
+	if brief != nil {
+		spent = append(spent, brief.Usage)
+	}
 	if errMsg != "" {
-		return ToolResult{Content: errMsg, IsError: true}
+		return ToolResult{Content: errMsg, IsError: true}, spent
 	}
 	task := composeSubagentTask(block, in.Prompt)
 
@@ -119,13 +129,16 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) ToolResult
 		MaxTokens: e.cfg.MaxTokens,
 		Extra:     e.cfg.Extra,
 	})
+	if res != nil {
+		spent = append(spent, res.Usages...)
+	}
 	if runErr != nil {
-		return ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}
+		return ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}, spent
 	}
 	// Not just the final text: a run that ended by emitting a tool-call
 	// envelope as TEXT never answered, and passing that up as findings is the
 	// one failure the orchestrator cannot detect for itself.
-	return subagentReport(res.Final.Content)
+	return subagentReport(res.Final.Content), spent
 }
 
 // unavailableTool is what a sub-agent is told when it names a tool this run
@@ -160,9 +173,8 @@ func SubagentLaunchReceipt(description string) string {
 
 // runConfig assembles the nested Run's Config: the sub-agent's toolset, the
 // approve-everything Approver (the explicit allowed_tools grant is itself the
-// authorization — the source loop never consulted NeedsApproval), and, when
-// the host listens, the activity telemetry hooks stamped with the parent
-// call's ID.
+// authorization — the source loop gated no sub-agent call), and, when the host
+// listens, the activity telemetry hooks stamped with the parent call's ID.
 func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Config {
 	cfg := Config{
 		Provider:    e.cfg.Provider,
@@ -178,7 +190,7 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
 	cfg.Events = Events{
-		OnToolCall: func(c ToolCall) error {
+		OnToolCall: func(c *ToolCall) error {
 			act(SubagentActivity{
 				CallID:  callID,
 				Kind:    SubagentActivityToolCall,
@@ -188,7 +200,7 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 			})
 			return nil
 		},
-		OnToolResult: func(c ToolCall, r ToolResult) error {
+		OnToolResult: func(c ToolCall, r ToolResult, _ Message) error {
 			act(SubagentActivity{
 				CallID:  callID,
 				Kind:    SubagentActivityToolResult,
@@ -225,6 +237,15 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 					Content: text,
 				})
 			}
+			// What the turn cost, while the run is still going. A sub-agent
+			// answers in text, so this and the report's Usages are the only
+			// routes out; a host without them charges every sub-agent as free.
+			act(SubagentActivity{
+				CallID:     callID,
+				Kind:       SubagentActivityTurnEnd,
+				Turn:       turn,
+				Completion: comp,
+			})
 			return nil
 		},
 	}
@@ -248,11 +269,13 @@ func thinkingText(blocks []ThinkingBlock) string {
 // approveAll is the nested run's Approver: a tool the sub-agent holds is
 // authorized by construction (read-only by default, or explicitly granted via
 // allowed_tools), so nothing is gated — matching the source loop, which
-// executed sub-agent tool calls without consulting the approval flow.
+// executed sub-agent tool calls without consulting the approval flow. It is
+// also what keeps an explicitly granted non-Readonly tool runnable, now that a
+// nil Approver would refuse one.
 type approveAll struct{}
 
 // Ask always allows.
-func (approveAll) Ask(context.Context, ToolCall) (bool, error) { return true, nil }
+func (approveAll) Ask(context.Context, ToolCall) (Approval, error) { return Approval{OK: true}, nil }
 
 // parentContext is the parent conversation's full input context: the system
 // prompt (when non-empty) followed by the messages — the same list shape the
@@ -271,41 +294,43 @@ func (e *subagentTool) parentContext() []Message {
 // buildContextBlock renders the parent-conversation context the orchestrator
 // chose to share (share_context). It returns the rendered block (possibly
 // empty when there is nothing to share) or a non-empty errMsg describing a
-// misuse the model should fix. The summary mode makes one bounded model call.
-func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (block, errMsg string) {
+// misuse the model should fix. The summary mode makes one bounded model call,
+// and returns its Completion so the briefing's cost travels with the run that
+// asked for it -- including when the call failed after spending tokens.
+func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (block string, comp *Completion, errMsg string) {
 	switch strings.ToLower(strings.TrimSpace(in.ShareContext)) {
 	case "", "none":
-		return "", ""
+		return "", nil, ""
 	case "custom":
 		c := strings.TrimSpace(in.CustomContext)
 		if c == "" {
-			return "", "share_context=custom requires custom_context text"
+			return "", nil, "share_context=custom requires custom_context text"
 		}
-		return c, ""
+		return c, nil, ""
 	case "full":
-		return RenderTranscript(e.parentContext()), ""
+		return RenderTranscript(e.parentContext()), nil, ""
 	case "last_n":
 		if in.ContextMessageCount <= 0 {
-			return "", "share_context=last_n requires context_message_count (a positive integer)"
+			return "", nil, "share_context=last_n requires context_message_count (a positive integer)"
 		}
-		return RenderTranscript(SelectLastN(e.parentContext(), in.ContextMessageCount)), ""
+		return RenderTranscript(SelectLastN(e.parentContext(), in.ContextMessageCount)), nil, ""
 	case "messages":
 		if len(in.ContextMessageIndices) == 0 {
-			return "", "share_context=messages requires context_message_indices (1 = the most recent message)"
+			return "", nil, "share_context=messages requires context_message_indices (1 = the most recent message)"
 		}
-		return RenderTranscript(SelectByEndIndices(e.parentContext(), in.ContextMessageIndices)), ""
+		return RenderTranscript(SelectByEndIndices(e.parentContext(), in.ContextMessageIndices)), nil, ""
 	case "summary":
 		parent := e.parentContext()
 		if len(parent) == 0 {
-			return "", ""
+			return "", nil, ""
 		}
-		summary, err := generateContextSummary(ctx, e.cfg.Provider, e.cfg.Model, parent, e.cfg.MaxTokens, e.cfg.Extra)
+		summary, comp, err := generateContextSummary(ctx, e.cfg.Provider, e.cfg.Model, parent, e.cfg.MaxTokens, e.cfg.Extra)
 		if err != nil {
-			return "", "failed to summarize the parent conversation: " + err.Error()
+			return "", comp, "failed to summarize the parent conversation: " + err.Error()
 		}
-		return summary, ""
+		return summary, comp, ""
 	default:
-		return "", "unknown share_context mode " + strconv.Quote(in.ShareContext) + " (want none, full, last_n, messages, summary, or custom)"
+		return "", nil, "unknown share_context mode " + strconv.Quote(in.ShareContext) + " (want none, full, last_n, messages, summary, or custom)"
 	}
 }
 

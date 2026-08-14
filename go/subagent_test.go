@@ -43,7 +43,6 @@ func TestSubagentAdvertisement(t *testing.T) {
 	assert.Equal(t, SubagentToolName, tool.Name)
 	assert.False(t, tool.Readonly, "run_subagent is NOT read-only, so ReadonlyView drops it (no recursion)")
 	assert.Contains(t, tool.Description, "Launch a sub-agent")
-	assert.False(t, exec.NeedsApproval(), "approval gating stays the caller's concern")
 
 	var schema map[string]any
 	require.NoError(t, json.Unmarshal(tool.InputSchema, &schema))
@@ -108,7 +107,6 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 		{comp: assistantComp("wrote it")},
 	}}
 	parent := subParentExec()
-	parent.ask = map[string]bool{"Repo__write": true} // an "always ask" parent flag
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: parent.registry()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"write","allowed_tools":["Repo__write"]}`))
@@ -118,8 +116,9 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 	assert.Equal(t, []string{"Repo__write"}, toolNames(provider.reqs[0].Tools),
 		"allowed_tools pins the sub-agent to exactly the named set")
 	require.Len(t, parent.executed, 1, "the explicitly granted non-read-only tool executes")
-	// The grant is the authorization: no approver runs inside the sub-loop,
-	// and the tool was executed rather than denied.
+	// The grant IS the authorization: the nested run's approve-everything
+	// Approver is what keeps a granted non-Readonly tool runnable, now that a
+	// nil Approver would refuse one.
 	tool := provider.reqs[1].Messages[len(provider.reqs[1].Messages)-1]
 	assert.Equal(t, "ran Repo__write", tool.Content)
 	assert.NotEqual(t, DeniedMessage, tool.Content)
@@ -366,24 +365,95 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "report", res.Content)
 
-	require.Len(t, acts, 5, "turn, tool_call, tool_result, turn, text")
+	// A turn_end step follows each model call, which is before that turn's tool
+	// calls execute -- the loop's own order.
+	assert.Equal(t, []string{
+		SubagentActivityTurn, SubagentActivityTurnEnd,
+		SubagentActivityToolCall, SubagentActivityToolResult,
+		SubagentActivityTurn, SubagentActivityText, SubagentActivityTurnEnd,
+	}, activityKinds(acts))
 	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 1}, acts[0])
 	assert.Equal(t, SubagentActivity{
 		CallID: "call-7", Kind: SubagentActivityToolCall, Tool: "Repo__read", Detail: `{"q": "x"}`,
 		Content: "  {\"q\":\n \"x\"} ",
-	}, acts[1], "the preview is whitespace-flattened; Content is the arguments verbatim")
-	assert.Equal(t, SubagentActivityToolResult, acts[2].Kind)
-	assert.Equal(t, "call-7", acts[2].CallID)
-	assert.False(t, acts[2].IsError)
-	assert.Len(t, []rune(acts[2].Detail), subagentPreviewMaxRunes, "result previews are rune-capped")
-	assert.True(t, strings.HasSuffix(acts[2].Detail, "..."))
-	assert.Equal(t, longOut, acts[2].Content, "Content carries the WHOLE tool output, uncapped")
-	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 2}, acts[3])
+	}, acts[2], "the preview is whitespace-flattened; Content is the arguments verbatim")
+	assert.Equal(t, SubagentActivityToolResult, acts[3].Kind)
+	assert.Equal(t, "call-7", acts[3].CallID)
+	assert.False(t, acts[3].IsError)
+	assert.Len(t, []rune(acts[3].Detail), subagentPreviewMaxRunes, "result previews are rune-capped")
+	assert.True(t, strings.HasSuffix(acts[3].Detail, "..."))
+	assert.Equal(t, longOut, acts[3].Content, "Content carries the WHOLE tool output, uncapped")
+	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 2}, acts[4])
 	// The sub-agent's own words for the turn, so a host can show what it said
 	// and not just which files it touched.
 	assert.Equal(t, SubagentActivity{
 		CallID: "call-7", Kind: SubagentActivityText, Turn: 2, Detail: "report", Content: "report",
-	}, acts[4])
+	}, acts[5])
+}
+
+// activityKinds is the Kind of each step, in order.
+func activityKinds(acts []SubagentActivity) []string {
+	out := make([]string, len(acts))
+	for i, a := range acts {
+		out[i] = a.Kind
+	}
+	return out
+}
+
+// A sub-agent answers its parent in TEXT, so without this every nested model
+// call was spend a host could not see: the turn_end step carries the whole
+// Completion, live, and the report carries the run's totals.
+func TestSubagentTurnEndCarriesTheCompletion(t *testing.T) {
+	cost := 0.5
+	priced := assistantComp("report")
+	priced.UsageReported = true
+	priced.CostUsd = &cost
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "s1", Name: "Repo__read", Arguments: "{}"})},
+		{comp: priced},
+	}}
+	var acts []SubagentActivity
+	exec := NewSubagentTool(SubagentConfig{
+		Provider: provider, Model: "m", Tools: subParentExec().registry(),
+		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
+	})
+	_, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
+	require.NoError(t, err)
+
+	var ends []SubagentActivity
+	for _, a := range acts {
+		if a.Kind == SubagentActivityTurnEnd {
+			ends = append(ends, a)
+		}
+	}
+	require.Len(t, ends, 2, "one per model call the sub-agent made")
+	assert.Equal(t, 1, ends[0].Turn)
+	require.NotNil(t, ends[0].Completion)
+	assert.Equal(t, 15, ends[0].Completion.Usage.TotalTokens)
+	assert.Equal(t, 2, ends[1].Turn)
+	require.NotNil(t, ends[1].Completion)
+	require.NotNil(t, ends[1].Completion.CostUsd, "a provider-reported dollar cost reaches the host")
+	assert.InDelta(t, cost, *ends[1].Completion.CostUsd, 1e-9)
+	assert.True(t, ends[1].Completion.UsageReported)
+}
+
+// The nested run reported no usage at all: UsageReported stays false, which a
+// bare Usage could not have said.
+func TestSubagentTurnEndReportsUnreportedUsage(t *testing.T) {
+	silent := &Completion{Message: Message{Role: RoleAssistant, Content: "report"}, StopReason: StopEndTurn}
+	provider := &scriptProvider{steps: []scriptStep{{comp: silent}}}
+	var acts []SubagentActivity
+	exec := NewSubagentTool(SubagentConfig{
+		Provider: provider, Model: "m", Tools: subParentExec().registry(),
+		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
+	})
+	_, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
+	require.NoError(t, err)
+
+	last := acts[len(acts)-1]
+	assert.Equal(t, SubagentActivityTurnEnd, last.Kind)
+	require.NotNil(t, last.Completion)
+	assert.False(t, last.Completion.UsageReported)
 }
 
 // TestSubagentActivityReportsThinking: a turn that reasons without answering
@@ -429,10 +499,10 @@ func TestSubagentActivityToolError(t *testing.T) {
 	})
 	_, err := exec.Execute(context.Background(), subCall(`{"prompt":"go"}`))
 	require.NoError(t, err)
-	require.Len(t, acts, 5)
-	assert.True(t, acts[2].IsError, "an executor failure marks the tool_result step")
-	assert.Equal(t, "tool execution failed: boom", acts[2].Detail)
-	assert.Equal(t, "tool execution failed: boom", acts[2].Content)
+	require.Len(t, acts, 7)
+	assert.True(t, acts[3].IsError, "an executor failure marks the tool_result step")
+	assert.Equal(t, "tool execution failed: boom", acts[3].Detail)
+	assert.Equal(t, "tool execution failed: boom", acts[3].Content)
 }
 
 // countingProvider counts Complete calls race-safely around an inner provider.

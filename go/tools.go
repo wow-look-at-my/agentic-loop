@@ -14,8 +14,10 @@ import (
 // no wrapper whose only job is to hide part of another wrapper: restricting a
 // toolset is filtering a slice.
 
-// Tool is ONE callable tool: what the model is told about it, whether each
-// call must be approved first, and how to run it.
+// Tool is ONE callable tool: what the model is told about it, and how to run
+// it. Whether a given call may run is NOT the tool's to say -- Config.Approver
+// decides every call, and ToolDecl.Readonly is the one place a tool states
+// what it does to state.
 //
 // Execute should return a ToolResult with IsError set for recoverable,
 // model-facing failures and reserve the Go error for internal faults; Run
@@ -27,9 +29,6 @@ type Tool interface {
 	Decl() ToolDecl
 	// Execute runs the tool with raw JSON arguments.
 	Execute(ctx context.Context, args json.RawMessage) (ToolResult, error)
-	// NeedsApproval reports whether each call must be approved by the user
-	// first. The tool is still advertised; only its execution is gated.
-	NeedsApproval() bool
 }
 
 // Tools is the flat set one run offers the model. Order is the advertised
@@ -123,16 +122,15 @@ type funcTool struct {
 	run  func(context.Context, json.RawMessage) (ToolResult, error)
 }
 
-// NewTool builds a Tool from a declaration and the function that runs it. The
-// result never needs approval: a host that gates a tool decides that from its
-// own settings, so it implements Tool itself rather than asking a built-in to
-// carry a policy it cannot know.
+// NewTool builds a Tool from a declaration and the function that runs it.
+// Gating is not part of the declaration: Config.Approver judges every call the
+// tool receives, and decl.Readonly is what tells it (and a sub-agent's default
+// toolset) whether this tool can change anything.
 func NewTool(decl ToolDecl, run func(ctx context.Context, args json.RawMessage) (ToolResult, error)) Tool {
 	return funcTool{decl: decl, run: run}
 }
 
-func (t funcTool) Decl() ToolDecl      { return t.decl }
-func (t funcTool) NeedsApproval() bool { return false }
+func (t funcTool) Decl() ToolDecl { return t.decl }
 
 func (t funcTool) Execute(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	return t.run(ctx, args)

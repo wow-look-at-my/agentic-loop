@@ -14,16 +14,17 @@ be embedded in other hosts.
 - [`go/`](go/) — the Go library (current). One package, `agentic`,
   standard-library-only at runtime; see [go/README.md](go/README.md) for
   the API tour and examples.
-- `ts/` — a planned TypeScript port with full behavioral parity.
-  [PARITY.md](PARITY.md) is its specification: every dialect mapping,
-  normalization rule, exact string, and edge case the port must reproduce.
+- `ts/` — a planned TypeScript port with full behavioral parity. The Go
+  package is its specification: every dialect mapping, normalization rule,
+  exact string, and edge case the port must reproduce is in that source and
+  its tests.
 
 ## Design points
 
-- **Two dialects, one model.** A neutral `Message`/`Tool`/`Usage` model maps
-  onto OpenAI chat completions and the Anthropic Messages API; the loop and
-  every seam (tool execution, approval, retry, compaction) are
-  dialect-agnostic.
+- **Three dialects, one model.** A neutral `Message`/`Tool`/`Usage` model maps
+  onto OpenAI chat completions, the OpenAI Responses API and the Anthropic
+  Messages API; the loop and every seam (tool execution, approval, retry,
+  compaction) are dialect-agnostic.
 - **Faithful passthrough.** Provider-specific parameters ride in
   `Request.Extra` verbatim; the library never interprets or gates them, and
   a "rejected parameter" 400 is recovered by stripping exactly the named

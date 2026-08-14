@@ -2,6 +2,7 @@ package agentic
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,7 +38,8 @@ func TestCompact(t *testing.T) {
 	require.Len(t, res.Messages, 2)
 	assert.Equal(t, Message{Role: RoleUser, Content: CompactRequestText}, res.Messages[0])
 	assert.Equal(t, Message{Role: RoleAssistant, Content: "the detailed recap"}, res.Messages[1])
-	assert.Equal(t, 15, res.Usage.TotalTokens)
+	require.NotNil(t, res.Completion, "the summarize call's whole completion, not a projection of it")
+	assert.Equal(t, 15, res.Completion.Usage.TotalTokens)
 
 	// The caller's request was not mutated.
 	require.Len(t, req.Messages, 2)
@@ -64,15 +66,40 @@ func TestCompactProviderError(t *testing.T) {
 
 func TestOneShot(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("  My Title  ")}}}
-	text, usage, err := OneShot(context.Background(), provider, Request{
+	comp, err := OneShot(context.Background(), provider, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "name this"}},
 		Tools: []ToolDecl{{Name: "stripped"}},
 	}, 0)
 	require.NoError(t, err)
-	assert.Equal(t, "My Title", text, "trimmed final text")
-	assert.Equal(t, 15, usage.TotalTokens)
+	require.NotNil(t, comp)
+	assert.Equal(t, "My Title", strings.TrimSpace(comp.Message.Content))
+	assert.Equal(t, 15, comp.Usage.TotalTokens)
 	require.Len(t, provider.reqs, 1)
 	assert.Empty(t, provider.reqs[0].Tools, "OneShot strips tools")
+}
+
+// The reason the signature is the whole Completion: a Usage return cannot say
+// whether the upstream reported usage at all, and it drops the dollar figure
+// the upstream did report.
+func TestOneShotSurfacesWhatAUsageReturnCannot(t *testing.T) {
+	cost := 0.0042
+	silent := &Completion{Message: Message{Role: RoleAssistant, Content: "done"}}
+	priced := &Completion{
+		Message: Message{Role: RoleAssistant, Content: "done"},
+		Usage:   Usage{TotalTokens: 11}, UsageReported: true, CostUsd: &cost,
+	}
+	provider := &scriptProvider{steps: []scriptStep{{comp: silent}, {comp: priced}}}
+
+	comp, err := OneShot(context.Background(), provider, Request{Model: "m"}, 0)
+	require.NoError(t, err)
+	assert.False(t, comp.UsageReported, "all-zero usage and no usage are different facts")
+	assert.Nil(t, comp.CostUsd)
+
+	comp, err = OneShot(context.Background(), provider, Request{Model: "m"}, 0)
+	require.NoError(t, err)
+	assert.True(t, comp.UsageReported)
+	require.NotNil(t, comp.CostUsd, "a provider-reported dollar cost survives")
+	assert.InDelta(t, cost, *comp.CostUsd, 1e-9)
 }
 
 // blockingProvider blocks until its context is done.
@@ -85,20 +112,20 @@ func (blockingProvider) Complete(ctx context.Context, _ Request, _ *StreamEvents
 
 func TestOneShotTimeout(t *testing.T) {
 	start := time.Now()
-	text, _, err := OneShot(context.Background(), blockingProvider{}, Request{Model: "m"}, 20*time.Millisecond)
+	comp, err := OneShot(context.Background(), blockingProvider{}, Request{Model: "m"}, 20*time.Millisecond)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Empty(t, text)
+	assert.Nil(t, comp, "nothing arrived, so there is no completion to report")
 	assert.Less(t, time.Since(start), 5*time.Second)
 	assert.False(t, IsTransient(err), "a deadline expiry is never transient")
 
-	_, _, err = OneShot(context.Background(), nil, Request{}, 0)
+	_, err = OneShot(context.Background(), nil, Request{}, 0)
 	require.Error(t, err)
 }
 
 func TestOneShotSingleAttempt(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{err: &APIError{Status: 503, Body: "unavailable"}}}}
-	_, _, err := OneShot(context.Background(), provider, Request{Model: "m"}, 0)
+	_, err := OneShot(context.Background(), provider, Request{Model: "m"}, 0)
 	require.Error(t, err)
 	assert.Len(t, provider.reqs, 1, "OneShot never retries")
 }
@@ -106,8 +133,9 @@ func TestOneShotSingleAttempt(t *testing.T) {
 func TestOneShotPartialError(t *testing.T) {
 	partial := &Completion{Message: Message{Role: RoleAssistant, Content: "par"}, Usage: Usage{TotalTokens: 3}}
 	provider := &scriptProvider{steps: []scriptStep{{comp: partial, err: context.Canceled}}}
-	text, usage, err := OneShot(context.Background(), provider, Request{Model: "m"}, 0)
+	comp, err := OneShot(context.Background(), provider, Request{Model: "m"}, 0)
 	require.Error(t, err)
-	assert.Empty(t, text)
-	assert.Equal(t, 3, usage.TotalTokens, "partial usage still reported")
+	require.NotNil(t, comp, "the partial completion rides alongside the error")
+	assert.Equal(t, 3, comp.Usage.TotalTokens, "partial usage still reported")
+	assert.Equal(t, "par", comp.Message.Content)
 }

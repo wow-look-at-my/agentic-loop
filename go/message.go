@@ -130,13 +130,32 @@ type ToolResult struct {
 	IsError bool
 }
 
-// Approver decides whether an approval-gated tool call may run. Ask blocks
-// until a decision is available: true allows the call, false denies it (the
-// loop records DeniedMessage as the tool result and continues). An error means
-// the decision never arrived (e.g. the caller went away); Run then finalizes
-// the turn with the pending batch cleared and returns.
+// Approval is the verdict on one tool call. A bare bool cannot say WHY a call
+// was refused, so every denial reached the model as the same sentence about a
+// user -- including the ones no user was ever asked about. A model told "the
+// write was outside the workspace" retries inside it; a model told "the user
+// denied permission" asks a person who never saw the question.
+type Approval struct {
+	// OK allows the call.
+	OK bool
+	// Reason, when !OK, is recorded as the tool result INSTEAD of
+	// DeniedMessage. Empty keeps DeniedMessage, which is still the right
+	// sentence for the case it was written for: a user pressing deny.
+	Reason string
+}
+
+// Approver decides whether a tool call may run. Ask is consulted for EVERY
+// call -- a tool does not get to declare itself unremarkable, because a deny
+// rule that cannot fire on read-only tools is a lie about what it protects --
+// and blocks until a decision is available. An error means the decision never
+// arrived (e.g. the caller went away); Run then finalizes the turn with the
+// pending batch cleared and returns.
+//
+// A nil Approver on Config is the fail-closed default expressed once: a call
+// whose ToolDecl.Readonly is true runs, and anything that can change state is
+// denied with DeniedMessage.
 type Approver interface {
-	Ask(ctx context.Context, call ToolCall) (bool, error)
+	Ask(ctx context.Context, call ToolCall) (Approval, error)
 }
 
 // DeniedMessage is the exact tool-result text recorded when the user denies
