@@ -399,8 +399,13 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   recoverable teaching error listing the valid options. A shared `*Gate`
   (`NewGate(n)`, a context-cancellable cap-n semaphore; nil = unlimited)
   bounds concurrency, and `OnActivity` streams live
-  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, Content, IsError}`
-  steps (kinds `turn`/`tool_call`/`tool_result`/`text`/`thinking`). `Detail`
+  `SubagentActivity{CallID, Kind, Turn, Tool, Detail, Content, IsError, Completion}`
+  steps (kinds `turn`/`tool_call`/`tool_result`/`text`/`thinking`/`turn_end`).
+  `turn_end` carries the finished turn's whole `*Completion` — a sub-agent
+  answers its parent in text, so this and the report's `Usages` are the only
+  routes out for what it spent, and a host without them charges every
+  sub-agent, briefing and web summary as free. It fires once per model call
+  that produced a completion. `Detail`
   is the one-line preview — whitespace-flattened, capped at 160 runes —
   and `Content` is the same thing WHOLE: the full arguments, full tool
   output, full answer or full reasoning, so a host can show what the
@@ -413,7 +418,11 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   delivered between turns instead of blocking the call. `Config.Subagents`
   (the same registry) is what makes `Run` keep that promise: a turn that
   would otherwise END while sub-agents are out waits for the next report and
-  appends it as a user message (`FormatSubagentDelivery`). Every failure past
+  appends it as a user message (`FormatSubagentDelivery`). `SubagentReport` and
+  the terminal `SubagentUpdate` carry `Usages []Usage` — one entry per model
+  call the sub-run made, plus the `share_context=summary` briefing when there
+  was one, in order and never summed — so a host that watches only lifecycle
+  still gets the total. Every failure past
   the JSON parse — an unconfigured model, a misused argument — reaches the
   model as that report rather than as the launch's result. A nil `Runs` keeps
   the call synchronous: it blocks until the sub-agent answers. A final message
@@ -429,7 +438,10 @@ tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
   fallback) and rune-capped at 200 000 with an explicit truncation note. An
   optional `summary_prompt` argument runs one bounded, tool-less call to the
   configured `Provider`/`Model` to summarize the cleaned content
-  (`OneShot`, 2 min timeout). `BlockURL func(url string) string` is the
+  (`OneShot`, 2 min timeout); `OnCompletion func(*Completion)` is handed that
+  call's completion — including a partial one from a failed call, because those
+  tokens were spent too — since the tool itself answers only with text.
+  `BlockURL func(url string) string` is the
   injectable refusal seam: return a non-empty teaching message to refuse a
   fetch (the source application used it to redirect fetches of its
   workspace repository); the library ships the hook, not the policy. The
@@ -732,10 +744,25 @@ cr, err := agentic.Compact(ctx, provider, agentic.Request{
 
 `Compact` sends the whole history with the summarize instruction as the
 trailing user message and no tools; you replace your history with the
-returned two-message round. `OneShot(ctx, p, req, timeout)` is the bounded
-tool-less single call (titles, micro-summaries); compose it with
+returned two-message round. `CompactResult.Completion` is that call's whole
+completion — compaction reads the entire history, so it is one of the most
+expensive calls a session makes and charging it needs more than a `Usage`
+value could say. `OneShot(ctx, p, req, timeout) (*Completion, error)` is the
+bounded tool-less single call (titles, micro-summaries); the answer is
+`strings.TrimSpace(comp.Message.Content)`. Compose it with
 `context.WithoutCancel(parent)` for fire-and-forget work that must survive
 the parent request ending.
+
+**Every entry point that makes a model call surfaces its `*Completion`, not a
+projection of it.** A `Usage` return cannot distinguish an upstream that
+reported all-zero usage from one that reported none — that is exactly what
+`Completion.UsageReported` is for — and it silently drops `CostUsd`,
+`ReasoningTokens`, `RawUsage`, `Timings` and `Streamed`. Under-counting money
+is not a rounding error, and it cannot be repaired afterwards, because the
+numbers were never emitted. That principle is why `OneShot` returns a
+completion, why `CompactResult` carries one, why `SubagentActivity` has a
+`turn_end` kind, why `WebFetchConfig` has `OnCompletion`, and why
+`SubagentReport`/`SubagentUpdate` carry `Usages`.
 
 ## Concurrency
 

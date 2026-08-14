@@ -74,6 +74,13 @@ type WebFetchConfig struct {
 	Model     string
 	MaxTokens int
 	Extra     map[string]any
+	// OnCompletion, when non-nil, receives the summary call's *Completion. It
+	// is the only route out for what that call cost: the tool answers the model
+	// with text, so a host watching only tool results charges the fetch as free
+	// and under-counts the session by every summary it made. A partial
+	// completion from a failed call is reported too -- those tokens were spent.
+	// It is called synchronously, from the tool's Execute.
+	OnCompletion func(*Completion)
 	// BlockURL, when non-nil, is consulted with the validated URL string
 	// before fetching. A non-empty return refuses the fetch with exactly that
 	// text as a recoverable error result. This is the injectable seam the
@@ -163,7 +170,8 @@ func (e *webFetchTool) Execute(ctx context.Context, args json.RawMessage) (ToolR
 	if e.cfg.Provider == nil || e.cfg.Model == "" {
 		return ToolResult{Content: "web_fetch summary requested, but no model is available for summarization", IsError: true}, nil
 	}
-	summary, err := generateWebSummary(ctx, e.cfg.Provider, e.cfg.Model, u.String(), cleaned, in.SummaryPrompt, e.cfg.MaxTokens, e.cfg.Extra)
+	summary, err := generateWebSummary(ctx, e.cfg.Provider, e.cfg.OnCompletion, e.cfg.Model,
+		u.String(), cleaned, in.SummaryPrompt, e.cfg.MaxTokens, e.cfg.Extra)
 	if err != nil {
 		return ToolResult{Content: "web_fetch summary failed: " + err.Error(), IsError: true}, nil
 	}
@@ -245,9 +253,12 @@ const webSummarySystemPrompt = "You summarize cleaned web content for another as
 
 // generateWebSummary asks the model to summarize cleaned fetched content:
 // one bounded (webSummaryModelTimeout), tool-less call with no retry, via
-// OneShot.
-func generateWebSummary(ctx context.Context, p Provider, model, url, cleaned, instructions string, maxTokens int, extra map[string]any) (string, error) {
-	text, _, err := OneShot(ctx, p, Request{
+// OneShot. onCompletion, when non-nil, is handed the call's Completion --
+// including a partial one from a failed call, because those tokens were spent
+// too and a host that is not told about them under-counts what the session
+// cost.
+func generateWebSummary(ctx context.Context, p Provider, onCompletion func(*Completion), model, url, cleaned, instructions string, maxTokens int, extra map[string]any) (string, error) {
+	comp, err := OneShot(ctx, p, Request{
 		Model:  model,
 		System: webSummarySystemPrompt,
 		Messages: []Message{
@@ -256,10 +267,13 @@ func generateWebSummary(ctx context.Context, p Provider, model, url, cleaned, in
 		MaxTokens: maxTokens,
 		Extra:     extra,
 	}, webSummaryModelTimeout)
+	if comp != nil && onCompletion != nil {
+		onCompletion(comp)
+	}
 	if err != nil {
 		return "", err
 	}
-	return text, nil
+	return strings.TrimSpace(comp.Message.Content), nil
 }
 
 // buildWebSummaryInput assembles the summary call's user message, ported

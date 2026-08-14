@@ -109,6 +109,13 @@ const (
 	SubagentActivityToolResult = "tool_result" // a sub-agent tool returned
 	SubagentActivityText       = "text"        // the sub-agent's own answer for a turn
 	SubagentActivityThinking   = "thinking"    // its reasoning for a turn
+	// SubagentActivityTurnEnd reports one finished sub-agent turn, carrying its
+	// *Completion. It is the live route out for what a sub-agent is spending
+	// while it runs -- the report at the end carries the totals, but a host
+	// showing cost as it accrues cannot wait for that. Fires only for a turn
+	// that produced a completion; a call that failed before producing one has
+	// nothing to report.
+	SubagentActivityTurnEnd = "turn_end"
 )
 
 // SubagentActivity is one progress step from a running sub-agent. CallID is
@@ -130,6 +137,12 @@ type SubagentActivity struct {
 	// and keep Detail for the one-line summary.
 	Content string
 	IsError bool // tool_result only: the tool reported an error
+	// Completion is the finished turn's whole completion, on the
+	// SubagentActivityTurnEnd step and nowhere else. Whole, not a Usage: only
+	// UsageReported distinguishes an upstream that reported zeros from one that
+	// reported nothing, and CostUsd, Timings and the rest are what a host needs
+	// to charge the turn at all.
+	Completion *Completion
 }
 
 // SubagentConfig configures NewSubagentTool.

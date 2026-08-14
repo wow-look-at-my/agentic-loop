@@ -147,6 +147,16 @@ side of that line it falls on — do not put it on both.
   What bounds a run is `ErrStuck` (repetition is the only mechanically
   detectable form of not-progressing) and the caller's `ctx`.
   `TestRunHasNoTurnCap` guards this.
+- **Every entry point that makes a model call surfaces its `*Completion`.**
+  Never a `Usage`, never a bare string: only `Completion.UsageReported`
+  separates "reported zeros" from "reported nothing", and a projection drops
+  `CostUsd`, `ReasoningTokens`, `RawUsage`, `Timings` and `Streamed`. So
+  `OneShot` returns `(*Completion, error)`, `CompactResult` carries
+  `Completion`, `SubagentActivity` has the `turn_end` kind, `WebFetchConfig`
+  has `OnCompletion`, and `SubagentReport`/`SubagentUpdate` carry `Usages`
+  (the sub-run's turns plus its `share_context=summary` briefing, in order,
+  never summed). Under-counted money cannot be recovered later — the numbers
+  were never emitted.
 - **Retrying must stay observable.** 10 attempts of uncapped backoff is
   ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
   the failure and the wait. A retry notification is not a stream event and

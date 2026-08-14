@@ -69,7 +69,7 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 		Tools:    exec.registry(),
 		Approver: allowAll,
 		Events: Events{
-			OnToolCall:   func(c *ToolCall) error { calls = append(calls, *c); return nil },
+			OnToolCall: func(c *ToolCall) error { calls = append(calls, *c); return nil },
 			OnToolResult: func(_ ToolCall, r ToolResult, m Message) error {
 				results = append(results, r)
 				recorded = append(recorded, m)
