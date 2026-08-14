@@ -107,7 +107,6 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 		{comp: assistantComp("wrote it")},
 	}}
 	parent := subParentExec()
-	parent.ask = map[string]bool{"Repo__write": true} // an "always ask" parent flag
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: parent.registry()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"write","allowed_tools":["Repo__write"]}`))
@@ -117,8 +116,9 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 	assert.Equal(t, []string{"Repo__write"}, toolNames(provider.reqs[0].Tools),
 		"allowed_tools pins the sub-agent to exactly the named set")
 	require.Len(t, parent.executed, 1, "the explicitly granted non-read-only tool executes")
-	// The grant is the authorization: no approver runs inside the sub-loop,
-	// and the tool was executed rather than denied.
+	// The grant IS the authorization: the nested run's approve-everything
+	// Approver is what keeps a granted non-Readonly tool runnable, now that a
+	// nil Approver would refuse one.
 	tool := provider.reqs[1].Messages[len(provider.reqs[1].Messages)-1]
 	assert.Equal(t, "ran Repo__write", tool.Content)
 	assert.NotEqual(t, DeniedMessage, tool.Content)
