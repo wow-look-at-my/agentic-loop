@@ -1,2 +1,8 @@
 /build/
 /go/build/
+
+# Local multi-module development: go.work points this module at checkouts of
+# common-ai-api and xml-validator. CI resolves them from their published paths,
+# so the file is never committed.
+go.work
+go.work.sum

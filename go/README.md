@@ -12,6 +12,13 @@ The runtime is **standard library only**. All I/O goes through an injectable
 `*http.Client`, and the package reads **no environment variables** — every
 endpoint, key, and knob is explicit configuration.
 
+The three dialects themselves live in
+[common-ai-api](https://github.com/wow-look-at-my/common-ai-api), which speaks
+one XML format and translates it to and from each provider. This package
+re-exports what it uses as type aliases, so `agentic.Message` **is**
+`client.Message`: the names below mean what they always meant, and a value
+built here is one that library can take without a conversion step.
+
 ## Install
 
 ```sh
@@ -104,7 +111,9 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
 
 Two layers, and the split decides where anything new belongs. Get this
 backwards and you end up with the same concern implemented twice, fighting
-each other.
+each other. The two layers are now two modules — the lower one is
+common-ai-api — so the compiler enforces the direction: the provider cannot
+reach for anything here.
 
 **The loop (`Run`) is a high-level construct.** It asks the model something,
 runs the tools the model asks for, feeds the results back, and repeats until
