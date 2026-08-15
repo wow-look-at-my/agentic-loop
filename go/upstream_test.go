@@ -1,7 +1,6 @@
 package agentic
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
@@ -64,26 +63,6 @@ func (h *anSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("event: " + ev[0] + "\ndata: " + ev[1] + "\n\n"))
 		fl.Flush()
 	}
-}
-
-// minimalAnEvents is a bare valid stream: one text block.
-func minimalAnEvents(text string) [][2]string {
-	return [][2]string{
-		{"message_start", `{"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}`},
-		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
-		{"content_block_delta", jsonMust(jsonObj{"type": "content_block_delta", "index": 0, "delta": jsonObj{"type": "text_delta", "text": text}})},
-		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
-		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`},
-		{"message_stop", `{"type":"message_stop"}`},
-	}
-}
-
-// bodyMap decodes a captured request body as a JSON object.
-func bodyMap(t *testing.T, body []byte) map[string]any {
-	t.Helper()
-	var m map[string]any
-	require.NoError(t, json.Unmarshal(body, &m))
-	return m
 }
 
 // newProvider gives a stub Provider the retry behavior a constructed one has,
