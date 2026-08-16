@@ -2,6 +2,7 @@ package commonai
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,9 +68,13 @@ func TestDecodeModelListNamesTheDialectFromTheSamePass(t *testing.T) {
 	// identifies its server.
 	assert.Equal(t, DialectOpenAI, decoded(t, `{"object":"list","data":[]}`).Dialect)
 	assert.Equal(t, DialectAnthropic, decoded(t, `{"has_more":false,"data":[]}`).Dialect)
+
+	// With no envelope at all, the items answer.
 	assert.Equal(t, DialectAnthropic, decoded(t, `{"data":[{"type":"model"}]}`).Dialect)
+	assert.Equal(t, DialectOpenAI, decoded(t, `{"data":[{"object":"model"}]}`).Dialect)
+
 	assert.Equal(t, DialectAuto, decoded(t, `{"models":["a"]}`).Dialect,
-		"a document of neither shape places neither dialect")
+		"a document of neither shape places neither dialect, and that is not an error here")
 
 	// An endpoint serving /v1/responses answers the same model list as one that
 	// does not, so detection cannot ever name it. Using it is a choice.
@@ -178,17 +183,22 @@ func TestTheModelListURLAcceptsEitherBaseSpelling(t *testing.T) {
 }
 
 func TestFetchModelListReportsAnEndpointThatRefuses(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
+	for _, tc := range []struct{ status, want int }{
+		{http.StatusUnauthorized, 401},
+		{http.StatusNotFound, 404},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+		}))
 
-	_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "401")
-	assert.Contains(t, err.Error(), "/v1/models", "the URL that refused is the thing to check")
+		_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), fmt.Sprint(tc.want))
+		assert.Contains(t, err.Error(), "/v1/models", "the URL that refused is the thing to check")
+		srv.Close()
+	}
 
-	_, err = FetchModelList(context.Background(), ProviderConfig{})
+	_, err := FetchModelList(context.Background(), ProviderConfig{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base URL")
 }
@@ -204,4 +214,53 @@ func TestAnEndpointWithNoPricingIsNotAnError(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, list.Prices)
 	assert.Equal(t, DialectOpenAI, list.Dialect)
+}
+
+// anthropicModelList is what api.anthropic.com actually answers: type/id/
+// display_name/created_at, and no pricing anywhere. It is the endpoint a host's
+// cost column has to survive, since nothing it sends can price a call.
+const anthropicModelList = `{
+  "data": [
+    {"type": "model", "id": "claude-opus-4-6", "display_name": "Claude Opus 4.6",
+     "created_at": "2026-02-05T00:00:00Z"},
+    {"type": "model", "id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6",
+     "created_at": "2026-02-05T00:00:00Z"}
+  ],
+  "has_more": false,
+  "first_id": "claude-opus-4-6",
+  "last_id": "claude-sonnet-4-6"
+}`
+
+// The Anthropic model list names its dialect and prices nothing, and BOTH of
+// those are the answer rather than a failure: a host prices the call from
+// config and renders an em dash when there is none.
+func TestTheAnthropicModelListNamesItsDialectAndPricesNothing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(anthropicModelList))
+	}))
+	defer srv.Close()
+
+	list, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	assert.Equal(t, DialectAnthropic, list.Dialect)
+	assert.Empty(t, list.Prices, "anthropic publishes no rates, and absence is not zero")
+}
+
+// Pricing is read off the ITEMS, so an Anthropic-shaped list that does carry
+// rates — a gateway in front of the Messages API — is priced. Gating the price
+// parse on the openai envelope would silently unprice every such endpoint.
+func TestPricingIsReadWhateverEnvelopeCarriesIt(t *testing.T) {
+	list := decoded(t, `{
+	  "has_more": false,
+	  "data": [
+	    {"type": "model", "id": "claude-opus-4-6",
+	     "pricing": {"prompt": "0.000015", "completion": "0.000075"}}
+	  ]
+	}`)
+	assert.Equal(t, DialectAnthropic, list.Dialect)
+	r, ok := list.Prices["claude-opus-4-6"]
+	require.True(t, ok)
+	assert.InDelta(t, 0.000015, r.Prompt, 1e-12)
+	assert.InDelta(t, 0.000075, r.Completion, 1e-12)
 }

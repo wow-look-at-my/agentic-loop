@@ -242,8 +242,6 @@ type Dialect string // DialectAuto (""), DialectOpenAI, DialectAnthropic
 func (d Dialect) Valid() bool
 func (d Dialect) Label() string          // "detect" / "openai-compatible" / "anthropic messages"
 func Dialects() []Dialect                // every dialect, default first
-
-func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error)
 ```
 
 Picking a provider constructor means knowing which protocol an endpoint
@@ -256,10 +254,10 @@ OpenAI:    {"object":"list","data":[{"id":"gpt-x","object":"model",...}]}
 Anthropic: {"data":[{"type":"model","id":"claude-x",...}],"has_more":false}
 ```
 
-`DetectDialect` returns what the shape said, and `DialectAuto` **with an
-error** when the answer is not established — never a guess dressed as a
-finding, because a wrong dialect does not degrade, it breaks chat outright. It
-is a convenience over `FetchModelList` for a caller that wants only this.
+`FetchModelList` reads that shape off the document. It answers `DialectAuto`
+when the document matches neither — never a guess dressed as a finding,
+because a wrong dialect does not degrade, it breaks chat outright, so a caller
+that needs one refuses rather than picking.
 
 The envelope is checked before the items, so a list with no models at all
 still identifies its server.

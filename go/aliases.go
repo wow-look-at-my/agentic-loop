@@ -115,13 +115,6 @@ func NewParamStripper(p Provider) Provider { return client.NewParamStripper(p) }
 // spaced evenly. n <= 0 returns nil, meaning no limiting.
 func NewRateLimiter(n int) *RateLimiter { return client.NewRateLimiter(n) }
 
-// DetectDialect asks an endpoint which dialect it speaks. It is a package
-// function rather than a Provider method because it answers what to BUILD,
-// before there is one.
-func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
-	return client.DetectDialect(ctx, cfg)
-}
-
 // Dialects returns every dialect that can be named, in a stable order.
 func Dialects() []Dialect { return client.Dialects() }
 

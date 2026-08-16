@@ -1,9 +1,5 @@
 package commonai
 
-import (
-	"context"
-	"fmt"
-)
 
 // Which wire protocol an endpoint speaks, established by asking it rather than
 // by asking the user.
@@ -84,20 +80,3 @@ func Dialects() []Dialect {
 	return []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}
 }
 
-// DetectDialect asks an endpoint which protocol it speaks by reading its model
-// list. It returns DialectAuto with an error when the answer is not
-// established -- never a guess dressed as a finding, because a wrong dialect
-// does not degrade, it breaks chat outright.
-// It is a convenience over FetchModelList for a caller that wants only this —
-// the CLI's --dialect auto — and it makes the same one request. A host that
-// also prices calls reads both off one ModelList instead.
-func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
-	list, err := FetchModelList(ctx, cfg)
-	if err != nil {
-		return DialectAuto, fmt.Errorf("detecting the dialect: %w", err)
-	}
-	if list.Dialect == DialectAuto {
-		return DialectAuto, fmt.Errorf("detecting the dialect: the model list matches neither dialect")
-	}
-	return list.Dialect, nil
-}
