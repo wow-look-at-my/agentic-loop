@@ -71,7 +71,10 @@ func TestDetectDialectRefusesToGuess(t *testing.T) {
 	}{
 		{"unauthorized", http.StatusUnauthorized, `{"error":{"message":"no key"}}`, "answered 401"},
 		{"not found", http.StatusNotFound, `{}`, "answered 404"},
-		{"not json", http.StatusOK, `<html>hello</html>`, "matches neither dialect"},
+		// A body that is not JSON at all is a different finding from a JSON
+		// document of neither shape, and saying so is what points at the URL
+		// rather than at the endpoint's dialect support.
+		{"not json", http.StatusOK, `<html>hello</html>`, "is not JSON"},
 		{"neither shape", http.StatusOK, jsonMust(jsonObj{"models": jsonArr{"a"}}), "matches neither dialect"},
 	}
 	for _, tc := range cases {

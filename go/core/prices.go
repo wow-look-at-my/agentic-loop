@@ -13,9 +13,9 @@ import (
 // of at every arithmetic site.
 //
 // A rate of 0 is a real price: a free model publishes zeros, and a model that
-// publishes nothing has no Rates at all. That is the whole reason PricesOf
-// returns a map rather than a value per model — absence has to stay absence, so
-// a host renders an em dash instead of claiming a call was free.
+// publishes nothing has no Rates at all. That is the whole reason
+// ModelList.Prices is a map — absence has to stay absence, so a host renders an
+// em dash instead of claiming a call was free.
 type Rates struct {
 	Prompt     float64
 	Completion float64
@@ -147,4 +147,3 @@ func parseRate(s string) (float64, bool) {
 	}
 	return v, true
 }
-
