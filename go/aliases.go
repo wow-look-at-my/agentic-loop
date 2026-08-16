@@ -64,6 +64,7 @@ type (
 
 // Wire dialects.
 const (
+	DialectAuto      = client.DialectAuto
 	DialectOpenAI    = client.DialectOpenAI
 	DialectAnthropic = client.DialectAnthropic
 	DialectResponses = client.DialectResponses

@@ -73,6 +73,7 @@ const (
 
 // Wire dialects.
 const (
+	DialectAuto      = commonai.DialectAuto
 	DialectOpenAI    = commonai.DialectOpenAI
 	DialectAnthropic = commonai.DialectAnthropic
 	DialectResponses = commonai.DialectResponses
