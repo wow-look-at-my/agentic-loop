@@ -23,12 +23,14 @@ import (
 // header crossing hosts -- correct here, since the signature is the credential
 // and forwarding a PAT to storage would leak it.
 //
-// GitHub also answers this endpoint with a plain 404 while the job has not
-// finished -- undocumented, but reported: the log is not archived to storage
-// until the job completes, so an in-flight job has none to serve yet. That
-// looks identical, on the wire, to a job no configured token can see, so a
-// 404 here re-reads the job's own status before blaming a permission or an
-// existence problem it may not be.
+// GitHub also 404s this endpoint for two reasons that have nothing to do with
+// a token's access, and both look identical on the wire to "no configured
+// token can see this": a job that has not finished yet -- undocumented, but
+// reported: the log is not archived to storage until the job completes, so an
+// in-flight job has none to serve -- and a job GitHub marks "skipped", which
+// never ran a step and so never produced one. A 404 here re-reads the job's
+// own status first, because that read can PROVE the job exists and these
+// tokens can see it, which the generic explanation must not then contradict.
 
 const (
 	// jobLogMaxBytes caps one log read. A job that installs a toolchain and
@@ -68,10 +70,25 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) ToolResult 
 		}
 	}
 	if res.status < 200 || res.status >= 300 {
-		if state, unfinished := e.jobUnfinishedState(ctx, in.Org, in.Repo, in.JobID); unfinished {
-			return ToolResult{Content: fmt.Sprintf(
-				"The log of %s is not available yet: the job is still %s, and GitHub does not serve a log until it finishes. This is not a permission or existence problem -- try again once it completes.",
-				resource, state), IsError: true}
+		if job, ok := e.fetchJobForLogFailure(ctx, in.Org, in.Repo, in.JobID); ok {
+			switch {
+			case job.Status != "completed":
+				state := job.Status
+				if state == "" {
+					state = "queued"
+				}
+				return ToolResult{Content: fmt.Sprintf(
+					"The log of %s is not available yet: the job is still %s, and GitHub does not serve a log until it finishes. This is not a permission or existence problem -- try again once it completes.",
+					resource, state), IsError: true}
+			case job.Conclusion == "skipped":
+				return ToolResult{Content: fmt.Sprintf(
+					"%s was skipped and never ran a step, so GitHub never produced a log for it. This is not a permission problem.",
+					strings.ToUpper(resource[:1])+resource[1:]), IsError: true}
+			default:
+				return ToolResult{Content: fmt.Sprintf(
+					"The log of %s could not be read (404), but the job itself is confirmed to exist and be readable with these tokens (status: completed, conclusion: %s) -- so this is not a token or existence problem with the job. The LOG specifically is what is missing, most likely because it aged out under this repository's or organization's Actions log retention setting (Settings -> Actions -> General -> Artifact and log retention); it will not come back on retry.",
+					resource, job.Conclusion), IsError: true}
+			}
 		}
 		return ToolResult{Content: DescribeResourceFailure("read the log of", resource, res, len(e.gh.tokens)), IsError: true}
 	}
@@ -84,26 +101,22 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) ToolResult 
 	return ToolResult{Content: renderJobLog(in, resource, lines, res.truncated)}
 }
 
-// jobUnfinishedState re-reads GET /actions/jobs/{id} after a failed log fetch,
-// reporting the job's own status when it explains the failure: a job that has
-// not reached "completed" has no log yet, whatever the log endpoint's 404
-// said. A failure reading the job itself, or a "completed" status, answers
-// unfinished=false -- the log fetch's own failure is the real explanation
-// then, and this adds nothing to it.
-func (e *repoTools) jobUnfinishedState(ctx context.Context, org, repo string, jobID int64) (state string, unfinished bool) {
+// fetchJobForLogFailure re-reads GET /actions/jobs/{id} after a failed log
+// fetch, so the log failure can be explained by the job's own confirmed
+// state instead of assumed to be a permission or existence problem with the
+// job. ok is false only when this re-read itself failed -- a job GitHub
+// cannot be reached to confirm adds nothing over the log fetch's own error,
+// which is the explanation then.
+func (e *repoTools) fetchJobForLogFailure(ctx context.Context, org, repo string, jobID int64) (job ghJob, ok bool) {
 	target := fmt.Sprintf("%s/actions/jobs/%d", e.gh.RepoURL(org, repo), jobID)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")
 	if err != nil || res.status < 200 || res.status >= 300 {
-		return "", false
+		return ghJob{}, false
 	}
-	var job ghJob
-	if json.Unmarshal(res.body, &job) != nil || job.Status == "completed" {
-		return "", false
+	if json.Unmarshal(res.body, &job) != nil {
+		return ghJob{}, false
 	}
-	if job.Status == "" {
-		return "queued", true
-	}
-	return job.Status, true
+	return job, true
 }
 
 // renderJobLog picks the window and states, always, which lines these are out
