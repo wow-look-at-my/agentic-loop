@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Parameters and reports specific to the OpenAI-compatible chat-completions
+  dialect. reasoning-tokens and cost-usd hang off <usage> because they are
+  things only some providers report; timings is the llama.cpp-style per-call
+  snapshot local servers attach to streamed chunks.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:cai="https://github.com/wow-look-at-my/common-ai-api/schema/v1"
+           targetNamespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1/openai"
+           elementFormDefault="qualified"
+           attributeFormDefault="qualified">
+
+  <xs:import namespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1"/>
+
+  <xs:attribute name="reasoning-effort" type="xs:string"/>
+  <xs:attribute name="seed" type="xs:int"/>
+  <xs:attribute name="temperature" type="xs:decimal"/>
+  <xs:attribute name="top-p" type="xs:decimal"/>
+  <xs:attribute name="frequency-penalty" type="xs:decimal"/>
+  <xs:attribute name="presence-penalty" type="xs:decimal"/>
+  <xs:attribute name="parallel-tool-calls" type="xs:boolean"/>
+
+  <!-- Reported on a usage report, when the provider reports them at all. -->
+  <xs:attribute name="reasoning-tokens" type="xs:int"/>
+  <xs:attribute name="cost-usd" type="xs:decimal"/>
+
+  <xs:element name="timings">
+    <xs:complexType>
+      <xs:attribute name="prompt-n" type="xs:int"/>
+      <xs:attribute name="prompt-ms" type="xs:decimal"/>
+      <xs:attribute name="predicted-n" type="xs:int"/>
+      <xs:attribute name="predicted-ms" type="xs:decimal"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="params" type="cai:paramList"/>
+
+</xs:schema>

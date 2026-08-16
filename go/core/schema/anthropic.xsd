@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Anthropic-specific parameters. A scalar the dialect is known to take is
+  declared here as a global attribute, so a document can write
+  anthropic:top-k="40" on a core element and have it type-checked. Anything
+  object-shaped is an element, and anything not named here rides in
+  <anthropic:params>, which can hold any JSON-shaped value.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:cai="https://github.com/wow-look-at-my/common-ai-api/schema/v1"
+           targetNamespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1/anthropic"
+           elementFormDefault="qualified"
+           attributeFormDefault="qualified">
+
+  <xs:import namespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1"/>
+
+  <xs:attribute name="top-k" type="xs:int"/>
+  <xs:attribute name="top-p" type="xs:decimal"/>
+  <xs:attribute name="temperature" type="xs:decimal"/>
+
+  <!--
+    Extended thinking. An object on the wire, so an element here: budget-tokens
+    is how much of the answer the model may spend reasoning before it writes.
+  -->
+  <xs:element name="thinking">
+    <xs:complexType>
+      <xs:attribute name="type" type="xs:string"/>
+      <xs:attribute name="budget-tokens" type="xs:int"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="params" type="cai:paramList"/>
+
+</xs:schema>

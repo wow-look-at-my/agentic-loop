@@ -3,6 +3,7 @@ package agentic
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -177,13 +178,10 @@ func oauthScopeDetail(res GHResponse) string {
 	if len(accepted) == 0 {
 		return ""
 	}
-	have := make(map[string]bool)
-	for _, scope := range splitScopeHeader(res.header.Get("X-OAuth-Scopes")) {
-		have[scope] = true
-	}
+	have := splitScopeHeader(res.header.Get("X-OAuth-Scopes"))
 	var missing []string
 	for _, scope := range accepted {
-		if !have[scope] {
+		if !slices.Contains(have, scope) {
 			missing = append(missing, scope)
 		}
 	}

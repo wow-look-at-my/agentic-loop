@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // what=status reads a commit's CI state through GitHub's two separate,
@@ -90,13 +92,11 @@ type ghAnnotation struct {
 // failedConclusions are the check-run conclusions that mean a human has to go
 // look. "cancelled" is among them: a cancelled run explains nothing by itself,
 // and the reason a run was cancelled is exactly what the reader is after.
-var failedConclusions = map[string]bool{
-	"failure": true, "timed_out": true, "action_required": true, "cancelled": true, "stale": true,
-}
+var failedConclusions = set.Of("failure", "timed_out", "action_required", "cancelled", "stale")
 
 // checkRunFailed reports whether a completed check run needs explaining.
 func checkRunFailed(c ghCheckRun) bool {
-	return c.Status == "completed" && failedConclusions[strings.ToLower(c.Conclusion)]
+	return c.Status == "completed" && failedConclusions.Contains(strings.ToLower(c.Conclusion))
 }
 
 func (e *repoTools) statusRead(ctx context.Context, in repoReadArgs) ToolResult {

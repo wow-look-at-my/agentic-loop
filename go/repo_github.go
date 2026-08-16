@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // This file holds the shared GitHub REST-API plumbing behind the repo tools:
@@ -133,12 +135,11 @@ type tokenAttempt struct {
 // (repo_write.go) instead, which never falls through to unauthenticated.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	add := func(id, name, token string) {
-		if seen[id] {
+		if !seen.Add(id) {
 			return
 		}
-		seen[id] = true
 		order = append(order, tokenAttempt{id: id, name: name, token: token})
 	}
 	if e.cache != nil && cacheKey != "" {

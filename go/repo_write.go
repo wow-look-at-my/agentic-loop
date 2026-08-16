@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // repo_file_write and repo_pr_create are the two mutating repo tools. They
@@ -107,12 +109,11 @@ func ClassifyWriteStatus(what string, res GHResponse) error {
 // token. Unlike reads, writes never append an unauthenticated attempt.
 func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 	var order []tokenAttempt
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	add := func(id, name, token string) {
-		if id == "" || seen[id] {
+		if id == "" || !seen.Add(id) {
 			return
 		}
-		seen[id] = true
 		order = append(order, tokenAttempt{id: id, name: name, token: token})
 	}
 	if e.cache != nil && cacheKey != "" {
