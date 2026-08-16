@@ -74,11 +74,14 @@ func newProvider(cmd *cobra.Command) (client.Provider, error) {
 
 	dialect := commonai.Dialect(env(flagDialect, "CAI_DIALECT"))
 	if dialect == "" {
-		var err error
-		dialect, err = client.DetectDialect(cmd.Context(), cfg)
+		list, err := client.FetchModelList(cmd.Context(), cfg)
+		if err == nil && list.Dialect == commonai.DialectAuto {
+			err = fmt.Errorf("the model list matches neither dialect")
+		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot tell which dialect %s speaks (pass --dialect): %w", endpoint, err)
 		}
+		dialect = list.Dialect
 	}
 	switch dialect {
 	case client.DialectOpenAI:
