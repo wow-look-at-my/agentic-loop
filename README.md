@@ -12,7 +12,7 @@ One module, `github.com/wow-look-at-my/agentic-loop/go`.
 | Package | What it is |
 | --- | --- |
 | [`go/`](go/) | the loop: `Run`, tools, approval, sub-agents, compaction (package `agentic`) |
-| [`go/core`](go/core/) | the format, its schema, and the three dialects |
+| [`go/core`](go/core/) | the format, its [schema](go/core/schema/), and the three dialects |
 | [`go/client`](go/client/) | the Go API: `Provider`, `Completion`, folded usage |
 | [`go/extras`](go/extras/) | retry and a fixed-rate request gate |
 | [`go/session`](go/session/) | conversation storage: memory and one document per file |
