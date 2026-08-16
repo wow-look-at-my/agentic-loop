@@ -101,7 +101,7 @@ func TestRepoJobLogNeedsAJobID(t *testing.T) {
 }
 
 func TestRepoJobLogFailureExplainsItself(t *testing.T) {
-	_, ex := newFakeGitHub(t, GitHubConfig{}, func(ghCall) (int, string) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(ghCall) (int, string) {
 		return http.StatusNotFound, `{"message":"Not Found"}`
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 9})
@@ -115,7 +115,7 @@ func TestRepoJobLogFailureExplainsItself(t *testing.T) {
 // no token can see. The tool must tell them apart rather than call a job that
 // is simply still running "gone".
 func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
-	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/actions/jobs/9/logs":
 			return http.StatusNotFound, `{"message":"Not Found"}`
@@ -137,7 +137,7 @@ func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 // the ordinary explanation -- the job-status re-read has nothing to add over
 // what explainFailure already says.
 func TestRepoJobLogCompletedJobKeepsTheOrdinaryFailure(t *testing.T) {
-	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
+	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/actions/jobs/9/logs":
 			return http.StatusNotFound, `{"message":"Not Found"}`
