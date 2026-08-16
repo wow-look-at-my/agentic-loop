@@ -130,6 +130,28 @@ func TestAnUnusableRateLeavesTheModelUnpriced(t *testing.T) {
 	assert.Empty(t, list.Prices, "a negative rate is a document nobody should bill from")
 }
 
+// crofAIModelList is the shape crof.ai's own /v1/models actually answers:
+// rates as strings, already in USD per MILLION tokens (matching its own
+// pricing page's "$/M" notation), not per token like OpenRouter. Reading
+// "0.35" as USD per token billed a real turn a millionfold high.
+const crofAIModelList = `{
+  "object": "list",
+  "data": [
+    {
+      "id": "deepseek-v4-pro-0813",
+      "object": "model",
+      "pricing": {"prompt": "0.35", "completion": "0.80", "cache_prompt": "0.01"}
+    }
+  ]
+}`
+
+func TestDecodeModelListRescalesAnAlreadyPerMillionRate(t *testing.T) {
+	r, ok := decoded(t, crofAIModelList).Prices["deepseek-v4-pro-0813"]
+	require.True(t, ok)
+	assert.InDelta(t, 0.00000035, r.Prompt, 1e-12)
+	assert.InDelta(t, 0.0000008, r.Completion, 1e-12)
+}
+
 func TestFetchModelListReadsTheEndpoint(t *testing.T) {
 	var gotAuth, gotKey, gotVersion, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

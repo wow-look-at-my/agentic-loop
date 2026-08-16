@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The arithmetic, with the three errors that cost real money.
@@ -36,6 +37,26 @@ func TestCostPricesCompletionOnceWhateverTheThinkingWas(t *testing.T) {
 	r := Rates{Prompt: 0.000001, Completion: 0.00001}
 	u := Usage{PromptTokens: 100, CompletionTokens: 4100}
 	assert.InDelta(t, 100*0.000001+4100*0.00001, r.Cost(u), 1e-9)
+}
+
+// crof.ai's own /v1/models reports pricing already in USD per MILLION tokens
+// ("0.35" for a model its pricing page prices at $0.35/M), not per token like
+// OpenRouter. Reading "0.35" as USD per token billed a real turn a
+// millionfold high. A value that would cross maxPlausiblePerTokenUSD under
+// the per-token reading is rescaled instead of taken literally.
+func TestParseRateRescalesAnAlreadyPerMillionValue(t *testing.T) {
+	v, ok := parseRate("0.35")
+	require.True(t, ok)
+	assert.InDelta(t, 0.00000035, v, 1e-12)
+
+	v, ok = parseRate("0.01")
+	require.True(t, ok)
+	assert.InDelta(t, 0.00000001, v, 1e-12)
+
+	// A genuine per-token price near the boundary still passes through as-is.
+	v, ok = parseRate("0.0006")
+	require.True(t, ok)
+	assert.InDelta(t, 0.0006, v, 1e-12)
 }
 
 // A provider reporting more cached tokens than prompt tokens is inconsistent.

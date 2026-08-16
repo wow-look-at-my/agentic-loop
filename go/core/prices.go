@@ -134,8 +134,24 @@ func ratesOf(p modelListPricing) (Rates, bool) {
 	return r, true
 }
 
-// parseRate reads one published rate. A negative one is refused rather than
-// clamped: it is a document nobody should be billing from.
+// maxPlausiblePerTokenUSD bounds a real chat-completion price, USD per
+// token. Nothing on the market approaches this — the priciest reasoning
+// models top out under $1,000 per million tokens, i.e. $0.001 per token —
+// so it exists only to tell a genuine per-token wire value from one a
+// provider already expressed per million tokens.
+const maxPlausiblePerTokenUSD = 0.001
+
+// parseRate reads one published rate, in USD per token. A negative one is
+// refused rather than clamped: it is a document nobody should be billing
+// from.
+//
+// Most model lists follow OpenRouter's convention and publish USD per TOKEN
+// ("0.000015"). Not every one does: crof.ai's own /v1/models reports "0.35"
+// for a model its own pricing page prices at $0.35 per million tokens —
+// already per million, not per token. Reading that as per-token billed a
+// real turn a millionfold high. A value that would cross
+// maxPlausiblePerTokenUSD under the per-token reading is already per
+// million and is rescaled instead.
 func parseRate(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -144,6 +160,9 @@ func parseRate(s string) (float64, bool) {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil || v < 0 {
 		return 0, false
+	}
+	if v > maxPlausiblePerTokenUSD {
+		v /= 1e6
 	}
 	return v, true
 }
