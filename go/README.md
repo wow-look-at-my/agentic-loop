@@ -269,6 +269,50 @@ rule declared once.
 The envelope is checked before the items, so a list with no models at all
 still identifies its server.
 
+### Prices, out of the same document
+
+```go
+type Rates struct{ Prompt, Completion, CacheRead, CacheWrite, CacheWrite1h float64 } // USD per TOKEN
+
+func (r Rates) Cost(u Usage) float64
+func Anomalous(u Usage) bool
+
+func PricesOfModelList(body []byte) map[string]Rates
+func FetchPrices(ctx context.Context, cfg ProviderConfig) (map[string]Rates, []byte, error)
+```
+
+A model list often publishes what each model charges, so the request a host
+makes to pick a dialect also answers what a call will cost. `FetchPrices`
+returns the document alongside the rates for exactly that reason: one request
+feeds both this and `DialectOfModelList`.
+
+**A model that published no pricing is ABSENT from the map, never present with
+zeros.** A host has to be able to tell a free model from an unpriced one,
+because the first owes nothing and the second has to render an em dash. An
+endpoint that publishes no prices at all is not an error — most do not.
+
+`Cost` is where the money is, and three things the obvious formula gets wrong:
+
+- `PromptTokens` **already contains** the cached tokens on every dialect, so
+  the uncached term is `Prompt - CacheRead - CacheWrite`. Pricing the whole
+  prompt and then adding the cache terms bills them twice, and cache reads are
+  routinely 60-90% of a long session's prompt — about 5.7× too high on a
+  cache-warm turn, wrong in the direction that makes caching look useless.
+- Cache-write tokens are prompt tokens charged at the **write** rate, not at
+  the input rate **plus** the write rate.
+- Reasoning tokens are already inside `CompletionTokens`, so there is no
+  reasoning term. Adding one roughly doubles a thinking-heavy turn. `Cost`
+  takes a `Usage` and reads only the four billable counts, so adding that term
+  means changing the signature.
+
+A provider reporting more cached tokens than prompt tokens is inconsistent:
+the uncached term clamps at zero and `Anomalous` reports the same condition, so
+a host says so out loud instead of quietly billing under the invoice.
+
+`CacheWrite1h` is carried and **not used by `Cost`**: `CacheWriteTokens` is one
+integer with no tier in it, and the library places only five-minute
+breakpoints, so `CacheWrite` is the right rate for every call it makes.
+
 What this cannot settle, and why a host should keep an override: it reads the
 MODELS endpoint and infers the CHAT endpoint from it. A gateway may serve those
 independently, and proving the chat dialect means posting to it — spending

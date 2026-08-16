@@ -165,3 +165,10 @@ func finish(p commonai.Provider, policy *RetryPolicy, err error) (Provider, erro
 func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
 	return commonai.DetectDialect(ctx, cfg.core())
 }
+
+// FetchPrices asks an endpoint's model list what its models cost, and returns
+// the document with them so a caller that also wants the dialect reads it off
+// these bytes rather than making the request twice.
+func FetchPrices(ctx context.Context, cfg ProviderConfig) (map[string]Rates, []byte, error) {
+	return commonai.FetchPrices(ctx, cfg.core())
+}
