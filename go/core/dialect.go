@@ -1,6 +1,5 @@
 package commonai
 
-
 // Which wire protocol an endpoint speaks, established by asking it rather than
 // by asking the user.
 //
@@ -79,4 +78,3 @@ func (d Dialect) Label() string {
 func Dialects() []Dialect {
 	return []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}
 }
-
