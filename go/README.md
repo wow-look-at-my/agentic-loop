@@ -966,7 +966,11 @@ Two properties run through all of it:
   there, and forwarding a PAT to a third party is not a tidiness question. The
   whole log is returned when it fits; past that the tail comes back (where a
   failure is) and `offset`/`limit` address any other window, so nothing in the
-  log is out of reach.
+  log is out of reach. GitHub also 404s this endpoint, undocumented, while the
+  job has not finished — the log is not archived to storage until it is — and
+  that looks identical to a job no token can see, so a 404 here re-reads the
+  job's own status and, when it is genuinely still running, says so instead of
+  claiming the job does not exist.
 - **A write never falls through to anonymous** and uses ONLY `WriteTokens`.
   Filtering that list by initiator is the host's job: a model-facing toolset
   gets `ModelWriteTokens(...)`, a user-initiated action gets everything.
