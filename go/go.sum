@@ -6,10 +6,12 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/wow-look-at-my/common-ai-api/go/client v0.0.0-20260815192344-01fea7269424 h1:vME50fMqJEwnlLeNfcF/hXOyyBStfM8aP60ymb63ppI=
 github.com/wow-look-at-my/common-ai-api/go/client v0.0.0-20260815192344-01fea7269424/go.mod h1:wIuWHmnLG9qTo2+bJTuiK2YYuFDGRmZd7miw82E4FKQ=
-github.com/wow-look-at-my/common-ai-api/go/core v0.0.0-20260815162255-d8426ef8d505 h1:wnUMO1uQsAZ1Ej5lhVb6m7jra6ojPAXXSnSnTUAqbA4=
-github.com/wow-look-at-my/common-ai-api/go/core v0.0.0-20260815162255-d8426ef8d505/go.mod h1:LI7YmYVzmF5r9RIYNygv2laosxbGk0M3owN4w9AxFFA=
-github.com/wow-look-at-my/common-ai-api/go/extras v0.0.0-20260815162255-d8426ef8d505 h1:Au+YJI4u1fGAydzlmoS+z6CSqJgFhmGF3vS82ut0oYA=
-github.com/wow-look-at-my/common-ai-api/go/extras v0.0.0-20260815162255-d8426ef8d505/go.mod h1:VGCv1NNy+0QQvtv3/LB0xb0IO+8CsFl0oUfoCGEdxvs=
+github.com/wow-look-at-my/common-ai-api/go/core v0.0.0-20260815192344-01fea7269424 h1:0UiGvsiqa/KAGgdyGO1rzGZttMG09BOdpFSslPPuf4Q=
+github.com/wow-look-at-my/common-ai-api/go/core v0.0.0-20260815192344-01fea7269424/go.mod h1:LI7YmYVzmF5r9RIYNygv2laosxbGk0M3owN4w9AxFFA=
+github.com/wow-look-at-my/common-ai-api/go/extras v0.0.0-20260815192344-01fea7269424 h1:8GFy+0Qo4f+1GQzQKUlACFTm0t+3N4T5Na24SuI1IOo=
+github.com/wow-look-at-my/common-ai-api/go/extras v0.0.0-20260815192344-01fea7269424/go.mod h1:6CtokAKXG5tDEqrai0CQ+iD0dgDNta63KKNkCJqxLwg=
+github.com/wow-look-at-my/go-containers v0.0.0-20260815235059-bc089f373e68 h1:gBF/lTlZwXrVVoQKJpHeZBi+GEd/gSfgx8iQDa5Qsqg=
+github.com/wow-look-at-my/go-containers v0.0.0-20260815235059-bc089f373e68/go.mod h1:AGGzFZheJSooQmBf0LdfoAGXr7jSGxsn7N1NrOdhmIs=
 github.com/wow-look-at-my/xml-validator v0.0.0-20260815153400-976d3b99fe31 h1:uaO1yugD2NqM2HQDlrAkgmYLZZhKkBpAXO8IbzCpW/E=
 github.com/wow-look-at-my/xml-validator v0.0.0-20260815153400-976d3b99fe31/go.mod h1:FYx4Fn55HPxJTgjPA9yHYxAeoMaTNZ1Ncd1NXz1bN5Y=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=

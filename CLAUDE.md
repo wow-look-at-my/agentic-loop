@@ -92,9 +92,12 @@ side of that line it falls on — do not put it on both.
 
 ## Hard rules
 
-- **Runtime is standard library only.** testify is test-only. No new
-  runtime dependencies (the web-fetch HTML cleanup and the subagent
-  machinery are deliberately hand-rolled stdlib, like the source).
+- **Runtime is standard library only**, plus common-ai-api (the wire half) and
+  `go-containers/set`. testify is test-only. No new third-party runtime
+  dependencies (the web-fetch HTML cleanup and the subagent machinery are
+  deliberately hand-rolled stdlib, like the source). `go-containers/set` is
+  first-party and NOT optional: go-toolchain's `mapset` analyzer hard-fails an
+  org module that uses a `map[K]bool` as a set, so a set is `set.Set[K]` here.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
