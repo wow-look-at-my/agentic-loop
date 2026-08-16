@@ -12,11 +12,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wow-look-at-my/agentic-loop/go/cli/cmd"
+	"github.com/wow-look-at-my/agentic-loop/go/cli"
 )
 
 func main() {
-	if err := cmd.Execute(); err != nil {
+	if err := cli.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "cai:", err)
 		os.Exit(1)
 	}

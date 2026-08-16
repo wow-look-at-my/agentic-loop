@@ -1,5 +1,5 @@
-// Package cmd holds cai's commands, one per file, each registering itself.
-package cmd
+// Package cli holds cai's commands, one per file, each registering itself.
+package cli
 
 import (
 	"fmt"

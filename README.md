@@ -18,7 +18,7 @@ One module, `github.com/wow-look-at-my/agentic-loop/go`.
 | [`go/session`](go/session/) | conversation storage: memory and one document per file |
 | [`go/http`](go/http/) | HTTP, stateless and stateful |
 | [`go/socket`](go/socket/) | unix socket and websocket |
-| [`go/cli`](go/cli/) | the `cai` binary |
+| [`go/cli`](go/cli/) | the `cai` commands (`go/cmd/cai` is its `main`) |
 
 `ts/` is a planned TypeScript port. The Go source and
 [go/README.md](go/README.md) are its specification.

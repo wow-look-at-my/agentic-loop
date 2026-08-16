@@ -13,7 +13,13 @@ second declaration of the Go package's behavior is a copy nothing keeps true.
 **One module, several packages.** `go/` itself is package `agentic` (the loop).
 The wire half sits beside it: `go/core` (the XML format, its schema and the
 three dialects), `go/client` (the Go API), `go/extras` (retry, rate limit),
-`go/session`, `go/http`, `go/socket`, `go/cli` (the `cai` binary).
+`go/session`, `go/http`, `go/socket`, `go/cli` (the `cai` commands).
+
+**Every `main` lives under `go/cmd/<binary>/`.** go-toolchain names a binary
+after the MODULE when its main package sits one level below the module root, so
+`go/cli` and `go/todo_driver` both wanted to be called `go` and only one of
+them got built. Two levels down, the leaf directory is the name: `cai` and
+`todo_driver`, both built.
 
 **It is ONE module on purpose.** These packages were briefly seven modules in a
 separate repository, and every one of them had to pin its siblings at a

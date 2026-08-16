@@ -12,8 +12,17 @@ go/client    the Go API                              <- core, extras
 go/session   conversation storage                    <- core
 go/http      stateless + stateful HTTP               <- core, session
 go/socket    unix socket + websocket                 <- core, session
-go/cli       the cai binary                          <- everything
+go/cli       the cai commands                        <- everything
+go/cmd/cai   main for cai
+go/cmd/todo_driver
+             main for the task-list launch check
 ```
+
+Every `main` sits under `go/cmd/<binary>/`, two levels below the module root.
+That is not taste: go-toolchain names a binary after the MODULE when the main
+package is one level down, so `go/cli` and `go/todo_driver` both resolved to
+`go`, collided, and only one of them was built. Two levels down, the leaf
+directory is the name.
 
 The compiler still enforces the layering: `core` cannot reach for a policy that
 lives in `client`, because the import would be a cycle. That property never
