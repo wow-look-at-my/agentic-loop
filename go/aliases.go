@@ -64,6 +64,7 @@ type (
 
 // Wire dialects.
 const (
+	DialectAuto      = client.DialectAuto
 	DialectOpenAI    = client.DialectOpenAI
 	DialectAnthropic = client.DialectAnthropic
 	DialectResponses = client.DialectResponses
@@ -114,15 +115,31 @@ func NewParamStripper(p Provider) Provider { return client.NewParamStripper(p) }
 // spaced evenly. n <= 0 returns nil, meaning no limiting.
 func NewRateLimiter(n int) *RateLimiter { return client.NewRateLimiter(n) }
 
-// DetectDialect asks an endpoint which dialect it speaks. It is a package
-// function rather than a Provider method because it answers what to BUILD,
-// before there is one.
-func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
-	return client.DetectDialect(ctx, cfg)
-}
-
 // Dialects returns every dialect that can be named, in a stable order.
 func Dialects() []Dialect { return client.Dialects() }
 
-// DialectOfModelList guesses a dialect from the body of a model-list response.
-func DialectOfModelList(body []byte) Dialect { return client.DialectOfModelList(body) }
+// Rates is what one model charges, in USD per token, as its endpoint's model
+// list published it. ModelList is that document: the dialect the endpoint
+// speaks and its per-model rates, from one request.
+type (
+	Rates     = client.Rates
+	ModelList = client.ModelList
+)
+
+// FetchModelList reads an endpoint's model list. A model that published no
+// pricing is ABSENT from Prices, never present with zeros: a host has to be
+// able to tell a free model from an unpriced one, because the second renders an
+// em dash and the first renders nothing owed.
+func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
+	return client.FetchModelList(ctx, cfg)
+}
+
+// DecodeModelList reads a model-list document a caller already holds. A document
+// that will not parse is an error, never an empty result: an endpoint answering
+// with an error page must not read as one that publishes no prices.
+func DecodeModelList(body []byte) (*ModelList, error) { return client.DecodeModelList(body) }
+
+// Anomalous reports a usage record that prices something it cannot: more cached
+// tokens than there were prompt tokens. Rates.Cost clamps rather than going
+// negative, and this is how a host learns that it clamped.
+func Anomalous(u Usage) bool { return client.Anomalous(u) }

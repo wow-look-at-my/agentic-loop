@@ -160,8 +160,9 @@ func finish(p commonai.Provider, policy *RetryPolicy, err error) (Provider, erro
 	return up(extras.Retrying(p, policy)), nil
 }
 
-// DetectDialect asks an endpoint which dialect it speaks. It is here rather
-// than on a Provider because it answers what to BUILD, before there is one.
-func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
-	return commonai.DetectDialect(ctx, cfg.core())
+// FetchModelList reads an endpoint's model list: the dialect it speaks and what
+// its models charge, from one request. It is here rather than on a Provider
+// because it answers what to BUILD, before there is one.
+func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
+	return commonai.FetchModelList(ctx, cfg.core())
 }
