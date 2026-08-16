@@ -1,12 +1,8 @@
-// aliases.go is this package's wire half, which now lives in common-ai-api.
+// aliases.go is this package's wire half, which lives in client/ over core/.
 // Everything here is an ALIAS or a thin call through, never a copy: a value
-// built as agentic.Message IS a client.Message, so the two libraries hand
-// values to each other without a conversion step and nothing has to be kept in
-// sync between two declarations of the same type.
-//
-// The split is what moved, not the API. Every name below meant the same thing
-// before it, and the test suite that proves it is the one that came with the
-// loop -- unchanged.
+// built as agentic.Message IS a client.Message, so the loop and the wire half
+// hand values to each other without a conversion step and nothing has to be
+// kept in sync between two declarations of the same type.
 package agentic
 
 import (

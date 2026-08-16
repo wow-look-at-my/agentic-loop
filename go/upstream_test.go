@@ -11,7 +11,7 @@ import (
 
 // Fake upstreams for the tests that drive the loop over a real provider.
 //
-// The dialects themselves are tested in common-ai-api, against these same
+// The dialects themselves are tested in core/, against these same
 // shapes. What is exercised here is the loop's behavior when a call goes over
 // HTTP and comes back streamed, retried, or broken -- which needs a server, not
 // a stub.
