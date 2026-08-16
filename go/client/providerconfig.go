@@ -166,9 +166,8 @@ func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
 	return commonai.DetectDialect(ctx, cfg.core())
 }
 
-// FetchPrices asks an endpoint's model list what its models cost, and returns
-// the document with them so a caller that also wants the dialect reads it off
-// these bytes rather than making the request twice.
-func FetchPrices(ctx context.Context, cfg ProviderConfig) (map[string]Rates, []byte, error) {
-	return commonai.FetchPrices(ctx, cfg.core())
+// FetchModelList reads an endpoint's model list: the dialect it speaks and what
+// its models charge, from one request.
+func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
+	return commonai.FetchModelList(ctx, cfg.core())
 }

@@ -1,10 +1,7 @@
 package commonai
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 )
@@ -104,39 +101,6 @@ type modelListPricing struct {
 	CurrencyIrrelevant json.RawMessage `json:"currency"`
 }
 
-// PricesOfModelList reads per-model rates out of a model-list document, keyed by
-// model id. A model that publishes no pricing block is ABSENT from the result
-// rather than present with zeros.
-//
-// It is a separate function from the fetch so a host that already has the bytes
-// — the same document DialectOfModelList reads — pays for one request, not two.
-// A document that does not parse yields an empty map and no error: this is a
-// display input, and a host that cannot price a call renders an em dash, which
-// is the same answer a malformed document deserves.
-func PricesOfModelList(body []byte) map[string]Rates {
-	var doc struct {
-		Data []struct {
-			ID      string            `json:"id"`
-			Name    string            `json:"name"`
-			Pricing *modelListPricing `json:"pricing"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return map[string]Rates{}
-	}
-	out := make(map[string]Rates, len(doc.Data))
-	for _, m := range doc.Data {
-		id := strings.TrimSpace(m.ID)
-		if id == "" || m.Pricing == nil {
-			continue
-		}
-		if r, ok := ratesOf(*m.Pricing); ok {
-			out[id] = r
-		}
-	}
-	return out
-}
-
 // ratesOf converts one pricing block. The second return is false when the block
 // carried no usable number at all, which keeps an empty `"pricing": {}` out of
 // the map instead of turning it into a free model.
@@ -184,52 +148,3 @@ func parseRate(s string) (float64, bool) {
 	return v, true
 }
 
-// FetchPrices asks an endpoint's model list what its models cost.
-//
-// It returns the rates and the raw document, so a caller that also wants the
-// dialect reads it off these bytes with DialectOfModelList rather than making
-// the request twice.
-//
-// An endpoint that publishes no pricing answers with an empty map and no error:
-// most do not, that is not a failure, and a host's answer to it is an em dash
-// plus whatever the user configured — never a manufactured number.
-func FetchPrices(ctx context.Context, cfg ProviderConfig) (map[string]Rates, []byte, error) {
-	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	if base == "" {
-		return nil, nil, fmt.Errorf("fetching prices: no base URL")
-	}
-	hc := cfg.HTTPClient
-	if hc == nil {
-		hc = http.DefaultClient
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("fetching prices: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if cfg.APIKey != "" {
-		// Both credential forms, for the same reason DetectDialect sends both:
-		// which server is answering is exactly what is not yet known.
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-		req.Header.Set("x-api-key", cfg.APIKey)
-	}
-	req.Header.Set("anthropic-version", defaultAnthropicVersion)
-	for k, v := range cfg.Headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("fetching prices: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _, err := readCapped(resp.Body, detectMaxBytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("fetching prices: reading the model list: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, body, fmt.Errorf("fetching prices: the model list answered %d", resp.StatusCode)
-	}
-	return PricesOfModelList(body), body, nil
-}

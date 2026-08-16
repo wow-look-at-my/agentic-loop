@@ -244,7 +244,6 @@ func (d Dialect) Label() string          // "detect" / "openai-compatible" / "an
 func Dialects() []Dialect                // every dialect, default first
 
 func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error)
-func DialectOfModelList(body []byte) Dialect
 ```
 
 Picking a provider constructor means knowing which protocol an endpoint
@@ -257,36 +256,52 @@ OpenAI:    {"object":"list","data":[{"id":"gpt-x","object":"model",...}]}
 Anthropic: {"data":[{"type":"model","id":"claude-x",...}],"has_more":false}
 ```
 
-`DetectDialect` does one `GET /v1/models` (both credential forms on the
-request, since which server is answering is the very thing in question) and
-returns what the shape said. It returns `DialectAuto` **with an error** when
-the answer is not established — never a guess dressed as a finding, because a
-wrong dialect does not degrade, it breaks chat outright. `DialectOfModelList`
-is the same shape test over a body you already have, so a host that fetches
-model lists anyway pays no extra request; going through it is what keeps the
-rule declared once.
+`DetectDialect` returns what the shape said, and `DialectAuto` **with an
+error** when the answer is not established — never a guess dressed as a
+finding, because a wrong dialect does not degrade, it breaks chat outright. It
+is a convenience over `FetchModelList` for a caller that wants only this.
 
 The envelope is checked before the items, so a list with no models at all
 still identifies its server.
 
-### Prices, out of the same document
+### The model list
+
+```go
+type ModelList struct {
+    Dialect Dialect
+    Prices  map[string]Rates // absent = published no pricing
+}
+
+func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error)
+func DecodeModelList(body []byte) (*ModelList, error)
+```
+
+One document answers both questions a host has before it can talk to an
+endpoint at all — which protocol it speaks, and what its models charge — so
+there is one request and one decode. `FetchModelList` does a
+`GET {base}/v1/models`, sending both credential forms, since which server is
+answering is the very thing in question.
+
+The trailing `/v1` is trimmed off the base first. The two chat dialects
+disagree about what a base URL contains — the OpenAI request is
+`baseURL + "/chat/completions"`, so its base **ends** in `/v1`, while the
+Anthropic one is `baseURL + "/v1/messages"`, so its base does not — and
+appending to the first spelling asks for `/v1/v1/models`, a 404 that reads as
+an endpoint publishing neither a dialect nor a price.
+
+**A document that will not parse is an error, never an empty result.** An
+endpoint that publishes no prices is working correctly and renders an em dash;
+an endpoint answering with an HTML error page is not. Reporting both as "no
+prices" makes a misconfigured URL look exactly like a cheap provider.
 
 ```go
 type Rates struct{ Prompt, Completion, CacheRead, CacheWrite, CacheWrite1h float64 } // USD per TOKEN
 
 func (r Rates) Cost(u Usage) float64
 func Anomalous(u Usage) bool
-
-func PricesOfModelList(body []byte) map[string]Rates
-func FetchPrices(ctx context.Context, cfg ProviderConfig) (map[string]Rates, []byte, error)
 ```
 
-A model list often publishes what each model charges, so the request a host
-makes to pick a dialect also answers what a call will cost. `FetchPrices`
-returns the document alongside the rates for exactly that reason: one request
-feeds both this and `DialectOfModelList`.
-
-**A model that published no pricing is ABSENT from the map, never present with
+**A model that published no pricing is ABSENT from `Prices`, never present with
 zeros.** A host has to be able to tell a free model from an unpriced one,
 because the first owes nothing and the second has to render an em dash. An
 endpoint that publishes no prices at all is not an error — most do not.

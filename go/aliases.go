@@ -125,24 +125,26 @@ func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
 // Dialects returns every dialect that can be named, in a stable order.
 func Dialects() []Dialect { return client.Dialects() }
 
-// DialectOfModelList guesses a dialect from the body of a model-list response.
-func DialectOfModelList(body []byte) Dialect { return client.DialectOfModelList(body) }
-
 // Rates is what one model charges, in USD per token, as its endpoint's model
-// list published it.
-type Rates = client.Rates
+// list published it. ModelList is that document: the dialect the endpoint
+// speaks and its per-model rates, from one request.
+type (
+	Rates     = client.Rates
+	ModelList = client.ModelList
+)
 
-// PricesOfModelList reads per-model rates out of a model-list document. A model
-// that published no pricing is ABSENT, never present with zeros: a host has to
-// be able to tell a free model from an unpriced one, because the second renders
-// an em dash and the first renders nothing owed.
-func PricesOfModelList(body []byte) map[string]Rates { return client.PricesOfModelList(body) }
-
-// FetchPrices asks an endpoint's model list what its models cost, returning the
-// document alongside so one request answers both this and DialectOfModelList.
-func FetchPrices(ctx context.Context, cfg ProviderConfig) (map[string]Rates, []byte, error) {
-	return client.FetchPrices(ctx, cfg)
+// FetchModelList reads an endpoint's model list. A model that published no
+// pricing is ABSENT from Prices, never present with zeros: a host has to be
+// able to tell a free model from an unpriced one, because the second renders an
+// em dash and the first renders nothing owed.
+func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
+	return client.FetchModelList(ctx, cfg)
 }
+
+// DecodeModelList reads a model-list document a caller already holds. A document
+// that will not parse is an error, never an empty result: an endpoint answering
+// with an error page must not read as one that publishes no prices.
+func DecodeModelList(body []byte) (*ModelList, error) { return client.DecodeModelList(body) }
 
 // Anomalous reports a usage record that prices something it cannot: more cached
 // tokens than there were prompt tokens. Rates.Cost clamps rather than going

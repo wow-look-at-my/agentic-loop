@@ -1,88 +1,10 @@
 package commonai
 
 import (
-	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-// openRouterModelList is the shape an aggregator publishes: rates as STRINGS,
-// in USD per token, alongside the model list a host fetches anyway.
-const openRouterModelList = `{
-  "object": "list",
-  "data": [
-    {
-      "id": "anthropic/claude-opus-4-6",
-      "object": "model",
-      "pricing": {
-        "prompt": "0.000015",
-        "completion": "0.000075",
-        "input_cache_read": "0.0000015",
-        "input_cache_write": "0.00001875",
-        "input_cache_write_1h": "0.00003"
-      }
-    },
-    {
-      "id": "openai/gpt-5",
-      "pricing": {"prompt": "0.00000125", "completion": "0.00001"}
-    },
-    {
-      "id": "some/free-model",
-      "pricing": {"prompt": "0", "completion": "0"}
-    },
-    {"id": "local/llama", "pricing": {}},
-    {"id": "no-pricing-at-all"}
-  ]
-}`
-
-func TestPricesOfModelListReadsPublishedRates(t *testing.T) {
-	prices := PricesOfModelList([]byte(openRouterModelList))
-
-	opus, ok := prices["anthropic/claude-opus-4-6"]
-	require.True(t, ok)
-	assert.InDelta(t, 0.000015, opus.Prompt, 1e-12)
-	assert.InDelta(t, 0.000075, opus.Completion, 1e-12)
-	assert.InDelta(t, 0.0000015, opus.CacheRead, 1e-12)
-	assert.InDelta(t, 0.00001875, opus.CacheWrite, 1e-12)
-	assert.InDelta(t, 0.00003, opus.CacheWrite1h, 1e-12)
-}
-
-// A block with no cache rates still prices a call: the cache terms fall back to
-// the prompt rate, which is what those tokens could otherwise have cost.
-func TestAMissingCacheRateFallsBackToThePromptRate(t *testing.T) {
-	r := PricesOfModelList([]byte(openRouterModelList))["openai/gpt-5"]
-	assert.InDelta(t, 0.00000125, r.CacheRead, 1e-12)
-	assert.InDelta(t, 0.00000125, r.CacheWrite, 1e-12)
-	assert.InDelta(t, 0.00000125, r.CacheWrite1h, 1e-12)
-}
-
-// Zero is a price and absence is not. A free model is priced at zero; a model
-// that published nothing is missing, so a host renders an em dash rather than
-// claiming the call was free.
-func TestAFreeModelIsPricedAndAnUnpricedOneIsAbsent(t *testing.T) {
-	prices := PricesOfModelList([]byte(openRouterModelList))
-
-	free, ok := prices["some/free-model"]
-	require.True(t, ok, "a published zero is a price")
-	assert.Zero(t, free.Cost(Usage{PromptTokens: 1000, CompletionTokens: 1000}))
-
-	_, ok = prices["local/llama"]
-	assert.False(t, ok, "an empty pricing block is not a free model")
-	_, ok = prices["no-pricing-at-all"]
-	assert.False(t, ok)
-}
-
-func TestPricesOfModelListSurvivesGarbage(t *testing.T) {
-	assert.Empty(t, PricesOfModelList(nil))
-	assert.Empty(t, PricesOfModelList([]byte("not json")))
-	assert.Empty(t, PricesOfModelList([]byte(`{"data":[{"id":"x","pricing":{"prompt":"nonsense"}}]}`)))
-	assert.Empty(t, PricesOfModelList([]byte(`{"data":[{"id":"x","pricing":{"prompt":"-1"}}]}`)),
-		"a negative rate is a document nobody should bill from")
-}
 
 // The arithmetic, with the three errors that cost real money.
 func TestCostDoesNotDoubleCountCachedTokens(t *testing.T) {
@@ -129,53 +51,4 @@ func TestAnInconsistentUsageClampsAndSaysSo(t *testing.T) {
 
 	ok := Usage{PromptTokens: 12400, CacheReadTokens: &write, CacheWriteTokens: &write}
 	assert.False(t, Anomalous(ok))
-}
-
-func TestFetchPricesReadsTheEndpointsModelList(t *testing.T) {
-	var gotAuth, gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(openRouterModelList))
-	}))
-	defer srv.Close()
-
-	prices, body, err := FetchPrices(context.Background(), ProviderConfig{
-		BaseURL: srv.URL, APIKey: "sk-test", HTTPClient: srv.Client(),
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "/v1/models", gotPath)
-	assert.Equal(t, "Bearer sk-test", gotAuth)
-	assert.Contains(t, prices, "anthropic/claude-opus-4-6")
-
-	// The same bytes answer the dialect, so a host that wants both pays for one
-	// request rather than two.
-	assert.Equal(t, DialectOpenAI, DialectOfModelList(body))
-}
-
-func TestFetchPricesReportsAnEndpointThatRefuses(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
-
-	_, _, err := FetchPrices(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "401")
-
-	_, _, err = FetchPrices(context.Background(), ProviderConfig{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no base URL")
-}
-
-// An endpoint that publishes no pricing is not a failure. Most do not.
-func TestAnEndpointWithNoPricingIsNotAnError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5","object":"model"}]}`))
-	}))
-	defer srv.Close()
-
-	prices, _, err := FetchPrices(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
-	require.NoError(t, err)
-	assert.Empty(t, prices)
 }

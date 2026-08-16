@@ -36,10 +36,10 @@ type (
 	Dialect              = commonai.Dialect
 	Param                = commonai.Param
 
-	// Rates is what one model charges, per token. It is here because a host
-	// that prices a call has to name the type it holds, and because the
-	// document it comes out of is the same model list DetectDialect reads.
-	Rates = commonai.Rates
+	// Rates is what one model charges, per token, and ModelList is the document
+	// it comes out of — the same one that names the dialect.
+	Rates     = commonai.Rates
+	ModelList = commonai.ModelList
 
 	// RetryPolicy and RateLimiter are the extras' policies, reachable here
 	// because ProviderConfig carries them.
@@ -119,8 +119,7 @@ var (
 	ParamsFromJSONObject = commonai.ParamsFromJSONObject
 	ParamsJSON           = commonai.ParamsJSON
 	Dialects             = commonai.Dialects
-	DialectOfModelList   = commonai.DialectOfModelList
-	PricesOfModelList    = commonai.PricesOfModelList
+	DecodeModelList      = commonai.DecodeModelList
 	Anomalous            = commonai.Anomalous
 	NewRateLimiter       = extras.NewRateLimiter
 )

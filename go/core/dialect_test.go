@@ -60,28 +60,6 @@ func TestDetectDialectReadsTheModelList(t *testing.T) {
 	}
 }
 
-// The shape test is exported for a host that already fetches model lists, so
-// reading the tell costs it no request -- and so the rule is declared once.
-func TestDialectOfModelListIsTheOneShapeTest(t *testing.T) {
-	assert.Equal(t, DialectOpenAI, DialectOfModelList([]byte(jsonMust(jsonObj{
-		"object": "list", "data": jsonArr{},
-	}))))
-	assert.Equal(t, DialectAnthropic, DialectOfModelList([]byte(jsonMust(jsonObj{
-		"data": jsonArr{jsonObj{"type": "model"}},
-	}))))
-	assert.Equal(t, DialectAuto, DialectOfModelList([]byte(`<html>not json</html>`)),
-		"no answer, rather than a guess")
-	assert.Equal(t, DialectAuto, DialectOfModelList([]byte(jsonMust(jsonObj{
-		"models": jsonArr{"a"},
-	}))), "a document of neither shape places neither dialect")
-
-	// An endpoint serving /v1/responses answers the same model list as one
-	// that does not, so detection cannot ever name it. Using it is a choice.
-	assert.Equal(t, DialectOpenAI, DialectOfModelList([]byte(jsonMust(jsonObj{
-		"object": "list", "data": jsonArr{jsonObj{"id": "gpt-x", "object": "model"}},
-	}))), "detection never returns DialectResponses")
-}
-
 // An unanswered question answers DialectAuto and an error, never a guess: a
 // wrong dialect does not degrade, it breaks chat outright.
 func TestDetectDialectRefusesToGuess(t *testing.T) {

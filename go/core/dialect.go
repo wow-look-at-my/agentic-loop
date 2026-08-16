@@ -2,10 +2,7 @@ package commonai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
 )
 
 // Which wire protocol an endpoint speaks, established by asking it rather than
@@ -91,89 +88,16 @@ func Dialects() []Dialect {
 // list. It returns DialectAuto with an error when the answer is not
 // established -- never a guess dressed as a finding, because a wrong dialect
 // does not degrade, it breaks chat outright.
+// It is a convenience over FetchModelList for a caller that wants only this —
+// the CLI's --dialect auto — and it makes the same one request. A host that
+// also prices calls reads both off one ModelList instead.
 func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
-	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	if base == "" {
-		return DialectAuto, fmt.Errorf("detecting the dialect: no base URL")
-	}
-	hc := cfg.HTTPClient
-	if hc == nil {
-		hc = http.DefaultClient
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
+	list, err := FetchModelList(ctx, cfg)
 	if err != nil {
 		return DialectAuto, fmt.Errorf("detecting the dialect: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
-	if cfg.APIKey != "" {
-		// Both credential forms, because the point of the request is that we
-		// do not yet know which server is answering. Each dialect ignores the
-		// other's header.
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-		req.Header.Set("x-api-key", cfg.APIKey)
-	}
-	req.Header.Set("anthropic-version", defaultAnthropicVersion)
-	for k, v := range cfg.Headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := hc.Do(req)
-	if err != nil {
-		return DialectAuto, fmt.Errorf("detecting the dialect: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _, err := readCapped(resp.Body, detectMaxBytes)
-	if err != nil {
-		return DialectAuto, fmt.Errorf("detecting the dialect: reading the model list: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return DialectAuto, fmt.Errorf("detecting the dialect: the model list answered %d", resp.StatusCode)
-	}
-	d := DialectOfModelList(body)
-	if d == DialectAuto {
+	if list.Dialect == DialectAuto {
 		return DialectAuto, fmt.Errorf("detecting the dialect: the model list matches neither dialect")
 	}
-	return d, nil
-}
-
-// detectMaxBytes caps the model list read. A list is small; anything larger is
-// not the document this is trying to recognize.
-const detectMaxBytes = 1 << 20
-
-// DialectOfModelList reads the structural tell out of a model-list document,
-// answering DialectAuto when it matches neither. The ENVELOPE is checked before
-// the items, because a list with no models at all still identifies its server.
-//
-// It is exported for the host that fetches model lists of its own: reading the
-// tell off a response it was already going to make costs no request, and going
-// through this function is what stops the rule from being declared a second
-// time somewhere it can drift.
-func DialectOfModelList(body []byte) Dialect {
-	var doc struct {
-		Object  string `json:"object"`
-		HasMore *bool  `json:"has_more"`
-		Data    []struct {
-			Object string `json:"object"`
-			Type   string `json:"type"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return DialectAuto
-	}
-	switch {
-	case doc.Object == "list":
-		return DialectOpenAI
-	case doc.HasMore != nil:
-		return DialectAnthropic
-	}
-	for _, m := range doc.Data {
-		switch {
-		case m.Type == "model":
-			return DialectAnthropic
-		case m.Object == "model":
-			return DialectOpenAI
-		}
-	}
-	return DialectAuto
+	return list.Dialect, nil
 }
