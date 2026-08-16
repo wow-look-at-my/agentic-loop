@@ -107,6 +107,50 @@ func TestRepoJobLogFailureExplainsItself(t *testing.T) {
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 9})
 	require.True(t, res.IsError)
 	assert.Contains(t, res.Content, "job 9 of /repos/octo/hello")
+	assert.Contains(t, res.Content, "will not fix itself")
+}
+
+// GitHub 404s the logs endpoint for a job that has not finished -- the log is
+// not archived to storage yet -- and that looks identical on the wire to a job
+// no token can see. The tool must tell them apart rather than call a job that
+// is simply still running "gone".
+func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/actions/jobs/9/logs":
+			return http.StatusNotFound, `{"message":"Not Found"}`
+		case "/repos/octo/hello/actions/jobs/9":
+			return http.StatusOK, `{"id":9,"name":"build","status":"in_progress","conclusion":""}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 9})
+	require.True(t, res.IsError)
+	assert.Contains(t, res.Content, "still in_progress")
+	assert.NotContains(t, res.Content, "will not fix itself")
+	assert.NotContains(t, res.Content, "does not exist")
+}
+
+// A job GitHub reports as genuinely completed, whose log 404s anyway, keeps
+// the ordinary explanation -- the job-status re-read has nothing to add over
+// what explainFailure already says.
+func TestRepoJobLogCompletedJobKeepsTheOrdinaryFailure(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
+		switch c.Path {
+		case "/repos/octo/hello/actions/jobs/9/logs":
+			return http.StatusNotFound, `{"message":"Not Found"}`
+		case "/repos/octo/hello/actions/jobs/9":
+			return http.StatusOK, `{"id":9,"name":"build","status":"completed","conclusion":"failure"}`
+		default:
+			t.Fatalf("unexpected path %q", c.Path)
+			return 0, ""
+		}
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 9})
+	require.True(t, res.IsError)
+	assert.Contains(t, res.Content, "will not fix itself")
 }
 
 // The whole chain a PAT-only host has: the Checks API is refused, the Actions
