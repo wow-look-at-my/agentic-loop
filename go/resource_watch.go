@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // The polling half of resource watching: once per turn it re-reads every
@@ -219,10 +221,10 @@ func (w *resourceWatcher) Poll(ctx context.Context) (ResourcePoll, error) {
 	captures, warnings := w.readAll(ctx)
 	poll.Warnings = w.newWarnings(warnings)
 
-	seen := make(map[string]bool, len(captures))
+	seen := set.New[string](len(captures))
 	for _, c := range captures {
 		key := snapshotKey(c.sourceID, c.uri)
-		seen[key] = true
+		seen.Add(key)
 		before, existed := prev[key]
 		if existed && before.Hash == c.hash {
 			continue // unchanged; nothing to record and nothing to say
@@ -241,7 +243,7 @@ func (w *resourceWatcher) Poll(ctx context.Context) (ResourcePoll, error) {
 	// A resource that vanished from the listing is a change too: the model was
 	// told it existed, and must be told it no longer does.
 	for key, before := range prev {
-		if seen[key] || w.sourceFailed(before.SourceID, warnings) {
+		if seen.Contains(key) || w.sourceFailed(before.SourceID, warnings) {
 			// Never report a removal on a source whose listing failed this
 			// pass: absent-because-unreachable is not absent.
 			continue

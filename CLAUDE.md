@@ -4,23 +4,41 @@ Notes for Claude working in this repository.
 
 ## What this is
 
-`agentic-loop` — reusable agentic-loop libraries for OpenAI-compatible and
-Anthropic chat APIs. `go/` holds the Go library (package `agentic`, a single
-package); `ts/` is a planned TypeScript port, and the Go source plus
-`go/README.md` are its specification. There is no PARITY.md: it was deleted
-deliberately, so do not recreate one — a second declaration of the Go
-package's behavior is a copy nothing keeps true.
+`agentic-loop` — an agentic tool loop and the wire half it runs on, in ONE Go
+module (`github.com/wow-look-at-my/agentic-loop/go`). `ts/` is a planned
+TypeScript port, and the Go source plus `go/README.md` are its specification.
+There is no PARITY.md: it was deleted deliberately, so do not recreate one — a
+second declaration of the Go package's behavior is a copy nothing keeps true.
+
+**One module, several packages.** `go/` itself is package `agentic` (the loop).
+The wire half sits beside it: `go/core` (the XML format, its schema and the
+three dialects), `go/client` (the Go API), `go/extras` (retry, rate limit),
+`go/session`, `go/http`, `go/socket`, `go/cli` (the `cai` commands).
+
+**Every `main` lives under `go/cmd/<binary>/`.** go-toolchain names a binary
+after the MODULE when its main package sits one level below the module root, so
+`go/cli` and `go/todo_driver` both wanted to be called `go` and only one of
+them got built. Two levels down, the leaf directory is the name: `cai` and
+`todo_driver`, both built.
+
+**It is ONE module on purpose.** These packages were briefly seven modules in a
+separate repository, and every one of them had to pin its siblings at a
+pseudo-version — which a commit cannot honestly state about itself, so the
+first publish pinned a commit with no modules in it and consumers got
+`missing go.mod at revision`. One `go.mod` has no sibling pins to rot, no
+cross-repo release ordering, and one CI job. Do not split it back up.
+
+`aliases.go` re-exports what the loop uses, as ALIASES: `agentic.Message` IS
+`client.Message`, so a value crosses between the loop and the wire half
+without conversion.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
 
 - `simple-llm-ui` `internal/chat` + `internal/upstream` + `internal/tools`:
-  the OpenAI dialect (wire shapes, the Message content presence rule, the
-  tool-call accumulator, usage merging, the llama.cpp `timings` decode,
-  param-strip retry, the SSE scanner and its buffer sizes), the loop
-  semantics (RunSubagent's wrap-up fallback — but NOT its turn cap, which
-  this library deliberately dropped, see Hard rules;
-  Run's approval flow and cancel/approval finalization), the filesystem
+  the loop semantics (RunSubagent's wrap-up fallback — but NOT its turn cap,
+  which this library deliberately dropped, see Hard rules; Run's approval flow
+  and cancel/approval finalization), the filesystem
   tools (`internal/tools/fs*.go`: the seven tools' names, descriptions,
   schemas, caps and rendering), the GitHub client and repo tools
   (`internal/tools/repo*.go` + `token_probe.go`: the credential rotation,
@@ -32,16 +50,9 @@ redesign — check these when a behavior question comes up):
   grants, Gate, activity telemetry) and `web_fetch`
   (`internal/tools/webfetch.go`: caps, URL validation, HTML cleanup, Tika,
   the model-backed summary).
-- `ai-shadertoy` `src/ai` (`providers.ts`, `compact.ts`): the Anthropic
-  dialect reference (message/thinking/tool_result mapping, cache
-  breakpoints, stream events) and compaction.
-- `model-benchmark` `src` (`env.ts`, `agent.ts`): retry constants and
-  classification, context-overflow detection, the transcript-tail cache
-  marker discipline.
-
-The Responses dialect has NO source repo — it was written here, against the
-API's own shapes. Do not go looking for the semantics somewhere else; the
-answers are `go/README.md` and `responses_test.go`.
+- `ai-shadertoy` `src/ai` `compact.ts`: compaction.
+- `model-benchmark` `src` (`env.ts`, `agent.ts`): context-overflow detection
+  and the transcript-tail cache marker discipline.
 
 ## Build & test
 
@@ -57,8 +68,13 @@ cd go && go-toolchain
   auto-fixes as a follow-up commit. Its rewrites (formatting, import order,
   testify in tests, go.mod/go.sum) are canonical — never revert them.
 - Tests use `testify` (`assert`/`require`); the toolchain enforces it.
-- Test against `httptest` fake servers and the in-process `scriptProvider`
-  stub (`run_test.go`) — no network, no credentials.
+- Test against `httptest` fake servers (`upstream_test.go`) and the in-process
+  `scriptProvider` stub (`run_test.go`) — no network, no credentials. A test
+  whose subject is a DIALECT lives beside that dialect in `core/`; a test of
+  the loop's behavior when a call streams, retries, or breaks lives at `go/`.
+- No `go.work` and nothing to check out alongside: the only org dependencies
+  are `xml-validator/validator` and `go-containers`, both resolved from the
+  proxy.
 
 ## Layering — read this before moving anything between layers
 
@@ -86,40 +102,37 @@ side of that line it falls on — do not put it on both.
 
 ## Hard rules
 
-- **Runtime is standard library only.** testify is test-only. No new
-  runtime dependencies (the web-fetch HTML cleanup and the subagent
-  machinery are deliberately hand-rolled stdlib, like the source).
+- **Runtime is standard library only**, plus `xml-validator/validator`,
+  `go-containers/set`, and cobra in `cli/`. testify is test-only. No new
+  third-party runtime dependencies (the websocket is hand-rolled RFC 6455, and
+  so are the web-fetch HTML cleanup and the subagent machinery, like the
+  source). `go-containers/set` is first-party and NOT optional: go-toolchain's
+  `mapset` analyzer hard-fails an org module that uses a `map[K]bool` as a set,
+  so a set is `set.Set[K]` here.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
 - **No secrets or org-internal URLs** in code, tests, examples, or docs —
   placeholder endpoints (`https://api.openai.com/v1`,
   `https://api.anthropic.com`) and placeholder keys only.
+- **`aliases.go` is aliases and thin calls, never a copy.** Every wire type is
+  `= client.X`, so the two packages share one declaration. Never redeclare a
+  type as a struct of its own, and never widen the re-export past what the loop
+  uses: a name added here is a name this package now owns forever. Anything the
+  loop needs and cannot reach is a gap in `client`'s surface — fix it there.
 - **Providers are built ONLY via the per-dialect constructors**
   (`NewOpenAIProvider` / `NewResponsesProvider` / `NewAnthropicProvider`, each
   embedding the shared `ProviderConfig` connection base). The dialect
-  implementations (`openaiProvider`, `responsesProvider`, `anthropicProvider`)
-  stay unexported; do not re-export them or add construction side doors.
-  `Dialect` (dialect.go) NAMES a protocol for a host's settings — it never
-  constructs one.
-- **The Responses dialect exists for exactly one thing** (`responses.go` +
-  `responses_wire.go`): a reasoning model's chain of thought surviving a tool
-  call, which chat-completions has no field for. So the reasoning ITEM with its
-  `encrypted_content` is what gets replayed, never a summary alone — a summary
-  is prose about the reasoning. `Store` is FALSE by default against the API's
-  own default (third-party retention is the caller's decision to make out
-  loud), `previous_response_id` is never sent (the transcript is the caller's),
-  and detection can never name this dialect, since the model list looks
-  identical. Depth: `go/README.md`, `responses_test.go`.
-- **Retry belongs to the Provider and is ON by default.** Both constructors
-  end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
-  nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
-  returns the dialect provider unwrapped). `ProviderConfig.Retry` is the
-  library's ONE retry knob — do NOT add another to `Config` or
-  `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
+  implementations live in `core/` and stay unexported there; do not add
+  construction side doors. `Dialect` NAMES a protocol for a host's settings —
+  it never constructs one.
+- **Retry belongs to the Provider and is ON by default.**
+  `ProviderConfig.Retry` (nil = `DefaultRetry` = 10 attempts; a one-attempt
+  policy turns it off) is the ONE retry knob — do NOT add another to `Config`
+  or `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
-  safe.
+  safe. That is why it is a knob the loop passes along and never reads.
 - **A tool is an individual thing, and nothing groups them.** `Tool` is
   `Decl`/`Execute`, and a run's toolset is a flat `Tools`
   slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
@@ -158,15 +171,11 @@ side of that line it falls on — do not put it on both.
   (the sub-run's turns plus its `share_context=summary` briefing, in order,
   never summed). Under-counted money cannot be recovered later — the numbers
   were never emitted.
-- **Retrying must stay observable.** 10 attempts of uncapped backoff is
-  ~255s; `StreamEvents.OnRetry` fires before each one so the host can show
-  the failure and the wait. A retry notification is not a stream event and
-  never withholds a retry.
 - Exact strings are contract: `DeniedMessage`, the sub-agent refusal texts,
   `tool execution failed: ...`, the wrap-up instruction, the stuck nudge
   (`stuckNudgeInstruction`; `StuckNudgeAt`/`StuckFailAt` are constants, not
   knobs), the compaction
-  request text, the param-strip regexes, the overflow regex, and the
+  request text, and the
   built-in tools' prompts/schemas/teaching errors (the subagent
   description + schema, `DefaultSubagentSystemPrompt`, the share_context
   and allowed_tools error texts, `SubagentCutOffNote`,
@@ -220,6 +229,50 @@ side of that line it falls on — do not put it on both.
   returning non-nil) must keep their contract: abort + partial
   result/completion, `errors.Is`-reachable, never `*APIError`, never
   transient, delivery marked before the callback fires.
+
+## Hard rules — the wire half (`core/`, `client/`, and the transports)
+
+- **The format is the definition.** The XSD in `core/schema/` is normative, so
+  an implementation in another language can speak it from the schema alone. The
+  Go types are a conforming projection of it, not the other way round: when
+  they disagree, the Go code is what is wrong.
+- **core translates and does not decide.** It maps a document onto a dialect
+  and back, faithfully. Anything that folds, merges, retries, or applies a
+  policy is `client`'s business.
+- **A usage report is what the provider said.** `core` keeps every report, in
+  order (`Completion.Usages`); `client` folds them into the one figure a caller
+  bills against. A document reporting an invented number would be the library's
+  arithmetic wearing the provider's name.
+- **Validate at every boundary.** Anything arriving from outside is checked
+  against the schema before anything acts on it.
+- **Nothing is a wildcard.** No `xs:any`, no `xs:anyAttribute`. An undeclared
+  attribute is an error, which is the point.
+- **A dialect that cannot express something FAILS.** Never drop it: a request
+  quietly stripped of what the caller asked about is a wrong answer that looks
+  like a right one.
+- **The Responses dialect exists for exactly one thing** (`core/responses.go` +
+  `core/responses_wire.go`): a reasoning model's chain of thought surviving a
+  tool call, which chat-completions has no field for. So the reasoning ITEM
+  with its `encrypted_content` is replayed, never a summary alone — a summary
+  is prose ABOUT the reasoning. `Store` is FALSE by default against the API's
+  own default (third-party retention is the caller's decision to make out
+  loud), `previous_response_id` is never sent (the transcript is the
+  caller's), and detection can never name this dialect, since the model list
+  looks identical.
+- **`&#0;` is how NUL travels.** Our writer emits it and our validator accepts
+  it — see `docs/nul.md`.
+- **No environment reads outside `cli/`.** Endpoints and keys are explicit
+  fields; all I/O goes through an injectable `*http.Client`.
+
+## Where the depth lives
+
+- `docs/format.md` — the document vocabulary, the param tree, provider
+  namespaces, and what makes it lossless.
+- `docs/streaming.md` — the progressive document, `OnPart`, and why there is no
+  event vocabulary.
+- `docs/module-layout.md` — why this is one module, and what the seven-module
+  split cost before it was collapsed.
+- `docs/nul.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
 
 ## Fix the bug. Never build around it.
 

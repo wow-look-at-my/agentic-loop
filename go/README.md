@@ -8,9 +8,16 @@ the call, tool execution with a per-call approval seam, transient-failure retry,
 rejected-parameter recovery, prompt caching on both dialects, conversation
 compaction, and two optional built-in tools (a sub-agent and a web fetcher).
 
-The runtime is **standard library only**. All I/O goes through an injectable
+The runtime is **standard library only** (plus `xml-validator/validator`,
+`go-containers/set`, and cobra in `cli/`). All I/O goes through an injectable
 `*http.Client`, and the package reads **no environment variables** — every
 endpoint, key, and knob is explicit configuration.
+
+The three dialects themselves live in [`core/`](core/), which speaks one XML
+format and translates it to and from each provider, behind the Go API in
+[`client/`](client/). This package re-exports what it uses as type aliases, so
+`agentic.Message` **is** `client.Message`: a value built here is one those
+packages take without a conversion step.
 
 ## Install
 
@@ -104,7 +111,9 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
 
 Two layers, and the split decides where anything new belongs. Get this
 backwards and you end up with the same concern implemented twice, fighting
-each other.
+each other. The two layers are two packages — the lower one is `client/` over
+`core/` — so the compiler enforces the direction: the provider cannot reach for
+anything here, because the import would be a cycle.
 
 **The loop (`Run`) is a high-level construct.** It asks the model something,
 runs the tools the model asks for, feeds the results back, and repeats until

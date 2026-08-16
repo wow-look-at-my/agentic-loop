@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Running one sub-agent: the launch (asynchronous when a registry is
@@ -347,20 +349,16 @@ func resolveAllowedTools(available, requested []string) (keep []string, errMsg s
 	if len(available) == 0 {
 		return nil, "run_subagent: the sub-agent has no tools available, so allowed_tools cannot be applied -- omit it."
 	}
-	set := make(map[string]bool, len(available))
-	for _, n := range available {
-		set[n] = true
-	}
-
-	chosen := make(map[string]bool)
+	known := set.Of(available...)
+	chosen := set.New[string]()
 	var unknown []string
 	for _, raw := range requested {
 		req := strings.TrimSpace(raw)
 		if req == "" {
 			continue
 		}
-		if set[req] {
-			chosen[req] = true
+		if known.Contains(req) {
+			chosen.Add(req)
 			continue
 		}
 		// Bare-name fallback: match "<server>__<req>" when exactly one tool does.
@@ -371,7 +369,7 @@ func resolveAllowedTools(available, requested []string) (keep []string, errMsg s
 			}
 		}
 		if len(hits) == 1 {
-			chosen[hits[0]] = true
+			chosen.Add(hits[0])
 			continue
 		}
 		unknown = append(unknown, req)
@@ -382,12 +380,12 @@ func resolveAllowedTools(available, requested []string) (keep []string, errMsg s
 			". Available tools: " + strings.Join(available, ", ") +
 			". Use these exact names, or omit allowed_tools to allow every read-only tool."
 	}
-	if len(chosen) == 0 {
+	if chosen.IsEmpty() {
 		return nil, "run_subagent: allowed_tools contained no usable tool names. Available tools: " +
 			strings.Join(available, ", ") + "."
 	}
 	for _, n := range available {
-		if chosen[n] {
+		if chosen.Contains(n) {
 			keep = append(keep, n)
 		}
 	}

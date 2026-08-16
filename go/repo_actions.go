@@ -148,12 +148,12 @@ func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWork
 			fmt.Fprintf(&b, " (%s)", job.HTMLURL)
 		}
 		b.WriteString("\n")
-		if !failedConclusions[strings.ToLower(job.Conclusion)] {
+		if !failedConclusions.Contains(strings.ToLower(job.Conclusion)) {
 			continue
 		}
 		shown := 0
 		for _, step := range job.Steps {
-			if !failedConclusions[strings.ToLower(step.Conclusion)] {
+			if !failedConclusions.Contains(strings.ToLower(step.Conclusion)) {
 				continue
 			}
 			if shown >= actionsStepLimit {

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 	"maps"
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // memFolder is an in-memory folder: a flat map of relative path -> content,
@@ -42,15 +42,14 @@ func (f *memFolder) List(_ context.Context, p string) (Listing, error) {
 	}
 	dir := f.rel(p)
 	var out Listing
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	for name, content := range f.files {
 		rest, ok := WithinDir(name, dir)
 		if !ok {
 			continue
 		}
 		if i := strings.Index(rest, "/"); i >= 0 {
-			if child := rest[:i]; !seen[child] {
-				seen[child] = true
+			if child := rest[:i]; seen.Add(child) {
 				out.Entries = append(out.Entries, DirEntry{Name: child, Dir: true})
 			}
 			continue
@@ -97,7 +96,7 @@ func (f *memFolder) Grep(_ context.Context, p string, q GrepQuery) (GrepResult, 
 	}
 	scope := f.rel(p)
 	var res GrepResult
-	files := map[string]bool{}
+	files := set.New[string]()
 	for name, content := range f.files {
 		if _, ok := WithinScope(name, scope); !ok {
 			continue
@@ -110,11 +109,11 @@ func (f *memFolder) Grep(_ context.Context, p string, q GrepQuery) (GrepResult, 
 				res.Truncated = true
 				return res, nil
 			}
-			files[name] = true
+			files.Add(name)
 			res.Hits = append(res.Hits, GrepHit{Path: "/" + f.mount + "/" + name, Line: i + 1, Text: line})
 		}
 	}
-	res.Files = len(files)
+	res.Files = files.Len()
 	return res, nil
 }
 

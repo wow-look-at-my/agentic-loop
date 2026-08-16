@@ -456,7 +456,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 		Usage: Usage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4}}
 	netErr := errors.New("connection reset mid-stream")
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: partial, err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("part") }},
+		{comp: partial, err: netErr, emit: func(ev *StreamEvents) { _ = ev.EmitText("part") }},
 	}}
 	res, err := Run(context.Background(), Config{Provider: newProvider(provider, &noSleep)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
@@ -481,7 +481,7 @@ func TestRetryTrustsTheProviderContract(t *testing.T) {
 	// and its call is re-sent.
 	netErr := errors.New("reset")
 	provider := &scriptProvider{steps: []scriptStep{
-		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.emitText("leaked") }},
+		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.EmitText("leaked") }},
 		{comp: assistantComp("re-sent")},
 	}}
 	res, err := Run(context.Background(),
@@ -600,11 +600,11 @@ func TestBatchFingerprintIgnoresIDsAndSeparatesFields(t *testing.T) {
 func TestRunStreamEventsForwarded(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("hi"), emit: func(ev *StreamEvents) {
-			_ = ev.emitText("hi")
-			_ = ev.emitReasoning("hmm")
-			_ = ev.emitUsage(Usage{PromptTokens: 1})
-			_ = ev.emitProgress(PromptProgress{Processed: 1, Total: 2})
-			_ = ev.emitTimings(Timings{PredictedN: 3, PredictedMS: 40})
+			_ = ev.EmitText("hi")
+			_ = ev.EmitReasoning("hmm")
+			_ = ev.EmitUsage(Usage{PromptTokens: 1})
+			_ = ev.EmitProgress(PromptProgress{Processed: 1, Total: 2})
+			_ = ev.EmitTimings(Timings{PredictedN: 3, PredictedMS: 40})
 		}},
 	}}
 	var text, reasoning string

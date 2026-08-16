@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // A tool's JSON Schema is INFERRED from the Go struct its handler decodes, so
@@ -42,12 +44,12 @@ func EnumSchema[In any](enums map[string][]string) json.RawMessage {
 	}
 	props := structProps(typ)
 
-	seen := map[string]bool{}
+	seen := set.New[string](len(props))
 	for _, p := range props {
-		seen[p.name] = true
+		seen.Add(p.name)
 	}
 	for name := range enums {
-		if !seen[name] {
+		if !seen.Contains(name) {
 			panic(fmt.Sprintf("agentic: cannot constrain unknown property %q on %s", name, typ))
 		}
 	}

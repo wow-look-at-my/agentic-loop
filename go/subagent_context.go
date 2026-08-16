@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // maxSharedContextRunes caps a rendered parent-context transcript so an enormous
@@ -93,19 +95,19 @@ func SelectLastN(msgs []Message, n int) []Message {
 // indices (1 = most recent), in chronological order, de-duplicated. Indices that
 // fall outside the range are ignored.
 func SelectByEndIndices(msgs []Message, indices []int) []Message {
-	chosen := make(map[int]bool, len(indices))
+	chosen := set.New[int](len(indices))
 	for _, idx := range indices {
 		if idx < 1 {
 			continue
 		}
 		pos := len(msgs) - idx
 		if pos >= 0 && pos < len(msgs) {
-			chosen[pos] = true
+			chosen.Add(pos)
 		}
 	}
 	var out []Message
 	for i, m := range msgs {
-		if chosen[i] {
+		if chosen.Contains(i) {
 			out = append(out, m)
 		}
 	}
