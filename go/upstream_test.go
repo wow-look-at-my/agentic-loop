@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wow-look-at-my/common-ai-api/go/client"
+	"github.com/wow-look-at-my/agentic-loop/go/client"
 )
 
 // Fake upstreams for the tests that drive the loop over a real provider.

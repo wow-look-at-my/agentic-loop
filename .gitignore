@@ -6,3 +6,4 @@
 # so the file is never committed.
 go.work
 go.work.sum
+go/*/build/

@@ -2,18 +2,18 @@ module github.com/wow-look-at-my/agentic-loop/go
 
 go 1.25.0
 
-require github.com/stretchr/testify v1.11.1
-
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/wow-look-at-my/common-ai-api/go/core v0.0.0-20260815192344-01fea7269424 // indirect; go-toolchain:auto-branch
-	github.com/wow-look-at-my/common-ai-api/go/extras v0.0.0-20260815192344-01fea7269424 // indirect; go-toolchain:auto-branch
-	github.com/wow-look-at-my/xml-validator v0.0.0-20260815153400-976d3b99fe31 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
+	github.com/wow-look-at-my/go-containers v0.0.0-20260815235059-bc089f373e68 // go-toolchain:auto-branch
+	github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260816013119-e3665a4689bb // go-toolchain:auto-branch
 )
 
 require (
-	github.com/wow-look-at-my/common-ai-api/go/client v0.0.0-20260815192344-01fea7269424 // go-toolchain:auto-branch
-	github.com/wow-look-at-my/go-containers v0.0.0-20260815235059-bc089f373e68 // go-toolchain:auto-branch
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260816013119-e3665a4689bb // indirect; go-toolchain:auto-branch
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

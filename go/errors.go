@@ -1,7 +1,7 @@
 package agentic
 
 import (
-	"github.com/wow-look-at-my/common-ai-api/go/client"
+	"github.com/wow-look-at-my/agentic-loop/go/client"
 )
 
 // badRequestErr wraps a deterministic request-construction failure so

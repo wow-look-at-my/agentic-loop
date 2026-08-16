@@ -4,22 +4,27 @@ Notes for Claude working in this repository.
 
 ## What this is
 
-`agentic-loop` — reusable agentic-loop libraries for OpenAI-compatible and
-Anthropic chat APIs. `go/` holds the Go library (package `agentic`, a single
-package); `ts/` is a planned TypeScript port, and the Go source plus
-`go/README.md` are its specification. There is no PARITY.md: it was deleted
-deliberately, so do not recreate one — a second declaration of the Go
-package's behavior is a copy nothing keeps true.
+`agentic-loop` — an agentic tool loop and the wire half it runs on, in ONE Go
+module (`github.com/wow-look-at-my/agentic-loop/go`). `ts/` is a planned
+TypeScript port, and the Go source plus `go/README.md` are its specification.
+There is no PARITY.md: it was deleted deliberately, so do not recreate one — a
+second declaration of the Go package's behavior is a copy nothing keeps true.
 
-**The wire half is not here.** The three dialects, the SSE decode, dialect
-detection, param-strip and the retry/rate-limit policies live in
-[common-ai-api](https://github.com/wow-look-at-my/common-ai-api), which speaks
-one XML format and translates it to and from each provider. `aliases.go`
-re-exports what the loop uses, as ALIASES: `agentic.Message` IS
-`client.Message`, so this package's API did not change when the code moved,
-and a value crosses between the two libraries without conversion. A question
-about wire behavior — a stream event, a usage snapshot, a dialect quirk — is
-answered in that repo, not this one.
+**One module, several packages.** `go/` itself is package `agentic` (the loop).
+The wire half sits beside it: `go/core` (the XML format, its schema and the
+three dialects), `go/client` (the Go API), `go/extras` (retry, rate limit),
+`go/session`, `go/http`, `go/socket`, `go/cli` (the `cai` binary).
+
+**It is ONE module on purpose.** These packages were briefly seven modules in a
+separate repository, and every one of them had to pin its siblings at a
+pseudo-version — which a commit cannot honestly state about itself, so the
+first publish pinned a commit with no modules in it and consumers got
+`missing go.mod at revision`. One `go.mod` has no sibling pins to rot, no
+cross-repo release ordering, and one CI job. Do not split it back up.
+
+`aliases.go` re-exports what the loop uses, as ALIASES: `agentic.Message` IS
+`client.Message`, so a value crosses between the loop and the wire half
+without conversion.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
@@ -59,12 +64,11 @@ cd go && go-toolchain
 - Tests use `testify` (`assert`/`require`); the toolchain enforces it.
 - Test against `httptest` fake servers (`upstream_test.go`) and the in-process
   `scriptProvider` stub (`run_test.go`) — no network, no credentials. A test
-  whose subject is a DIALECT belongs in common-ai-api; what belongs here is
-  the loop's behavior when a call streams, retries, or breaks.
-- `go.work` is NOT committed: it points at local checkouts of common-ai-api
-  and xml-validator, and it has to `replace` the common-ai-api modules as well
-  as `use` them — an unresolvable placeholder version is one Go tries to
-  fetch.
+  whose subject is a DIALECT lives beside that dialect in `core/`; a test of
+  the loop's behavior when a call streams, retries, or breaks lives at `go/`.
+- No `go.work` and nothing to check out alongside: the only org dependencies
+  are `xml-validator/validator` and `go-containers`, both resolved from the
+  proxy.
 
 ## Layering — read this before moving anything between layers
 
@@ -92,12 +96,13 @@ side of that line it falls on — do not put it on both.
 
 ## Hard rules
 
-- **Runtime is standard library only**, plus common-ai-api (the wire half) and
-  `go-containers/set`. testify is test-only. No new third-party runtime
-  dependencies (the web-fetch HTML cleanup and the subagent machinery are
-  deliberately hand-rolled stdlib, like the source). `go-containers/set` is
-  first-party and NOT optional: go-toolchain's `mapset` analyzer hard-fails an
-  org module that uses a `map[K]bool` as a set, so a set is `set.Set[K]` here.
+- **Runtime is standard library only**, plus `xml-validator/validator`,
+  `go-containers/set`, and cobra in `cli/`. testify is test-only. No new
+  third-party runtime dependencies (the websocket is hand-rolled RFC 6455, and
+  so are the web-fetch HTML cleanup and the subagent machinery, like the
+  source). `go-containers/set` is first-party and NOT optional: go-toolchain's
+  `mapset` analyzer hard-fails an org module that uses a `map[K]bool` as a set,
+  so a set is `set.Set[K]` here.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
@@ -105,17 +110,16 @@ side of that line it falls on — do not put it on both.
   placeholder endpoints (`https://api.openai.com/v1`,
   `https://api.anthropic.com`) and placeholder keys only.
 - **`aliases.go` is aliases and thin calls, never a copy.** Every wire type is
-  `= client.X`, so the two libraries share one declaration. Never redeclare a
-  moved type as a struct of its own, and never widen the re-export past what
-  the loop uses: a name added here is a name this package now owns forever.
-  Anything the loop needs and cannot reach is a gap in common-ai-api's client
-  surface — fix it there.
+  `= client.X`, so the two packages share one declaration. Never redeclare a
+  type as a struct of its own, and never widen the re-export past what the loop
+  uses: a name added here is a name this package now owns forever. Anything the
+  loop needs and cannot reach is a gap in `client`'s surface — fix it there.
 - **Providers are built ONLY via the per-dialect constructors**
   (`NewOpenAIProvider` / `NewResponsesProvider` / `NewAnthropicProvider`, each
   embedding the shared `ProviderConfig` connection base). The dialect
-  implementations live in common-ai-api and stay unexported there; do not add
-  construction side doors here. `Dialect` NAMES a protocol for a host's
-  settings — it never constructs one.
+  implementations live in `core/` and stay unexported there; do not add
+  construction side doors. `Dialect` NAMES a protocol for a host's settings —
+  it never constructs one.
 - **Retry belongs to the Provider and is ON by default.**
   `ProviderConfig.Retry` (nil = `DefaultRetry` = 10 attempts; a one-attempt
   policy turns it off) is the ONE retry knob — do NOT add another to `Config`
@@ -219,6 +223,50 @@ side of that line it falls on — do not put it on both.
   returning non-nil) must keep their contract: abort + partial
   result/completion, `errors.Is`-reachable, never `*APIError`, never
   transient, delivery marked before the callback fires.
+
+## Hard rules — the wire half (`core/`, `client/`, and the transports)
+
+- **The format is the definition.** The XSD in `core/schema/` is normative, so
+  an implementation in another language can speak it from the schema alone. The
+  Go types are a conforming projection of it, not the other way round: when
+  they disagree, the Go code is what is wrong.
+- **core translates and does not decide.** It maps a document onto a dialect
+  and back, faithfully. Anything that folds, merges, retries, or applies a
+  policy is `client`'s business.
+- **A usage report is what the provider said.** `core` keeps every report, in
+  order (`Completion.Usages`); `client` folds them into the one figure a caller
+  bills against. A document reporting an invented number would be the library's
+  arithmetic wearing the provider's name.
+- **Validate at every boundary.** Anything arriving from outside is checked
+  against the schema before anything acts on it.
+- **Nothing is a wildcard.** No `xs:any`, no `xs:anyAttribute`. An undeclared
+  attribute is an error, which is the point.
+- **A dialect that cannot express something FAILS.** Never drop it: a request
+  quietly stripped of what the caller asked about is a wrong answer that looks
+  like a right one.
+- **The Responses dialect exists for exactly one thing** (`core/responses.go` +
+  `core/responses_wire.go`): a reasoning model's chain of thought surviving a
+  tool call, which chat-completions has no field for. So the reasoning ITEM
+  with its `encrypted_content` is replayed, never a summary alone — a summary
+  is prose ABOUT the reasoning. `Store` is FALSE by default against the API's
+  own default (third-party retention is the caller's decision to make out
+  loud), `previous_response_id` is never sent (the transcript is the
+  caller's), and detection can never name this dialect, since the model list
+  looks identical.
+- **`&#0;` is how NUL travels.** Our writer emits it and our validator accepts
+  it — see `docs/nul.md`.
+- **No environment reads outside `cli/`.** Endpoints and keys are explicit
+  fields; all I/O goes through an injectable `*http.Client`.
+
+## Where the depth lives
+
+- `docs/format.md` — the document vocabulary, the param tree, provider
+  namespaces, and what makes it lossless.
+- `docs/streaming.md` — the progressive document, `OnPart`, and why there is no
+  event vocabulary.
+- `docs/module-layout.md` — why this is one module, and what the seven-module
+  split cost before it was collapsed.
+- `docs/nul.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
 
 ## Fix the bug. Never build around it.
 

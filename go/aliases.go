@@ -12,7 +12,7 @@ package agentic
 import (
 	"context"
 
-	"github.com/wow-look-at-my/common-ai-api/go/client"
+	"github.com/wow-look-at-my/agentic-loop/go/client"
 )
 
 // The conversation vocabulary.
