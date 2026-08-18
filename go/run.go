@@ -164,8 +164,8 @@ func (e *Events) emitFinalizeAssistant(ev FinalizeAssistantEvent) {
 // emitToolMessage tells the host to persist one tool result in transcript order,
 // carrying the model's tool-call id and the parent assistant message id. The
 // host advances its leaf here.
-func (e *Events) emitToolMessage(ev ToolMessageEvent) {
-	e.OnToolMessage.Invoke(ev)
+func (e *Events) emitToolMessage(ev ToolMessageEvent) error {
+	return e.OnToolMessage.Invoke(ev)
 }
 
 // emitResourceNotice tells the host the loop is about to deliver a resource
@@ -468,6 +468,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 			transcript = append(transcript, assistant)
 			aIdx := len(transcript) - 1
+			// Finalize the assistant as complete with its tool calls before
+			// executing them, matching the host's lifecycle: the row is
+			// persisted (with tool calls for display) before tools run. If the
+			// batch is aborted, abortBatch re-finalizes as cancelled.
+			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
 			// abortBatch ends the run mid-batch -- an approval decision that
 			// never arrived, or a tool callback that returned an error. It
 			// clears the pending batch: the assistant message keeps its
@@ -521,18 +526,19 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					return abortBatch(cberr)
 				}
 				transcript = append(transcript, recorded)
-				cfg.Events.emitToolMessage(ToolMessageEvent{
+				if terr := cfg.Events.emitToolMessage(ToolMessageEvent{
 					ToolCallID:        asked.ID,
 					ParentAssistantID: assistantID,
 					Content:           content,
 					Parts:             result.Parts,
 					IsError:           result.IsError,
-				})
+				}); terr != nil {
+					return abortBatch(terr)
+				}
 			}
 			if repeats == StuckNudgeAt {
 				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
 			}
-			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
 			continue
 		}
 
