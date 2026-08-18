@@ -219,11 +219,11 @@ type Config struct {
 	ResourceWatcher  ResourceWatcher
 	ResourceDiffTool string
 
-	// keepAlive holds a reference that keeps subscribed event callbacks from
+	// KeepAlive holds a reference that keeps subscribed event callbacks from
 	// being garbage-collected for the life of the run. event.Event holds weak
 	// pointers, so a caller that subscribes must retain the *func(T) error it
 	// passed to Subscribe — store the struct holding those function fields here.
-	keepAlive any
+	KeepAlive any
 
 	// SystemMessages is the loop's queue for automated notices (stop-hook
 	// nudges, resource notices, etc.). Any event listener can call Queue to
@@ -344,6 +344,22 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	// fingerprint and how many turns in a row have repeated it.
 	lastBatch := ""
 	repeats := 0
+	// currentAssistantID tracks the id of the in-flight assistant turn so a
+	// panic recovery can finalize it. It is set by emitAssistantMessage and
+	// cleared by emitFinalizeAssistant.
+	currentAssistantID := MessageID("")
+	finalizeAssistant := func(ev FinalizeAssistantEvent) {
+		cfg.Events.emitFinalizeAssistant(ev)
+		currentAssistantID = ""
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			if currentAssistantID != "" {
+				finalizeAssistant(FinalizeAssistantEvent{ID: currentAssistantID, Status: "error"})
+			}
+			panic(r) // re-panic so the caller's recover sees it
+		}
+	}()
 	finish := func(final Message) (*Result, error) {
 		transcript = append(transcript, final)
 		res.Messages = transcript
@@ -354,6 +370,26 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	for turn := 0; ; turn++ {
 		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns {
 			break
+		}
+		// Sub-agent delivery: if any reports are ready (without waiting),
+		// deliver them at the top of the turn so the model sees them. Skip on
+		// turn 0 — nothing has launched yet. This is the "between turns"
+		// path: a report that landed while the model was busy with tools.
+		if turn > 0 && cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+			reports := cfg.Subagents.Take()
+			if len(reports) > 0 {
+				delivery := Message{
+					Role:    RoleUser,
+					Kind:    SubagentReportKind,
+					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+				}
+				if cfg.SystemMessages != nil {
+					cfg.SystemMessages.Queue(delivery)
+				} else {
+					cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
+					transcript = append(transcript, delivery)
+				}
+			}
 		}
 		// Drain queued messages: system first, then user. System messages
 		// always precede user messages so an automated nudge is seen before
@@ -408,7 +444,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			parentID = transcript[n-1].ID
 		}
 		assistantID, aerr := cfg.Events.emitAssistantMessage(AssistantMessageEvent{ParentID: MessageID(parentID)})
+		currentAssistantID = assistantID
 		if aerr != nil {
+			// The host failed to create or announce the row (e.g. the SSE
+			// sink died on the meta event). Finalize the turn as an error so
+			// the durable row is not stranded, then return the error.
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
 			res.Messages = transcript
 			return res, aerr
 		}
@@ -427,10 +468,10 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript = append(transcript, partial)
 				res.Messages = transcript
 				res.Final = partial
-				cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: partial, Status: "cancelled"})
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: partial, Status: "cancelled"})
 				return res, err
 			}
-			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
 			res.Messages = transcript
 			return res, err
 		}
@@ -462,7 +503,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript = append(transcript, stuck)
 				res.Messages = transcript
 				res.Final = stuck
-				cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: stuck, Status: "complete"})
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: stuck, Status: "complete"})
 				return res, fmt.Errorf("%w: %d identical turns in a row", ErrStuck, repeats)
 			}
 
@@ -472,7 +513,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// executing them, matching the host's lifecycle: the row is
 			// persisted (with tool calls for display) before tools run. If the
 			// batch is aborted, abortBatch re-finalizes as cancelled.
-			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
 			// abortBatch ends the run mid-batch -- an approval decision that
 			// never arrived, or a tool callback that returned an error. It
 			// clears the pending batch: the assistant message keeps its
@@ -488,7 +529,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript[aIdx] = cleared
 				res.Messages = transcript
 				res.Final = cleared
-				cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: cleared, Status: "cancelled"})
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: cleared, Status: "cancelled"})
 				return res, cause
 			}
 			for _, asked := range calls {
@@ -558,7 +599,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					if strings.TrimSpace(final.Content) == "" {
 						final.Content = fallbackOutput(assistant)
 					}
-					cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "cancelled"})
+					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "cancelled"})
 					return finish(final)
 				}
 				res.Messages = transcript
@@ -568,7 +609,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				if strings.TrimSpace(assistant.Content) != "" {
 					answered := assistant
 					answered.ToolCalls = nil
-					cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
+					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
 					transcript = append(transcript, answered)
 				}
 				if cfg.SystemMessages != nil {
@@ -597,11 +638,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				stopHookFired = true
 				cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
 				if Pending(cfg.SystemMessages, cfg.UserMessages) {
+					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 					transcript = append(transcript, final)
 					continue
 				}
 			}
-			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 			return finish(final)
 		}
 
@@ -638,7 +680,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			if strings.TrimSpace(final.Content) == "" {
 				final.Content = fallbackOutput(assistant)
 			}
-			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 			return finish(final)
 		}
 
@@ -650,7 +692,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(final.Content) == "" {
 			final.Content = fallbackOutput(assistant)
 		}
-		cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
+		finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 		return finish(final)
 	}
 

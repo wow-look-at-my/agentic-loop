@@ -268,7 +268,7 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 	// Keep c alive for the life of cfg: the weak pointers in the Event
 	// fields reference &c.toolCall etc., and c must not be collected until
 	// the run is done.
-	cfg.keepAlive = c
+	cfg.KeepAlive = c
 	return cfg
 }
 
