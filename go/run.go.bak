@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/wow-look-at-my/go-containers/event"
 )
 
 // MaxTurns is an optional host-enforced cap on model calls. It is useful for
@@ -96,77 +94,76 @@ func batchFingerprint(calls []ToolCall) string {
 // classified transient).
 type Events struct {
 	StreamEvents
-	OnTurnBegin         event.Event[TurnBeginEvent]
-	OnTurnEnd           event.Event[TurnEndEvent]
-	OnStop              event.Event[StopEvent]
-	OnToolCall          event.Event[ToolCallEvent]
-	OnToolResult        event.Event[ToolResultEvent]
-	OnAssistantMessage  event.Event[AssistantMessageEvent]
-	OnFinalizeAssistant event.Event[FinalizeAssistantEvent]
-	OnToolMessage       event.Event[ToolMessageEvent]
-	OnResourceNotice    event.Event[ResourceNoticeEvent]
+	OnTurnBegin         ErrorEvent[TurnBeginEvent]
+	OnTurnEnd           ErrorEvent[TurnEndEvent]
+	OnStop              ResultEvent[StopEvent, Message]
+	OnToolCall          ErrorEvent[ToolCallEvent]
+	OnToolResult        ErrorEvent[ToolResultEvent]
+	OnAssistantMessage  ResultEvent[AssistantMessageEvent, MessageID]
+	OnFinalizeAssistant Event[FinalizeAssistantEvent]
+	OnToolMessage       Event[ToolMessageEvent]
+	OnResourceNotice    ResultEvent[ResourceNoticeEvent, MessageID]
 }
+
 
 // emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.
 // The hook receives the per-call Request that is about to be sent and may
 // mutate it; the mutations apply to that one call only.
 func (e *Events) emitTurnBegin(ev TurnBeginEvent) error {
-	return wrapCallbackErr(e.OnTurnBegin.Invoke(ev))
+	return wrapCallbackErr(e.OnTurnBegin.Dispatch(ev))
 }
 
 // emitTurnEnd forwards a numbered turn's end, tolerating nil callbacks.
 func (e *Events) emitTurnEnd(ev TurnEndEvent) error {
-	return wrapCallbackErr(e.OnTurnEnd.Invoke(ev))
+	return wrapCallbackErr(e.OnTurnEnd.Dispatch(ev))
 }
 
-// emitStop notifies listeners that the model is about to stop. A listener
-// that wants the loop to continue calls cfg.SystemMessages.Queue(msg) during
-// the callback; the loop checks the queue after Invoke.
-func (e *Events) emitStop(ev StopEvent) {
-	_ = e.OnStop.Invoke(ev)
+// emitStop forwards the stop-hook decision, tolerating nil callbacks.
+func (e *Events) emitStop(ev StopEvent) (Message, bool) {
+	return e.OnStop.Dispatch(ev)
 }
 
 // emitToolCall forwards the call about to be handled, tolerating nil
 // callbacks. The hook may rewrite what it points at; the caller then resolves
 // the rewritten call.
 func (e *Events) emitToolCall(ev ToolCallEvent) error {
-	return wrapCallbackErr(e.OnToolCall.Invoke(ev))
+	return wrapCallbackErr(e.OnToolCall.Dispatch(ev))
 }
 
 // emitToolResult forwards a tool result together with the message the loop
 // recorded for it, tolerating nil callbacks.
 func (e *Events) emitToolResult(ev ToolResultEvent) error {
-	return wrapCallbackErr(e.OnToolResult.Invoke(ev))
+	return wrapCallbackErr(e.OnToolResult.Dispatch(ev))
 }
 
 // emitAssistantMessage asks the host to mint (or name) the durable row for one
 // assistant turn, hanging off parentID. Returns "" when no hook is set, so the
 // loop falls back to its own transcript-only id.
 func (e *Events) emitAssistantMessage(ev AssistantMessageEvent) MessageID {
-	_ = e.OnAssistantMessage.Invoke(ev)
-	return ev.ID
+	id, _ := e.OnAssistantMessage.Dispatch(ev)
+	return id
 }
 
 // emitFinalizeAssistant tells the host the turn reached a terminal status and
 // the loop's view of the finalized message. The host mirrors the append in its
 // durable tree and advances the leaf here.
 func (e *Events) emitFinalizeAssistant(ev FinalizeAssistantEvent) {
-	e.OnFinalizeAssistant.Invoke(ev)
+	e.OnFinalizeAssistant.Dispatch(ev)
 }
 
 // emitToolMessage tells the host to persist one tool result in transcript order,
 // carrying the model's tool-call id and the parent assistant message id. The
 // host advances its leaf here.
 func (e *Events) emitToolMessage(ev ToolMessageEvent) {
-	e.OnToolMessage.Invoke(ev)
+	e.OnToolMessage.Dispatch(ev)
 }
 
 // emitResourceNotice tells the host the loop is about to deliver a resource
 // notice as a user message; the host may persist it and return its id so the
 // loop can attribute the transcript entry to the host's durable row.
 func (e *Events) emitResourceNotice(ev ResourceNoticeEvent) MessageID {
-	_ = e.OnResourceNotice.Invoke(ev)
-	return ev.ID
+	id, _ := e.OnResourceNotice.Dispatch(ev)
+	return id
 }
 
 // Config wires one Run: the Provider to call, the Tools advertised and
@@ -201,24 +198,8 @@ type Config struct {
 	// host via OnResourceNotice) before the next model call. nil disables
 	// resource watching. ResourceDiffTool, when non-empty, is quoted in the
 	// notice so the model calls the name it was actually given.
-	ResourceWatcher  ResourceWatcher
+	ResourceWatcher ResourceWatcher
 	ResourceDiffTool string
-
-	// keepAlive holds a reference that keeps subscribed event callbacks from
-	// being garbage-collected for the life of the run. event.Event holds weak
-	// pointers, so a caller that subscribes must retain the *func(T) error it
-	// passed to Subscribe — store the struct holding those function fields here.
-	keepAlive any
-
-	// SystemMessages is the loop's queue for automated notices (stop-hook
-	// nudges, resource notices, etc.). Any event listener can call Queue to
-	// inject one. System messages are always drained before user messages so
-	// an automated nudge precedes anything the user queued. nil disables
-	// queueing.
-	SystemMessages *MessageQueue
-	// UserMessages is the loop's queue for user-injected messages (e.g. a
-	// mid-run "stop researching" instruction). Drained after system messages.
-	UserMessages *MessageQueue
 
 	// Subagents is the registry an asynchronous run_subagent reports into (the
 	// same value given to SubagentConfig.Runs). When set, a turn that would
@@ -336,12 +317,6 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	for turn := 0; ; turn++ {
 		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns {
 			break
-		}
-		// Drain queued messages: system first, then user. System messages
-		// always precede user messages so an automated nudge is seen before
-		// anything the user queued mid-run.
-		for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
-			transcript = append(transcript, msg)
 		}
 		// Resource watch: poll at the turn boundary, before the model call,
 		// exactly where a host loop used to. A non-empty poll is delivered to
@@ -469,7 +444,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				// way, while everything downstream from here -- the approval
 				// decision and the execution -- uses whatever the hook left.
 				call := asked
-				if cberr := cfg.Events.emitToolCall(ToolCallEvent{Call: &call}); cberr != nil {
+				if cberr := cfg.Events.emitToolCall(&call); cberr != nil {
 					return abortBatch(cberr)
 				}
 				result, aerr := resolveCall(ctx, &cfg, call)
@@ -494,17 +469,10 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					ToolCallID:  asked.ID,
 					ToolIsError: result.IsError,
 				}
-				if cberr := cfg.Events.emitToolResult(ToolResultEvent{Call: call, Result: result, Recorded: recorded}); cberr != nil {
+				if cberr := cfg.Events.emitToolResult(call, result, recorded); cberr != nil {
 					return abortBatch(cberr)
 				}
 				transcript = append(transcript, recorded)
-				cfg.Events.emitToolMessage(ToolMessageEvent{
-					ToolCallID:        asked.ID,
-					ParentAssistantID: assistantID,
-					Content:           content,
-					Parts:             result.Parts,
-					IsError:           result.IsError,
-				})
 			}
 			if repeats == StuckNudgeAt {
 				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
@@ -546,9 +514,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			final.ToolCalls = nil
 			if !stopHookFired {
 				stopHookFired = true
-				cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
-				if Pending(cfg.SystemMessages, cfg.UserMessages) {
-					transcript = append(transcript, final)
+				if injected, ok := cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp}); ok && strings.TrimSpace(injected.Content) != "" {
+					transcript = append(transcript, final, injected)
 					continue
 				}
 			}
@@ -621,7 +588,7 @@ func runModelCall(
 	r := req
 	r.Messages = msgs
 	r.Tools = tools
-	if cberr := cfg.Events.emitTurnBegin(TurnBeginEvent{Turn: turn, Req: &r}); cberr != nil {
+	if cberr := cfg.Events.emitTurnBegin(turn, &r); cberr != nil {
 		// The call never happened; nothing to count or record.
 		return nil, cberr
 	}
@@ -631,7 +598,7 @@ func runModelCall(
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)
 	}
-	if cberr := cfg.Events.emitTurnEnd(TurnEndEvent{Turn: turn, Comp: comp, Err: err}); cberr != nil {
+	if cberr := cfg.Events.emitTurnEnd(turn, comp, err); cberr != nil {
 		// The call happened; its data is kept, the run aborts on the sink
 		// failure (Run finalizes the completion like a mid-stream break).
 		return comp, cberr

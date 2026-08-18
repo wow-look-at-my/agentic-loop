@@ -59,10 +59,12 @@ type ToolCall struct {
 // on tool messages.
 type Message struct {
 	Role Role
-	// Parts is the message's content as an ordered list, and is what the
-	// codecs read. Content, Thinking and ToolCalls are flattened views of it:
-	// SyncViews fills them from Parts, and EffectiveParts derives parts from
-	// them when Parts is empty, so a caller that only sets Content still works.
+	// ID is the host-assigned identifier for this transcript entry. The loop
+	// attributes it from the OnAssistantMessage / OnResourceNotice return; a
+	// host that does not persist leaves it empty. It is never sent to the
+	// upstream — it is for the host's durable tree and the loop's own
+	// transcript bookkeeping.
+	ID        string
 	Parts     []Part
 	Content   string
 	Thinking  []ThinkingBlock

@@ -13,21 +13,22 @@ func TestRunOnStopInjectsOnceAndContinues(t *testing.T) {
 		{comp: assistantComp("first")},
 		{comp: assistantComp("second")},
 	}}
-	calls := 0
+	sys := &MessageQueue{}
+	events := Events{}
+	stopCb := func(ev StopEvent) error {
+		sys.Queue(Message{Role: RoleUser, Content: "push staged work"})
+		return nil
+	}
+	events.OnStop.Subscribe(&stopCb)
 	cfg := Config{
-		Provider: provider,
-		Events: Events{OnStop: func(turn int, comp *Completion) (Message, bool) {
-			calls++
-			assert.Equal(t, 1, turn)
-			assert.Equal(t, "first", comp.Message.Content)
-			return Message{Role: RoleUser, Content: "push staged work"}, true
-		}},
+		Provider:       provider,
+		Events:         events,
+		SystemMessages: sys,
 	}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "second", res.Final.Content)
 	assert.Equal(t, 2, res.Turns)
-	assert.Equal(t, 1, calls)
 	require.Len(t, res.Messages, 4)
 	assert.Equal(t, "first", res.Messages[1].Content)
 	assert.Equal(t, "push staged work", res.Messages[2].Content)

@@ -191,66 +191,84 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 	cfg.turnHook = func(turn int) {
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
-	cfg.Events = Events{
-		OnToolCall: func(c *ToolCall) error {
+	cfg.Events = Events{}
+	// event.Event holds weak pointers, so the callbacks must outlive the
+	// augmentConfig call. Store them on a struct that lives as long as cfg.
+	type cbs struct {
+		toolCall   func(ToolCallEvent) error
+		toolResult func(ToolResultEvent) error
+		turnEnd    func(TurnEndEvent) error
+	}
+	c := &cbs{
+		toolCall: func(ev ToolCallEvent) error {
+			call := ev.Call
 			act(SubagentActivity{
 				CallID:  callID,
 				Kind:    SubagentActivityToolCall,
-				Tool:    c.Name,
-				Detail:  subagentPreview(c.Arguments),
-				Content: c.Arguments,
+				Tool:    call.Name,
+				Detail:  subagentPreview(call.Arguments),
+				Content: call.Arguments,
 			})
 			return nil
 		},
-		OnToolResult: func(c ToolCall, r ToolResult, _ Message) error {
+		toolResult: func(ev ToolResultEvent) error {
+			call, r := ev.Call, ev.Result
 			act(SubagentActivity{
 				CallID:  callID,
 				Kind:    SubagentActivityToolResult,
-				Tool:    c.Name,
+				Tool:    call.Name,
 				Detail:  subagentPreview(r.Content),
 				Content: r.Content,
 				IsError: r.IsError,
 			})
 			return nil
 		},
-		// What the sub-agent itself said each turn. Without this a host can
-		// show every tool a sub-agent touched and still not show a word of its
-		// own reasoning or working notes — the run reads as a list of file
-		// accesses with a report appearing from nowhere at the end.
-		OnTurnEnd: func(turn int, comp *Completion, _ error) error {
-			if comp == nil {
-				return nil
-			}
-			if think := thinkingText(comp.Message.Thinking); think != "" {
-				act(SubagentActivity{
-					CallID:  callID,
-					Kind:    SubagentActivityThinking,
-					Turn:    turn,
-					Detail:  subagentPreview(think),
-					Content: think,
-				})
-			}
-			if text := comp.Message.Content; strings.TrimSpace(text) != "" {
-				act(SubagentActivity{
-					CallID:  callID,
-					Kind:    SubagentActivityText,
-					Turn:    turn,
-					Detail:  subagentPreview(text),
-					Content: text,
-				})
-			}
-			// What the turn cost, while the run is still going. A sub-agent
-			// answers in text, so this and the report's Usages are the only
-			// routes out; a host without them charges every sub-agent as free.
-			act(SubagentActivity{
-				CallID:     callID,
-				Kind:       SubagentActivityTurnEnd,
-				Turn:       turn,
-				Completion: comp,
-			})
-			return nil
-		},
 	}
+	// What the sub-agent itself said each turn. Without this a host can
+	// show every tool a sub-agent touched and still not show a word of its
+	// own reasoning or working notes — the run reads as a list of file
+	// accesses with a report appearing from nowhere at the end.
+	c.turnEnd = func(ev TurnEndEvent) error {
+		turn, comp := ev.Turn, ev.Comp
+		if comp == nil {
+			return nil
+		}
+		if think := thinkingText(comp.Message.Thinking); think != "" {
+			act(SubagentActivity{
+				CallID:  callID,
+				Kind:    SubagentActivityThinking,
+				Turn:    turn,
+				Detail:  subagentPreview(think),
+				Content: think,
+			})
+		}
+		if text := comp.Message.Content; strings.TrimSpace(text) != "" {
+			act(SubagentActivity{
+				CallID:  callID,
+				Kind:    SubagentActivityText,
+				Turn:    turn,
+				Detail:  subagentPreview(text),
+				Content: text,
+			})
+		}
+		// What the turn cost, while the run is still going. A sub-agent
+		// answers in text, so this and the report's Usages are the only
+		// routes out; a host without them charges every sub-agent as free.
+		act(SubagentActivity{
+			CallID:     callID,
+			Kind:       SubagentActivityTurnEnd,
+			Turn:       turn,
+			Completion: comp,
+		})
+		return nil
+	}
+	cfg.Events.OnToolCall.Subscribe(&c.toolCall)
+	cfg.Events.OnToolResult.Subscribe(&c.toolResult)
+	cfg.Events.OnTurnEnd.Subscribe(&c.turnEnd)
+	// Keep c alive for the life of cfg: the weak pointers in the Event
+	// fields reference &c.toolCall etc., and c must not be collected until
+	// the run is done.
+	cfg.keepAlive = c
 	return cfg
 }
 
