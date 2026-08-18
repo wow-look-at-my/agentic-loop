@@ -8,12 +8,10 @@ import (
 	"strings"
 )
 
-// There is deliberately NO turn cap. A counted cap cannot tell "looping
-// uselessly" from "deep in a hard task", so it fires at the worst moment:
-// after the model has spent every call gathering context and just before it
-// writes any of it down. What bounds a run instead is ErrStuck (repetition is
-// the only mechanically detectable form of not-progressing) and the caller's
-// ctx, which bounds wall-clock and spend without discarding work in flight.
+// MaxTurns is an optional host-enforced cap on model calls. It is useful for
+// interactive hosts that must bound a turn; the cap is checked before each
+// call, and a final capped call is made without tools so it can answer rather
+// than produce unhandled tool calls.
 
 // wrapUpInstruction is appended as a final user turn to force a model that
 // stalled at "thinking" (no content) into actually writing its answer from
@@ -98,6 +96,11 @@ type Events struct {
 	StreamEvents
 	OnTurnBegin func(turn int, req *Request) error
 	OnTurnEnd   func(turn int, comp *Completion, err error) error
+	// OnStop is called when the model has produced a non-empty final answer and
+	// the run would otherwise finish. Returning a message asks the loop to append
+	// that user message and make one additional model call. The hook is invoked at
+	// most once per run; returning false (or an empty message) finishes normally.
+	OnStop func(turn int, comp *Completion) (Message, bool)
 	// OnToolCall receives a POINTER to the call about to be handled, and
 	// mutations to it -- Arguments, in practice -- are what actually runs: the
 	// Approver judges the rewritten call and the tool executes it. Rewriting a
@@ -160,8 +163,7 @@ func (e *Events) emitToolResult(c ToolCall, r ToolResult, recorded Message) erro
 // Config wires one Run: the Provider to call, the Tools advertised and
 // executed (empty runs tool-less), the Approver consulted for EVERY tool call
 // (nil allows a Readonly tool and denies anything else with DeniedMessage),
-// and the event callbacks. There is deliberately no turn cap
-// -- see the note above wrapUpInstruction for what bounds a run instead.
+// and the event callbacks. MaxTurns, when positive, caps model calls.
 //
 // Output dedup is ON by default: a read-only tool result whose content is
 // byte-identical to an earlier call in the same run is fed back as a short
@@ -181,6 +183,9 @@ type Config struct {
 	Tools    Tools
 	Approver Approver
 	Events   Events
+	// MaxTurns caps model calls when positive. The final permitted call is
+	// tool-less, so requested tools are not stranded without results.
+	MaxTurns int
 
 	// Subagents is the registry an asynchronous run_subagent reports into (the
 	// same value given to SubagentConfig.Runs). When set, a turn that would
@@ -281,6 +286,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	copy(transcript, req.Messages)
 
 	res := &Result{}
+	// stopHookFired prevents a host hook from trapping the run in an infinite
+	// continuation cycle.
+	stopHookFired := false
 	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call
 	// fingerprint and how many turns in a row have repeated it.
 	lastBatch := ""
@@ -293,10 +301,17 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 
 	for turn := 0; ; turn++ {
+		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns {
+			break
+		}
 		if cfg.turnHook != nil {
 			cfg.turnHook(turn + 1)
 		}
-		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, advertised, res)
+		turnTools := advertised
+		if cfg.MaxTurns > 0 && turn == cfg.MaxTurns-1 {
+			turnTools = nil
+		}
+		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
 		if err != nil {
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
@@ -319,7 +334,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// Keep looping while the model is still requesting tools and we are
 		// allowed to run them: replay the assistant's tool-call message, then
 		// each tool result, so the next turn sees the full sub-conversation.
-		if len(calls) > 0 {
+		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
 			// A batch identical to the previous turn's makes no progress: the
 			// same calls return the same results, which produce the same
 			// batch again. Nudge once, then end the run rather than spending
@@ -432,6 +447,13 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(assistant.Content) != "" {
 			final := assistant
 			final.ToolCalls = nil
+			if !stopHookFired && cfg.Events.OnStop != nil {
+				stopHookFired = true
+				if injected, ok := cfg.Events.OnStop(turn+1, comp); ok && strings.TrimSpace(injected.Content) != "" {
+					transcript = append(transcript, final, injected)
+					continue
+				}
+			}
 			return finish(final)
 		}
 
@@ -443,7 +465,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// NOT in the transcript (it is only appended on the tool-execution
 		// branch), so the wrap-up request can't be rejected for an unanswered
 		// tool call.
-		if len(cfg.Tools) > 0 {
+		if len(cfg.Tools) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
 			wrapMsg := Message{Role: RoleUser, Content: wrapUpInstruction}
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
@@ -462,6 +484,15 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// the source's synthesize step).
 		}
 
+		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns-1 {
+			final := assistant
+			final.ToolCalls = nil
+			if strings.TrimSpace(final.Content) == "" {
+				final.Content = fallbackOutput(assistant)
+			}
+			return finish(final)
+		}
+
 		// Last resort: the reasoning (a thinking model's only output), then a
 		// clear placeholder, so the caller never gets a confusing empty
 		// result.
@@ -472,6 +503,10 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 		return finish(final)
 	}
+
+	// A positive cap always permits at least one call; this return is only
+	// reachable if a caller supplies an invalid non-positive loop state.
+	return finish(Message{Role: RoleAssistant, Content: noOutputPlaceholder})
 }
 
 // runModelCall executes one model call and counts it as one turn -- including
