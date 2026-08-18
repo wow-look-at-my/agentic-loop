@@ -69,8 +69,8 @@ type Message struct {
 	// "stop_nudge", "subagent_report"). The loop sets it on injected messages
 	// so a host can persist it with the right label. It is never sent to the
 	// upstream.
-	Kind  string
-	Parts []Part
+	Kind      string
+	Parts     []Part
 	Content   string
 	Thinking  []ThinkingBlock
 	ToolCalls []ToolCall
