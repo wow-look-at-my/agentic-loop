@@ -465,10 +465,14 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				if assistantID != "" {
 					partial.ID = string(assistantID)
 				}
+				status := "cancelled"
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+					status = "error"
+				}
 				transcript = append(transcript, partial)
 				res.Messages = transcript
 				res.Final = partial
-				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: partial, Status: "cancelled"})
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: partial, Status: status})
 				return res, err
 			}
 			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
@@ -546,10 +550,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					return abortBatch(aerr)
 				}
 				content := result.Content
+				parts := result.Parts
 				if deduper != nil {
 					if tool, known := cfg.Tools.Find(call.Name); known {
 						if collapsed, deduped := deduper.Collapse(tool.Decl(), result); deduped {
 							content = collapsed
+							parts = nil
 						}
 					}
 				}
@@ -571,7 +577,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					ToolCallID:        asked.ID,
 					ParentAssistantID: assistantID,
 					Content:           content,
-					Parts:             result.Parts,
+					Parts:             parts,
 					IsError:           result.IsError,
 				}); terr != nil {
 					return abortBatch(terr)
@@ -589,42 +595,78 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// next report if none has) and keep looping, so the model actually
 		// sees them; that promise is the whole reason an asynchronous
 		// run_subagent may return before it has an answer.
-		if cfg.Subagents.Pending() > 0 {
-			reports, cerr := cfg.Subagents.Collect(ctx)
-			if cerr != nil {
-				// Cancellation while waiting: finalize as cancelled, end gracefully.
-				if errors.Is(cerr, context.Canceled) || errors.Is(cerr, context.DeadlineExceeded) {
+		if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+			if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns-1 {
+				// Capped final turn: don't wait for what's still running, but
+				// deliver what has arrived and declare remaining subagents lost.
+				reports := cfg.Subagents.Take()
+				lost := cfg.Subagents.CancelRemaining()
+				if len(reports) > 0 || lost > 0 {
+					delivery := Message{
+						Role:    RoleUser,
+						Kind:    SubagentReportKind,
+						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), lost),
+					}
+					if cfg.SystemMessages != nil {
+						cfg.SystemMessages.Queue(delivery)
+					} else {
+						cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
+						transcript = append(transcript, delivery)
+					}
+					if strings.TrimSpace(assistant.Content) != "" {
+						answered := assistant
+						answered.ToolCalls = nil
+						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
+						transcript = append(transcript, answered)
+					}
+					for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
+						cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
+						transcript = append(transcript, msg)
+					}
 					final := assistant
 					final.ToolCalls = nil
 					if strings.TrimSpace(final.Content) == "" {
 						final.Content = fallbackOutput(assistant)
 					}
-					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "cancelled"})
 					return finish(final)
 				}
-				res.Messages = transcript
-				return res, cerr
-			}
-			if len(reports) > 0 {
-				if strings.TrimSpace(assistant.Content) != "" {
-					answered := assistant
-					answered.ToolCalls = nil
-					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
-					transcript = append(transcript, answered)
+			} else {
+				reports, cerr := cfg.Subagents.Collect(ctx)
+				if cerr != nil {
+					// Cancellation while waiting: finalize as cancelled, end gracefully.
+					if errors.Is(cerr, context.Canceled) || errors.Is(cerr, context.DeadlineExceeded) {
+						final := assistant
+						final.ToolCalls = nil
+						if strings.TrimSpace(final.Content) == "" {
+							final.Content = fallbackOutput(assistant)
+						}
+						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "cancelled"})
+						return finish(final)
+					}
+					res.Messages = transcript
+					return res, cerr
 				}
-				if cfg.SystemMessages != nil {
-					cfg.SystemMessages.Queue(Message{
-						Role:    RoleUser,
-						Kind:    SubagentReportKind,
-						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
-					})
-				} else {
-					transcript = append(transcript, Message{
-						Role:    RoleUser,
-						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
-					})
+				if len(reports) > 0 {
+					if strings.TrimSpace(assistant.Content) != "" {
+						answered := assistant
+						answered.ToolCalls = nil
+						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
+						transcript = append(transcript, answered)
+					}
+					if cfg.SystemMessages != nil {
+						cfg.SystemMessages.Queue(Message{
+							Role:    RoleUser,
+							Kind:    SubagentReportKind,
+							Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+						})
+					} else {
+						transcript = append(transcript, Message{
+							Role:    RoleUser,
+							Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+						})
+					}
+					continue
 				}
-				continue
 			}
 		}
 
@@ -701,12 +743,13 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	// reports as a final delivery (whatever is ready, declaring the rest lost)
 	// before finishing.
 	if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
-		reports, _ := cfg.Subagents.Collect(context.WithoutCancel(ctx))
-		if len(reports) > 0 {
+		reports := cfg.Subagents.Take()
+		lost := cfg.Subagents.CancelRemaining()
+		if len(reports) > 0 || lost > 0 {
 			delivery := Message{
 				Role:    RoleUser,
 				Kind:    SubagentReportKind,
-				Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+				Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), lost),
 			}
 			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
 			transcript = append(transcript, delivery)
