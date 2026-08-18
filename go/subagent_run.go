@@ -191,7 +191,7 @@ func (e *subagentTool) runConfig(callID string, subTools Tools, granted bool) Co
 	cfg.turnHook = func(turn int) {
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
-	cfg.Events = Events{}
+	cfg.Events = &Events{}
 	// event.Event holds weak pointers, so the callbacks must outlive the
 	// augmentConfig call. Store them on a struct that lives as long as cfg.
 	type cbs struct {

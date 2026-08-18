@@ -72,7 +72,7 @@ type ToolResultEvent struct {
 type AssistantMessageEvent struct {
 	event.Args
 	ParentID MessageID
-	ID       MessageID
+	ID       *MessageID
 }
 
 // FinalizeAssistantEvent is the param to OnFinalizeAssistant: the id returned
@@ -106,5 +106,15 @@ type ResourceNoticeEvent struct {
 	event.Args
 	Content   string
 	ChangeIDs []string
-	ID        MessageID
+	ID        *MessageID
+}
+
+// SystemMessageEvent is the param to OnSystemMessage: a message the loop is
+// about to append to the transcript from the system or user message queue
+// (subagent deliveries, stop-hook nudges, etc.). The host persists it as a
+// user-role message and may set ID so the loop attributes the transcript entry.
+type SystemMessageEvent struct {
+	event.Args
+	Msg Message
+	ID  *MessageID
 }

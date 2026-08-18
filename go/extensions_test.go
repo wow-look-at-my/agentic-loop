@@ -38,7 +38,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events:   events,
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{
 		Model:    "m",
@@ -85,7 +85,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events:   events,
+		Events:   &events,
 	}
 	req := Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}}
 	res, err := Run(context.Background(), cfg, req)
@@ -113,7 +113,7 @@ func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 	events.OnTurnBegin.Subscribe(&turnBeginCb)
 	cfg := Config{
 		Provider: provider,
-		Events:   events,
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.Error(t, err)
@@ -134,7 +134,7 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 	events.OnTurnEnd.Subscribe(&turnEndCb)
 	cfg := Config{
 		Provider: provider,
-		Events:   events,
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
@@ -164,7 +164,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events:   events,
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
@@ -192,7 +192,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events:   events,
+		Events:   &events,
 	}
 	cfg.turnHook = func(turn int) { internal = append(internal, turn) }
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})

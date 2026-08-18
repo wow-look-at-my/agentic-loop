@@ -78,7 +78,7 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events:   events,
+		Events:   &events,
 	}
 	req := Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "go"}},
 		Tools: []ToolDecl{{Name: "ignored"}}}
@@ -612,7 +612,7 @@ func TestRunStreamEventsForwarded(t *testing.T) {
 	}}
 	var text, reasoning string
 	var gotUsage, gotProgress, gotTimings bool
-	cfg := Config{Provider: provider, Events: Events{StreamEvents: StreamEvents{
+	cfg := Config{Provider: provider, Events: &Events{StreamEvents: StreamEvents{
 		OnText:      func(s string) error { text += s; return nil },
 		OnReasoning: func(s string) error { reasoning += s; return nil },
 		OnUsage:     func(Usage) error { gotUsage = true; return nil },

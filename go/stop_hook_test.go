@@ -22,7 +22,7 @@ func TestRunOnStopInjectsOnceAndContinues(t *testing.T) {
 	events.OnStop.Subscribe(&stopCb)
 	cfg := Config{
 		Provider:       provider,
-		Events:         events,
+		Events:         &events,
 		SystemMessages: sys,
 	}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})

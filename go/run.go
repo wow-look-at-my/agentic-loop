@@ -15,6 +15,10 @@ import (
 // call, and a final capped call is made without tools so it can answer rather
 // than produce unhandled tool calls.
 
+// SubagentReportKind is the Kind the loop sets on subagent delivery messages
+// it injects, so a host can persist them with the right label.
+const SubagentReportKind = "subagent_report"
+
 // wrapUpInstruction is appended as a final user turn to force a model that
 // stalled at "thinking" (no content) into actually writing its answer from
 // the information it already gathered, instead of the loop surfacing raw
@@ -105,6 +109,7 @@ type Events struct {
 	OnFinalizeAssistant event.Event[FinalizeAssistantEvent]
 	OnToolMessage       event.Event[ToolMessageEvent]
 	OnResourceNotice    event.Event[ResourceNoticeEvent]
+	OnSystemMessage     event.Event[SystemMessageEvent]
 }
 
 // emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.
@@ -142,9 +147,11 @@ func (e *Events) emitToolResult(ev ToolResultEvent) error {
 // emitAssistantMessage asks the host to mint (or name) the durable row for one
 // assistant turn, hanging off parentID. Returns "" when no hook is set, so the
 // loop falls back to its own transcript-only id.
-func (e *Events) emitAssistantMessage(ev AssistantMessageEvent) MessageID {
-	_ = e.OnAssistantMessage.Invoke(ev)
-	return ev.ID
+func (e *Events) emitAssistantMessage(ev AssistantMessageEvent) (MessageID, error) {
+	var id MessageID
+	ev.ID = &id
+	err := e.OnAssistantMessage.Invoke(ev)
+	return id, err
 }
 
 // emitFinalizeAssistant tells the host the turn reached a terminal status and
@@ -165,8 +172,16 @@ func (e *Events) emitToolMessage(ev ToolMessageEvent) {
 // notice as a user message; the host may persist it and return its id so the
 // loop can attribute the transcript entry to the host's durable row.
 func (e *Events) emitResourceNotice(ev ResourceNoticeEvent) MessageID {
+	var id MessageID
+	ev.ID = &id
 	_ = e.OnResourceNotice.Invoke(ev)
-	return ev.ID
+	return id
+}
+
+func (e *Events) emitSystemMessage(ev SystemMessageEvent) {
+	var id MessageID
+	ev.ID = &id
+	_ = e.OnSystemMessage.Invoke(ev)
 }
 
 // Config wires one Run: the Provider to call, the Tools advertised and
@@ -191,7 +206,7 @@ type Config struct {
 	Provider Provider
 	Tools    Tools
 	Approver Approver
-	Events   Events
+	Events   *Events
 	// MaxTurns caps model calls when positive. The final permitted call is
 	// tool-less, so requested tools are not stranded without results.
 	MaxTurns int
@@ -305,6 +320,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	if cfg.Provider == nil {
 		return nil, badRequestErr("agentic: Config.Provider is required")
 	}
+	if cfg.Events == nil {
+		cfg.Events = &Events{}
+	}
 	advertised := cfg.Tools.Decls()
 
 	// Output dedup: one deduper for the whole run, so an unchanged read-only
@@ -341,6 +359,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// always precede user messages so an automated nudge is seen before
 		// anything the user queued mid-run.
 		for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
+			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
 			transcript = append(transcript, msg)
 		}
 		// Resource watch: poll at the turn boundary, before the model call,
@@ -388,7 +407,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if n := len(transcript); n > 0 {
 			parentID = transcript[n-1].ID
 		}
-		assistantID := cfg.Events.emitAssistantMessage(AssistantMessageEvent{ParentID: MessageID(parentID)})
+		assistantID, aerr := cfg.Events.emitAssistantMessage(AssistantMessageEvent{ParentID: MessageID(parentID)})
+		if aerr != nil {
+			res.Messages = transcript
+			return res, aerr
+		}
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
 		if err != nil {
 			if comp != nil {
@@ -509,6 +532,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			if repeats == StuckNudgeAt {
 				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
 			}
+			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
 			continue
 		}
 
@@ -521,6 +545,16 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if cfg.Subagents.Pending() > 0 {
 			reports, cerr := cfg.Subagents.Collect(ctx)
 			if cerr != nil {
+				// Cancellation while waiting: finalize as cancelled, end gracefully.
+				if errors.Is(cerr, context.Canceled) || errors.Is(cerr, context.DeadlineExceeded) {
+					final := assistant
+					final.ToolCalls = nil
+					if strings.TrimSpace(final.Content) == "" {
+						final.Content = fallbackOutput(assistant)
+					}
+					cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "cancelled"})
+					return finish(final)
+				}
 				res.Messages = transcript
 				return res, cerr
 			}
@@ -528,12 +562,21 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				if strings.TrimSpace(assistant.Content) != "" {
 					answered := assistant
 					answered.ToolCalls = nil
+					cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
 					transcript = append(transcript, answered)
 				}
-				transcript = append(transcript, Message{
-					Role:    RoleUser,
-					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
-				})
+				if cfg.SystemMessages != nil {
+					cfg.SystemMessages.Queue(Message{
+						Role:    RoleUser,
+						Kind:    SubagentReportKind,
+						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+					})
+				} else {
+					transcript = append(transcript, Message{
+						Role:    RoleUser,
+						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+					})
+				}
 				continue
 			}
 		}
@@ -589,6 +632,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			if strings.TrimSpace(final.Content) == "" {
 				final.Content = fallbackOutput(assistant)
 			}
+			cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 			return finish(final)
 		}
 
@@ -600,11 +644,26 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(final.Content) == "" {
 			final.Content = fallbackOutput(assistant)
 		}
+		cfg.Events.emitFinalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 		return finish(final)
 	}
 
 	// A positive cap always permits at least one call; this return is only
-	// reachable if a caller supplies an invalid non-positive loop state.
+	// reachable if the cap broke the loop. Deliver any pending sub-agent
+	// reports as a final delivery (whatever is ready, declaring the rest lost)
+	// before finishing.
+	if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+		reports, _ := cfg.Subagents.Collect(context.WithoutCancel(ctx))
+		if len(reports) > 0 {
+			delivery := Message{
+				Role:    RoleUser,
+				Kind:    SubagentReportKind,
+				Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+			}
+			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
+			transcript = append(transcript, delivery)
+		}
+	}
 	return finish(Message{Role: RoleAssistant, Content: noOutputPlaceholder})
 }
 

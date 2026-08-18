@@ -33,7 +33,7 @@ func TestRunCallbackErrorSingleRequestAndPartialResult(t *testing.T) {
 
 	cfg := Config{
 		Provider: oaProvider(t, srv.URL),
-		Events: Events{StreamEvents: StreamEvents{
+		Events: &Events{StreamEvents: StreamEvents{
 			OnText: func(string) error { return errSink },
 		}},
 	}
@@ -72,7 +72,7 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 		return nil
 	}
 	events.OnToolCall.Subscribe(&toolCallCb)
-	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: events}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
@@ -100,7 +100,7 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	events := Events{}
 	toolResultCb := func(ev ToolResultEvent) error { return errSink }
 	events.OnToolResult.Subscribe(&toolResultCb)
-	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: events}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
@@ -132,7 +132,7 @@ func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
 		return nil
 	}
 	events.OnToolCall.Subscribe(&toolCallCb)
-	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: approver, Events: events}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: approver, Events: &events}
 
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
 	events := Events{}
 	toolCallCb := func(ev ToolCallEvent) error { c := ev.Call; c.ID = "hijacked"; return nil }
 	events.OnToolCall.Subscribe(&toolCallCb)
-	cfg := Config{Provider: provider, Tools: exec.registry(), Events: events}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestRunOnToolResultCarriesTheRecordedMessage(t *testing.T) {
 		return nil
 	}
 	events.OnToolResult.Subscribe(&toolResultCb)
-	cfg := Config{Provider: provider, Tools: exec.registry(), Events: events}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestRunOnToolResultCarriesADeniedMessage(t *testing.T) {
 		return nil
 	}
 	events.OnToolResult.Subscribe(&toolResultCb)
-	cfg := Config{Provider: provider, Tools: exec.registry(), Events: events}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
 	_, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)

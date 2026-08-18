@@ -64,8 +64,13 @@ type Message struct {
 	// host that does not persist leaves it empty. It is never sent to the
 	// upstream — it is for the host's durable tree and the loop's own
 	// transcript bookkeeping.
-	ID        string
-	Parts     []Part
+	ID string
+	// Kind is an optional host-facing classification of the message (e.g.
+	// "stop_nudge", "subagent_report"). The loop sets it on injected messages
+	// so a host can persist it with the right label. It is never sent to the
+	// upstream.
+	Kind  string
+	Parts []Part
 	Content   string
 	Thinking  []ThinkingBlock
 	ToolCalls []ToolCall
