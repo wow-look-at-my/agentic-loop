@@ -2,223 +2,10 @@ package agentic
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 )
-
-// There is deliberately NO turn cap. A counted cap cannot tell "looping
-// uselessly" from "deep in a hard task", so it fires at the worst moment:
-// after the model has spent every call gathering context and just before it
-// writes any of it down. What bounds a run instead is ErrStuck (repetition is
-// the only mechanically detectable form of not-progressing) and the caller's
-// ctx, which bounds wall-clock and spend without discarding work in flight.
-
-// wrapUpInstruction is appended as a final user turn to force a model that
-// stalled at "thinking" (no content) into actually writing its answer from
-// the information it already gathered, instead of the loop surfacing raw
-// chain-of-thought as the result.
-const wrapUpInstruction = "Stop researching and write your final answer now, using only the information already gathered above. " +
-	"Do not call any tools and do not keep thinking -- output the complete, self-contained report that directly answers the task."
-
-// noOutputPlaceholder is returned as the final content when the model
-// produced neither content nor reasoning, so the caller never gets a
-// confusing empty result.
-const noOutputPlaceholder = "(subagent produced no output)"
-
-// StuckNudgeAt and StuckFailAt bound a model that stops making progress: a
-// turn whose tool calls are byte-identical to the previous turn's cannot
-// learn anything new, because the same calls produce the same results, which
-// produce the same turn again. The StuckNudgeAt-th identical turn in a row
-// gets one nudge appended after its tool results; the StuckFailAt-th ends the
-// run with ErrStuck. Any change in what the model asks for clears the count.
-//
-// With no turn cap, this is the loop's own bound on a model that has stopped
-// progressing -- and unlike a cap it fires on evidence of uselessness rather
-// than on a budget running out.
-//
-// They are constants, not knobs: a loop repeating itself verbatim is never
-// the model working, so there is nothing to tune.
-const (
-	StuckNudgeAt = 3
-	StuckFailAt  = 6
-)
-
-// stuckNudgeInstruction is appended as a user turn after the results of the
-// StuckNudgeAt-th identical tool-call batch, telling the model what the
-// transcript alone does not: that it is repeating itself, and that repeating
-// again ends the run.
-const stuckNudgeInstruction = "You have now requested the same tool calls several times in a row and received the same results each time. " +
-	"Repeating them again cannot tell you anything new. Do something different: act on the results you already have, " +
-	"call a different tool, or write your final answer now. Another identical request ends this run."
-
-// ErrStuck ends a run whose model kept requesting a byte-identical tool-call
-// batch after being nudged. Callers match it with errors.Is; the partial
-// Result rides alongside it like every other mid-run failure.
-var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls")
-
-// batchFingerprint identifies a tool-call batch by what the model asked for --
-// the calls' names and raw arguments, in order. Call IDs are deliberately
-// excluded: providers mint a fresh ID per call, so including them would make
-// every batch unique and the detector dead code. Lengths are interleaved so
-// no pair of adjacent fields can be re-cut into a different batch with the
-// same fingerprint.
-func batchFingerprint(calls []ToolCall) string {
-	var b strings.Builder
-	for _, c := range calls {
-		fmt.Fprintf(&b, "%d:%s|%d:%s|", len(c.Name), c.Name, len(c.Arguments), c.Arguments)
-	}
-	return b.String()
-}
-
-// Events are the loop's callbacks: the embedded StreamEvents fire during each
-// model call, OnTurnBegin fires before each numbered model call (with the
-// 1-based turn number and a pointer to the per-call Request, which the hook
-// may mutate -- the transcript, system, or Extra it is about to send), OnTurnEnd
-// fires after each call (with the turn number, the Completion -- nil when the
-// call failed before producing one -- and the call's error), OnToolCall fires
-// before each requested tool call is handled and may rewrite it, and
-// OnToolResult fires with the outcome (executed, refused, or a teaching error)
-// and the message recorded for it. All optional.
-//
-// Turns are numbered from 1; the stall wrap-up call fires as one past the
-// turn that stalled. Like the stream callbacks, OnTurnBegin and OnTurnEnd may
-// return a non-nil error to abort the run: OnTurnBegin aborts before the call
-// (no completion), OnTurnEnd aborts after it with the completed data kept (the
-// assistant message is finalized the way a mid-stream break is).
-//
-// Like the stream callbacks, OnToolCall and OnToolResult may return a non-nil
-// error to abort the run: the turn is finalized the way a cancellation is --
-// the pending batch is cleared so the transcript stays replayable with no
-// orphan tool calls -- and the partial Result is returned together with that
-// error (errors.Is against the caller's sentinel holds; the error is never
-// classified transient).
-type Events struct {
-	StreamEvents
-	OnTurnBegin func(turn int, req *Request) error
-	OnTurnEnd   func(turn int, comp *Completion, err error) error
-	// OnToolCall receives a POINTER to the call about to be handled, and
-	// mutations to it -- Arguments, in practice -- are what actually runs: the
-	// Approver judges the rewritten call and the tool executes it. Rewriting a
-	// tool's input is a first-class feature of the hook ecosystems this library
-	// is used behind, and with no per-tool wrapper left there is nowhere else to
-	// do it.
-	//
-	// The transcript keeps recording what the MODEL asked for, unmutated. Those
-	// are two different facts -- what was requested and what ran -- and a
-	// mutation that silently rewrote history would be worse than no mutation at
-	// all, so a host that needs the executed version records it alongside.
-	OnToolCall func(call *ToolCall) error
-	// OnToolResult receives the call as EXECUTED (any OnToolCall rewrite
-	// included), the tool's own result, and the RoleTool message the loop
-	// appended -- which is not always the result: output dedup may have
-	// replaced its content with an UnchangedPrefix marker. A host that persists
-	// the transcript must store what the model actually saw, and deriving that
-	// by diffing Result.Messages afterwards is a second copy of a rule only the
-	// loop knows.
-	OnToolResult func(call ToolCall, result ToolResult, recorded Message) error
-}
-
-// emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.
-// The hook receives the per-call Request that is about to be sent and may
-// mutate it; the mutations apply to that one call only.
-func (e *Events) emitTurnBegin(turn int, req *Request) error {
-	if e == nil || e.OnTurnBegin == nil {
-		return nil
-	}
-	return wrapCallbackErr(e.OnTurnBegin(turn, req))
-}
-
-// emitTurnEnd forwards a numbered turn's end, tolerating nil callbacks.
-func (e *Events) emitTurnEnd(turn int, comp *Completion, err error) error {
-	if e == nil || e.OnTurnEnd == nil {
-		return nil
-	}
-	return wrapCallbackErr(e.OnTurnEnd(turn, comp, err))
-}
-
-// emitToolCall forwards the call about to be handled, tolerating nil
-// callbacks. The hook may rewrite what it points at; the caller then resolves
-// the rewritten call.
-func (e *Events) emitToolCall(c *ToolCall) error {
-	if e == nil || e.OnToolCall == nil {
-		return nil
-	}
-	return wrapCallbackErr(e.OnToolCall(c))
-}
-
-// emitToolResult forwards a tool result together with the message the loop
-// recorded for it, tolerating nil callbacks.
-func (e *Events) emitToolResult(c ToolCall, r ToolResult, recorded Message) error {
-	if e == nil || e.OnToolResult == nil {
-		return nil
-	}
-	return wrapCallbackErr(e.OnToolResult(c, r, recorded))
-}
-
-// Config wires one Run: the Provider to call, the Tools advertised and
-// executed (empty runs tool-less), the Approver consulted for EVERY tool call
-// (nil allows a Readonly tool and denies anything else with DeniedMessage),
-// and the event callbacks. There is deliberately no turn cap
-// -- see the note above wrapUpInstruction for what bounds a run instead.
-//
-// Output dedup is ON by default: a read-only tool result whose content is
-// byte-identical to an earlier call in the same run is fed back as a short
-// [unchanged] marker instead of the full text (see OutputDeduper). Set
-// DisableOutputDedup to turn that off.
-//
-// There is deliberately NO retry knob. The loop is a high-level construct:
-// it knows nothing about connections, status codes, or backoff, and an error
-// that reaches it is treated as REAL and PERMANENT -- the layer whose job was
-// to make the call happen has already given up, so Run stops rather than
-// second-guessing it. Riding out transient failure belongs to the Provider
-// (ProviderConfig.Retry), which is also the only layer that can see whether a
-// call streamed anything -- the condition that decides whether re-sending is
-// safe. See "Layering" in README.md.
-type Config struct {
-	Provider Provider
-	Tools    Tools
-	Approver Approver
-	Events   Events
-
-	// Subagents is the registry an asynchronous run_subagent reports into (the
-	// same value given to SubagentConfig.Runs). When set, a turn that would
-	// otherwise END while sub-agents are still out instead waits for the next
-	// report and delivers it as a user message, so the loop keeps the promise
-	// the launch receipt made. nil means nothing was launched asynchronously.
-	Subagents *SubagentRuns
-
-	// DisableOutputDedup opts out of collapsing byte-identical read-only tool
-	// results into [unchanged] markers. On by default; only set when the full
-	// output must always reach the model.
-	DisableOutputDedup bool
-
-	// turnHook, when non-nil, is invoked with the 1-based turn number as each
-	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
-	// turn). It is unexported: package-internal machinery -- the subagent
-	// tool's live activity telemetry -- not public API.
-	turnHook func(turn int)
-
-	// unknownTool, when non-nil, replaces the text a call to an unoffered name
-	// is answered with. Unexported: the sub-agent run uses it to say WHY a name
-	// its parent has is not in this run's toolset (read-only only, or outside
-	// the granted allowed_tools), which a bare "unknown tool" would not teach.
-	unknownTool func(name string) string
-}
-
-// Result is the outcome of a Run. Messages is the input transcript plus
-// everything the loop appended (assistant turns, tool results, and the final
-// message). Usages holds one entry per model call IN ORDER -- deliberately not
-// summed, because successive prompts overlap (each turn re-sends the growing
-// transcript) and summing would double-count the shared prefix many times
-// over. Turns is the number of model calls made.
-type Result struct {
-	Messages []Message
-	Final    Message
-	Usages   []Usage
-	Turns    int
-}
 
 // Run drives the agentic tool loop: it calls cfg.Provider on the growing
 // transcript, executes the tool calls each turn requests via cfg.Tools, feeds
@@ -267,6 +54,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	if cfg.Provider == nil {
 		return nil, badRequestErr("agentic: Config.Provider is required")
 	}
+	if cfg.Events == nil {
+		cfg.Events = &Events{}
+	}
 	advertised := cfg.Tools.Decls()
 
 	// Output dedup: one deduper for the whole run, so an unchanged read-only
@@ -281,10 +71,29 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	copy(transcript, req.Messages)
 
 	res := &Result{}
+	// stopHookFired prevents a host hook from trapping the run in an infinite
+	// continuation cycle.
+	stopHookFired := false
 	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call
 	// fingerprint and how many turns in a row have repeated it.
 	lastBatch := ""
 	repeats := 0
+	// currentAssistantID tracks the id of the in-flight assistant turn so a
+	// panic recovery can finalize it. It is set by emitAssistantMessage and
+	// cleared by emitFinalizeAssistant.
+	currentAssistantID := MessageID("")
+	finalizeAssistant := func(ev FinalizeAssistantEvent) {
+		cfg.Events.emitFinalizeAssistant(ev)
+		currentAssistantID = ""
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			if currentAssistantID != "" {
+				finalizeAssistant(FinalizeAssistantEvent{ID: currentAssistantID, Status: "error"})
+			}
+			panic(r) // re-panic so the caller's recover sees it
+		}
+	}()
 	finish := func(final Message) (*Result, error) {
 		transcript = append(transcript, final)
 		res.Messages = transcript
@@ -293,10 +102,92 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 
 	for turn := 0; ; turn++ {
+		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns {
+			break
+		}
+		// Sub-agent delivery: if any reports are ready (without waiting),
+		// deliver them at the top of the turn so the model sees them. Skip on
+		// turn 0 — nothing has launched yet. This is the "between turns"
+		// path: a report that landed while the model was busy with tools.
+		if turn > 0 && cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+			reports := cfg.Subagents.Take()
+			if len(reports) > 0 {
+				delivery := Message{
+					Role:    RoleUser,
+					Kind:    SubagentReportKind,
+					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+				}
+				if cfg.SystemMessages != nil {
+					cfg.SystemMessages.Queue(delivery)
+				} else {
+					cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
+					transcript = append(transcript, delivery)
+				}
+			}
+		}
+		// Drain queued messages: system first, then user. System messages
+		// always precede user messages so an automated nudge is seen before
+		// anything the user queued mid-run.
+		for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
+			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
+			transcript = append(transcript, msg)
+		}
+		// Resource watch: poll at the turn boundary, before the model call,
+		// exactly where a host loop used to. A non-empty poll is delivered to
+		// the model as a user-role notice and mirrored to the host via
+		// OnResourceNotice. A poll error becomes a warning in the notice
+		// (silence would read as "nothing changed"); only a cancelled ctx
+		// aborts.
+		if cfg.ResourceWatcher != nil {
+			poll, perr := cfg.ResourceWatcher.Poll(ctx)
+			if perr != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					res.Messages = transcript
+					return res, ctxErr
+				}
+				poll.Warnings = append(poll.Warnings,
+					"the resource watch itself failed this turn ("+perr.Error()+"), so no resource is known to be current")
+			}
+			if !poll.Empty() {
+				notice := FormatResourceNotice(poll, cfg.ResourceDiffTool)
+				ids := make([]string, 0, len(poll.Changes))
+				for _, c := range poll.Changes {
+					ids = append(ids, c.ChangeID)
+				}
+				hostID := cfg.Events.emitResourceNotice(ResourceNoticeEvent{Content: notice, ChangeIDs: ids})
+				noticeMsg := Message{Role: RoleUser, Content: notice}
+				if hostID != "" {
+					noticeMsg.ID = string(hostID)
+				}
+				transcript = append(transcript, noticeMsg)
+			}
+		}
 		if cfg.turnHook != nil {
 			cfg.turnHook(turn + 1)
 		}
-		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, advertised, res)
+		turnTools := advertised
+		if cfg.MaxTurns > 0 && turn == cfg.MaxTurns-1 {
+			turnTools = nil
+		}
+		// Ask the host to mint the durable row for this turn, hanging off the
+		// last appended transcript entry. The returned id is attributed to the
+		// completion; "" means the host is not persisting and the loop's
+		// transcript is the only record.
+		parentID := ""
+		if n := len(transcript); n > 0 {
+			parentID = transcript[n-1].ID
+		}
+		assistantID, aerr := cfg.Events.emitAssistantMessage(AssistantMessageEvent{ParentID: MessageID(parentID)})
+		currentAssistantID = assistantID
+		if aerr != nil {
+			// The host failed to create or announce the row (e.g. the SSE
+			// sink died on the meta event). Finalize the turn as an error so
+			// the durable row is not stranded, then return the error.
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
+			res.Messages = transcript
+			return res, aerr
+		}
+		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
 		if err != nil {
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
@@ -305,21 +196,33 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				// matching result 400s on most upstreams.
 				partial := comp.Message
 				partial.ToolCalls = nil
+				if assistantID != "" {
+					partial.ID = string(assistantID)
+				}
+				status := "cancelled"
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+					status = "error"
+				}
 				transcript = append(transcript, partial)
 				res.Messages = transcript
 				res.Final = partial
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: partial, Status: status})
 				return res, err
 			}
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
 			res.Messages = transcript
 			return res, err
 		}
 		assistant := comp.Message
+		if assistantID != "" {
+			assistant.ID = string(assistantID)
+		}
 		calls := assistant.ToolCalls
 
 		// Keep looping while the model is still requesting tools and we are
 		// allowed to run them: replay the assistant's tool-call message, then
 		// each tool result, so the next turn sees the full sub-conversation.
-		if len(calls) > 0 {
+		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
 			// A batch identical to the previous turn's makes no progress: the
 			// same calls return the same results, which produce the same
 			// batch again. Nudge once, then end the run rather than spending
@@ -338,17 +241,25 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript = append(transcript, stuck)
 				res.Messages = transcript
 				res.Final = stuck
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: stuck, Status: "complete"})
 				return res, fmt.Errorf("%w: %d identical turns in a row", ErrStuck, repeats)
 			}
 
 			transcript = append(transcript, assistant)
 			aIdx := len(transcript) - 1
+			// Finalize the assistant as complete with its tool calls before
+			// executing them, matching the host's lifecycle: the row is
+			// persisted (with tool calls for display) before tools run. If the
+			// batch is aborted, abortBatch re-finalizes as cancelled.
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
 			// abortBatch ends the run mid-batch -- an approval decision that
 			// never arrived, or a tool callback that returned an error. It
 			// clears the pending batch: the assistant message keeps its
 			// content/reasoning but loses its tool_calls, and this batch's
 			// already-appended results are dropped, so no orphans remain to
-			// replay.
+			// replay. The host is told to finalize the assistant row as
+			// cancelled with no tool calls, so its durable tree matches the
+			// loop's transcript.
 			abortBatch := func(cause error) (*Result, error) {
 				transcript = transcript[:aIdx+1]
 				cleared := transcript[aIdx]
@@ -356,6 +267,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript[aIdx] = cleared
 				res.Messages = transcript
 				res.Final = cleared
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: cleared, Status: "cancelled"})
 				return res, cause
 			}
 			for _, asked := range calls {
@@ -364,7 +276,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				// way, while everything downstream from here -- the approval
 				// decision and the execution -- uses whatever the hook left.
 				call := asked
-				if cberr := cfg.Events.emitToolCall(&call); cberr != nil {
+				if cberr := cfg.Events.emitToolCall(ToolCallEvent{Call: &call}); cberr != nil {
 					return abortBatch(cberr)
 				}
 				result, aerr := resolveCall(ctx, &cfg, call)
@@ -372,10 +284,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					return abortBatch(aerr)
 				}
 				content := result.Content
+				parts := result.Parts
 				if deduper != nil {
 					if tool, known := cfg.Tools.Find(call.Name); known {
 						if collapsed, deduped := deduper.Collapse(tool.Decl(), result); deduped {
 							content = collapsed
+							parts = nil
 						}
 					}
 				}
@@ -389,10 +303,19 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					ToolCallID:  asked.ID,
 					ToolIsError: result.IsError,
 				}
-				if cberr := cfg.Events.emitToolResult(call, result, recorded); cberr != nil {
+				if cberr := cfg.Events.emitToolResult(ToolResultEvent{Call: call, Result: result, Recorded: recorded}); cberr != nil {
 					return abortBatch(cberr)
 				}
 				transcript = append(transcript, recorded)
+				if terr := cfg.Events.emitToolMessage(ToolMessageEvent{
+					ToolCallID:        asked.ID,
+					ParentAssistantID: assistantID,
+					Content:           content,
+					Parts:             parts,
+					IsError:           result.IsError,
+				}); terr != nil {
+					return abortBatch(terr)
+				}
 			}
 			if repeats == StuckNudgeAt {
 				transcript = append(transcript, Message{Role: RoleUser, Content: stuckNudgeInstruction})
@@ -406,23 +329,78 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// next report if none has) and keep looping, so the model actually
 		// sees them; that promise is the whole reason an asynchronous
 		// run_subagent may return before it has an answer.
-		if cfg.Subagents.Pending() > 0 {
-			reports, cerr := cfg.Subagents.Collect(ctx)
-			if cerr != nil {
-				res.Messages = transcript
-				return res, cerr
-			}
-			if len(reports) > 0 {
-				if strings.TrimSpace(assistant.Content) != "" {
-					answered := assistant
-					answered.ToolCalls = nil
-					transcript = append(transcript, answered)
+		if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+			if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns-1 {
+				// Capped final turn: don't wait for what's still running, but
+				// deliver what has arrived and declare remaining subagents lost.
+				reports := cfg.Subagents.Take()
+				lost := cfg.Subagents.CancelRemaining()
+				if len(reports) > 0 || lost > 0 {
+					delivery := Message{
+						Role:    RoleUser,
+						Kind:    SubagentReportKind,
+						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), lost),
+					}
+					if cfg.SystemMessages != nil {
+						cfg.SystemMessages.Queue(delivery)
+					} else {
+						cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
+						transcript = append(transcript, delivery)
+					}
+					if strings.TrimSpace(assistant.Content) != "" {
+						answered := assistant
+						answered.ToolCalls = nil
+						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
+						transcript = append(transcript, answered)
+					}
+					for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
+						cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
+						transcript = append(transcript, msg)
+					}
+					final := assistant
+					final.ToolCalls = nil
+					if strings.TrimSpace(final.Content) == "" {
+						final.Content = fallbackOutput(assistant)
+					}
+					return finish(final)
 				}
-				transcript = append(transcript, Message{
-					Role:    RoleUser,
-					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
-				})
-				continue
+			} else {
+				reports, cerr := cfg.Subagents.Collect(ctx)
+				if cerr != nil {
+					// Cancellation while waiting: finalize as cancelled, end gracefully.
+					if errors.Is(cerr, context.Canceled) || errors.Is(cerr, context.DeadlineExceeded) {
+						final := assistant
+						final.ToolCalls = nil
+						if strings.TrimSpace(final.Content) == "" {
+							final.Content = fallbackOutput(assistant)
+						}
+						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "cancelled"})
+						return finish(final)
+					}
+					res.Messages = transcript
+					return res, cerr
+				}
+				if len(reports) > 0 {
+					if strings.TrimSpace(assistant.Content) != "" {
+						answered := assistant
+						answered.ToolCalls = nil
+						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
+						transcript = append(transcript, answered)
+					}
+					if cfg.SystemMessages != nil {
+						cfg.SystemMessages.Queue(Message{
+							Role:    RoleUser,
+							Kind:    SubagentReportKind,
+							Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+						})
+					} else {
+						transcript = append(transcript, Message{
+							Role:    RoleUser,
+							Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+						})
+					}
+					continue
+				}
 			}
 		}
 
@@ -432,6 +410,16 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(assistant.Content) != "" {
 			final := assistant
 			final.ToolCalls = nil
+			if !stopHookFired {
+				stopHookFired = true
+				cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
+				if Pending(cfg.SystemMessages, cfg.UserMessages) {
+					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
+					transcript = append(transcript, final)
+					continue
+				}
+			}
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 			return finish(final)
 		}
 
@@ -443,7 +431,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// NOT in the transcript (it is only appended on the tool-execution
 		// branch), so the wrap-up request can't be rejected for an unanswered
 		// tool call.
-		if len(cfg.Tools) > 0 {
+		if len(cfg.Tools) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
 			wrapMsg := Message{Role: RoleUser, Content: wrapUpInstruction}
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
@@ -462,6 +450,16 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// the source's synthesize step).
 		}
 
+		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns-1 {
+			final := assistant
+			final.ToolCalls = nil
+			if strings.TrimSpace(final.Content) == "" {
+				final.Content = fallbackOutput(assistant)
+			}
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
+			return finish(final)
+		}
+
 		// Last resort: the reasoning (a thinking model's only output), then a
 		// clear placeholder, so the caller never gets a confusing empty
 		// result.
@@ -470,104 +468,26 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(final.Content) == "" {
 			final.Content = fallbackOutput(assistant)
 		}
+		finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 		return finish(final)
 	}
-}
 
-// runModelCall executes one model call and counts it as one turn -- including
-// when the provider re-attempted it internally, which Run neither sees nor
-// needs to. Every call that produced a completion -- success or partial --
-// appends its usage to the result. turn is the 1-based turn number (the stall
-// wrap-up call is one past the turn that stalled): OnTurnBegin fires with the
-// per-call Request (mutations apply to this call only), OnTurnEnd after it.
-func runModelCall(
-	ctx context.Context, cfg *Config,
-	req Request, turn int, msgs []Message, tools []ToolDecl, res *Result,
-) (*Completion, error) {
-	r := req
-	r.Messages = msgs
-	r.Tools = tools
-	if cberr := cfg.Events.emitTurnBegin(turn, &r); cberr != nil {
-		// The call never happened; nothing to count or record.
-		return nil, cberr
-	}
-
-	comp, err := cfg.Provider.Complete(ctx, r, &cfg.Events.StreamEvents)
-	res.Turns++
-	if comp != nil {
-		res.Usages = append(res.Usages, comp.Usage)
-	}
-	if cberr := cfg.Events.emitTurnEnd(turn, comp, err); cberr != nil {
-		// The call happened; its data is kept, the run aborts on the sink
-		// failure (Run finalizes the completion like a mid-stream break).
-		return comp, cberr
-	}
-	return comp, err
-}
-
-// resolveCall produces the recorded ToolResult for one requested call:
-// executed, denied, or a teaching error. EVERY call is put to the Approver --
-// a tool has no say in whether it is asked about, so a host's deny rule
-// reaches read-only calls too. The returned error is non-nil ONLY when an
-// approval decision never arrived (Approver.Ask failed), which ends the run.
-func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, error) {
-	tool, known := cfg.Tools.Find(call.Name)
-	if !known {
-		// A name this run does not offer: the model hallucinated a tool, or it
-		// remembers one its parent has. Teach it rather than aborting.
-		text := "unknown tool: " + call.Name
-		if cfg.unknownTool != nil {
-			text = cfg.unknownTool(call.Name)
-		}
-		return ToolResult{Content: text, IsError: true}, nil
-	}
-	if cfg.Approver == nil {
-		// Nobody to ask: read, but change nothing.
-		if !tool.Decl().Readonly {
-			return ToolResult{Content: DeniedMessage, IsError: true}, nil
-		}
-	} else {
-		verdict, aerr := cfg.Approver.Ask(ctx, call)
-		if aerr != nil {
-			return ToolResult{}, fmt.Errorf("agentic: tool approval interrupted: %w", aerr)
-		}
-		if !verdict.OK {
-			return ToolResult{Content: deniedText(verdict.Reason), IsError: true}, nil
+	// A positive cap always permits at least one call; this return is only
+	// reachable if the cap broke the loop. Deliver any pending sub-agent
+	// reports as a final delivery (whatever is ready, declaring the rest lost)
+	// before finishing.
+	if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+		reports := cfg.Subagents.Take()
+		lost := cfg.Subagents.CancelRemaining()
+		if len(reports) > 0 || lost > 0 {
+			delivery := Message{
+				Role:    RoleUser,
+				Kind:    SubagentReportKind,
+				Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), lost),
+			}
+			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
+			transcript = append(transcript, delivery)
 		}
 	}
-	// The id is threaded on the context, where it is known -- the Tool
-	// interface stays id-free (see toolcallid.go).
-	result, exErr := tool.Execute(WithToolCallID(ctx, call.ID), json.RawMessage(call.Arguments))
-	if exErr != nil {
-		// Defensive: internal failures are surfaced as tool text so the model
-		// can react rather than aborting the conversation.
-		return ToolResult{Content: "tool execution failed: " + exErr.Error(), IsError: true}, nil
-	}
-	return result, nil
-}
-
-// deniedText is what a refused call records: the approver's own reason, and
-// DeniedMessage when it gave none.
-func deniedText(reason string) string {
-	if r := strings.TrimSpace(reason); r != "" {
-		return r
-	}
-	return DeniedMessage
-}
-
-// fallbackOutput picks the text to surface when the loop ends without a
-// written answer: the content, then the accumulated reasoning (a thinking
-// model's only output), then a clear placeholder.
-func fallbackOutput(m Message) string {
-	if s := strings.TrimSpace(m.Content); s != "" {
-		return s
-	}
-	var b strings.Builder
-	for _, t := range m.Thinking {
-		b.WriteString(t.Text)
-	}
-	if s := strings.TrimSpace(b.String()); s != "" {
-		return s
-	}
-	return noOutputPlaceholder
+	return finish(Message{Role: RoleAssistant, Content: noOutputPlaceholder})
 }

@@ -64,18 +64,21 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	var calls []ToolCall
 	var results []ToolResult
 	var recorded []Message
+	events := Events{}
+	toolCallCb := func(ev ToolCallEvent) error { calls = append(calls, *ev.Call); return nil }
+	toolResultCb := func(ev ToolResultEvent) error {
+		r, m := ev.Result, ev.Recorded
+		results = append(results, r)
+		recorded = append(recorded, m)
+		return nil
+	}
+	events.OnToolCall.Subscribe(&toolCallCb)
+	events.OnToolResult.Subscribe(&toolResultCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events: Events{
-			OnToolCall: func(c *ToolCall) error { calls = append(calls, *c); return nil },
-			OnToolResult: func(_ ToolCall, r ToolResult, m Message) error {
-				results = append(results, r)
-				recorded = append(recorded, m)
-				return nil
-			},
-		},
+		Events:   &events,
 	}
 	req := Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "go"}},
 		Tools: []ToolDecl{{Name: "ignored"}}}
@@ -609,7 +612,7 @@ func TestRunStreamEventsForwarded(t *testing.T) {
 	}}
 	var text, reasoning string
 	var gotUsage, gotProgress, gotTimings bool
-	cfg := Config{Provider: provider, Events: Events{StreamEvents: StreamEvents{
+	cfg := Config{Provider: provider, Events: &Events{StreamEvents: StreamEvents{
 		OnText:      func(s string) error { text += s; return nil },
 		OnReasoning: func(s string) error { reasoning += s; return nil },
 		OnUsage:     func(Usage) error { gotUsage = true; return nil },

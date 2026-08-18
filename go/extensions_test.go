@@ -22,21 +22,23 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var begins []int
+	events := Events{}
+	// Wind-down injection: append a notice to THIS call's request only,
+	// on a fresh copy (the TS `[...messages, notice]` shape) so the
+	// stored transcript is never aliased.
+	turnBeginCb := func(ev TurnBeginEvent) error {
+		turn, req := ev.Turn, ev.Req
+		begins = append(begins, turn)
+		msg := Message{Role: RoleUser, Content: fmt.Sprintf("notice-%d", turn)}
+		req.Messages = append(append([]Message{}, req.Messages...), msg)
+		return nil
+	}
+	events.OnTurnBegin.Subscribe(&turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events: Events{
-			// Wind-down injection: append a notice to THIS call's request only,
-			// on a fresh copy (the TS `[...messages, notice]` shape) so the
-			// stored transcript is never aliased.
-			OnTurnBegin: func(turn int, req *Request) error {
-				begins = append(begins, turn)
-				msg := Message{Role: RoleUser, Content: fmt.Sprintf("notice-%d", turn)}
-				req.Messages = append(append([]Message{}, req.Messages...), msg)
-				return nil
-			},
-		},
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{
 		Model:    "m",
@@ -70,18 +72,20 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 	var turns []int
 	var comps []*Completion
 	var errs []error
+	events := Events{}
+	turnEndCb := func(ev TurnEndEvent) error {
+		turn, comp, err := ev.Turn, ev.Comp, ev.Err
+		turns = append(turns, turn)
+		comps = append(comps, comp)
+		errs = append(errs, err)
+		return nil
+	}
+	events.OnTurnEnd.Subscribe(&turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events: Events{
-			OnTurnEnd: func(turn int, comp *Completion, err error) error {
-				turns = append(turns, turn)
-				comps = append(comps, comp)
-				errs = append(errs, err)
-				return nil
-			},
-		},
+		Events:   &events,
 	}
 	req := Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}}
 	res, err := Run(context.Background(), cfg, req)
@@ -104,11 +108,12 @@ func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("never")},
 	}}
+	events := Events{}
+	turnBeginCb := func(ev TurnBeginEvent) error { return sentinel }
+	events.OnTurnBegin.Subscribe(&turnBeginCb)
 	cfg := Config{
 		Provider: provider,
-		Events: Events{
-			OnTurnBegin: func(int, *Request) error { return sentinel },
-		},
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.Error(t, err)
@@ -124,11 +129,12 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("partial answer")},
 	}}
+	events := Events{}
+	turnEndCb := func(ev TurnEndEvent) error { return sentinel }
+	events.OnTurnEnd.Subscribe(&turnEndCb)
 	cfg := Config{
 		Provider: provider,
-		Events: Events{
-			OnTurnEnd: func(int, *Completion, error) error { return sentinel },
-		},
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
@@ -149,14 +155,16 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var begins, ends []int
+	events := Events{}
+	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
+	turnEndCb := func(ev TurnEndEvent) error { ends = append(ends, ev.Turn); return nil }
+	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	events.OnTurnEnd.Subscribe(&turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events: Events{
-			OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil },
-			OnTurnEnd:   func(turn int, _ *Completion, _ error) error { ends = append(ends, turn); return nil },
-		},
+		Events:   &events,
 	}
 	res, err := Run(context.Background(), cfg, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
@@ -177,11 +185,14 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	var internal, begins []int
+	events := Events{}
+	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
+	events.OnTurnBegin.Subscribe(&turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Approver: allowAll,
-		Events:   Events{OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil }},
+		Events:   &events,
 	}
 	cfg.turnHook = func(turn int) { internal = append(internal, turn) }
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
