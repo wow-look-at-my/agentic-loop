@@ -35,9 +35,9 @@ var repoReadFields = map[string][]string{
 // repoReadFieldRedirect points each ignorable field at the read that does use
 // it, so the rejection teaches the correct call rather than only refusing.
 var repoReadFieldRedirect = map[string]string{
-	"query":        `repo_read has no "query": it reads history and metadata, never file contents. To search inside files use ` + GrepToolName + ` on /repos/<org>/<repo>/<path>.`,
-	"glob":         `repo_read has no "glob": it reads history and metadata, never files. To match filenames use ` + FindFilesToolName + `, or to filter a content search use ` + GrepToolName + `'s own "glob".`,
-	"path":         `"path" filters what=commits to one file or directory. To list files use ` + FindFilesToolName + ` on /repos/<org>/<repo>/<path>.`,
+	"query":        `repo_read has no "query": it reads history and metadata, never file contents. To search inside files use grep on /repos/<org>/<repo>/<path>.`,
+	"glob":         `repo_read has no "glob": it reads history and metadata, never files. To match filenames use find_files, or to filter a content search use grep's own "glob".`,
+	"path":         `"path" filters what=commits to one file or directory. To list files use find_files on /repos/<org>/<repo>/<path>.`,
 	"sha":          `"sha" names the commit what=commit fetches.`,
 	"number":       `"number" names the pull request or issue what=pr / what=issue fetches.`,
 	"state":        `"state" filters what=prs / what=issues.`,

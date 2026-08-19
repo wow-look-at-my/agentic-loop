@@ -33,9 +33,9 @@ const (
 	repoReadDescription = "Reads a GitHub repository's HISTORY and METADATA — the parts of a repository that are not files — selected by the required \"what\": " +
 		"commits (commit list), commit (one commit with its diff), prs (pull request list), pr (one pull request with changed files), " +
 		"issues (issue list), issue (one issue with comments), status (a commit's CI state: legacy commit statuses and GitHub Actions check runs). " +
-		"The repository's FILES are not here: they are a filesystem under /repos/<org>/<repo>/<path>, so list them with " + ListDirToolName +
-		", read them with " + ReadFileToolName + ", find them by name with " + FindFilesToolName + ", and search what is INSIDE them with " +
-		GrepToolName + ". Results are capped, and a capped result always says so."
+		"The repository's FILES are not here: they are a filesystem under /repos/<org>/<repo>/<path>, so list them with list_dir" +
+		", read them with read_file, find them by name with find_files, and search what is INSIDE them with " +
+		"grep. Results are capped, and a capped result always says so."
 )
 
 var repoReadSchema = EnumSchema[repoReadArgs](map[string][]string{
@@ -147,9 +147,9 @@ var repoReadWhatList = strings.Join(repoReadWhatOrder, ", ")
 // model still calling them by the old name is redirected rather than told the
 // what is merely unknown.
 var repoReadMovedWhats = map[string]string{
-	"tree":      ListDirToolName + ` on the repository path, e.g. {"path": "/repos/<org>/<repo>/<dir>"}`,
-	"file":      ReadFileToolName + ` on the repository path, e.g. {"path": "/repos/<org>/<repo>/<path/to/file>"}`,
-	"filenames": FindFilesToolName + ` on the repository path, e.g. {"path": "/repos/<org>/<repo>", "pattern": "*.go"}`,
+	"tree":      `list_dir on the repository path, e.g. {"path": "/repos/<org>/<repo>/<dir>"}`,
+	"file":      `read_file on the repository path, e.g. {"path": "/repos/<org>/<repo>/<path/to/file>"}`,
+	"filenames": `find_files on the repository path, e.g. {"path": "/repos/<org>/<repo>", "pattern": "*.go"}`,
 }
 
 // repoRead is the repo_read tool: it parses the argument union, validates

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type schemaFixture struct {
@@ -71,13 +70,4 @@ func TestInferSchemaPanicsOnAMisdeclaredArgument(t *testing.T) {
 		func() { EnumSchema[schemaFixture](map[string][]string{"nope": {"x"}}) })
 	assert.PanicsWithValue(t, "agentic: a tool's arguments must be a struct, got string",
 		func() { InferSchema[string]() })
-}
-
-// The file tools' schemas come off their argument structs, so this is the one
-// check that matters for them: the tool decodes exactly what it advertises.
-func TestFileToolSchemasAreInferred(t *testing.T) {
-	reg, _ := fileRig()
-	tool, ok := reg.Find(GrepToolName)
-	require.True(t, ok)
-	assert.JSONEq(t, string(InferSchema[grepArgs]()), string(tool.Decl().InputSchema))
 }

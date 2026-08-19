@@ -11,9 +11,10 @@ be embedded in other hosts.
 
 ## Layout
 
-- [`go/`](go/) — the Go library. One package, `agentic`,
-  standard-library-only at runtime; see [go/README.md](go/README.md) for
-  the API tour and examples.
+- [`src/`](src/) — the Go library. Package `agentic` is the loop and
+  providers; [`src/vfs/`](src/vfs/) is the optional virtual-filesystem
+  tools (`vfs.NewFileTools`). See [src/README.md](src/README.md) for the
+  API tour and examples.
 
 ## Design points
 

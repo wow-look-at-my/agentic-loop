@@ -15,11 +15,11 @@ endpoint, key, and knob is explicit configuration.
 ## Install
 
 ```sh
-go get github.com/wow-look-at-my/agentic-loop/go
+go get github.com/wow-look-at-my/agentic-loop/src
 ```
 
 ```go
-import agentic "github.com/wow-look-at-my/agentic-loop/go"
+import agentic "github.com/wow-look-at-my/agentic-loop/src"
 ```
 
 ## Quick start — OpenAI-compatible
@@ -722,9 +722,9 @@ and size and reported as such, never rendered as a diff.
 `UnifiedDiff`/`CountLineChanges`/`HumanSize` are exported for hosts rendering
 their own changes with the same words.
 
-### Filesystem tools (optional)
+### Filesystem tools (optional, package `vfs`)
 
-`NewFileTools(FileToolsConfig)` returns the seven-tool file vocabulary —
+`vfs.NewFileTools(vfs.FileToolsConfig)` returns the seven-tool file vocabulary —
 `list_dir`, `read_file`, `find_files`, `grep`, `write_file`, `edit_file`,
 `delete_file` — over whatever a host mounts. The library owns what a file tool
 IS: the names, the model-facing descriptions, the argument schemas, the caps
@@ -735,14 +735,16 @@ all, rather than tools that can only fail.
 A host mounts `Folder`s under virtual prefixes:
 
 ```go
-tools := agentic.NewFileTools(agentic.FileToolsConfig{
-	Folders: map[string]agentic.Folder{
+import "github.com/wow-look-at-my/agentic-loop/src/vfs"
+
+tools := vfs.NewFileTools(vfs.FileToolsConfig{
+	Folders: map[string]vfs.Folder{
 		"repos":     repoFolder,      // /repos/<org>/<repo>[@<ref>]/<path>
-		"workspace": workspaceFolder, // an agentic.WritableFolder
+		"workspace": workspaceFolder, // a vfs.WritableFolder
 	},
 	MountsBlurb: "/repos is read-only; /workspace is editable.",
 	Notes: map[string]string{ // appended to ONE tool's description
-		agentic.WriteFileToolName: "Writes stage locally until the user pushes.",
+		vfs.WriteFileToolName: "Writes stage locally until the user pushes.",
 	},
 })
 ```

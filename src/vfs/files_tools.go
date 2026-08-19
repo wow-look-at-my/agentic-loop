@@ -1,9 +1,10 @@
-package agentic
+package vfs
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	agentic "github.com/wow-look-at-my/agentic-loop/src"
 	"strings"
 )
 
@@ -61,19 +62,19 @@ func MountOf(p string) string {
 
 // resolve routes a path to its folder. Every failure is a recoverable teaching
 // error.
-func (e *files) resolve(tool, raw string) (Folder, *ToolResult) {
+func (e *files) resolve(tool, raw string) (Folder, *agentic.ToolResult) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, &ToolResult{Content: tool + ` requires "path".`, IsError: true}
+		return nil, &agentic.ToolResult{Content: tool + ` requires "path".`, IsError: true}
 	}
 	if e.guard != nil {
 		if blocked, reason := e.guard(raw); blocked {
-			return nil, &ToolResult{Content: reason, IsError: true}
+			return nil, &agentic.ToolResult{Content: reason, IsError: true}
 		}
 	}
 	mount := strings.ToLower(MountOf(raw))
 	f, ok := e.folders[mount]
 	if !ok {
-		return nil, &ToolResult{Content: tool + ": " + e.mountUnavailable(mount), IsError: true}
+		return nil, &agentic.ToolResult{Content: tool + ": " + e.mountUnavailable(mount), IsError: true}
 	}
 	return f, nil
 }
@@ -89,17 +90,17 @@ func (e *files) mountUnavailable(mount string) string {
 
 // writable resolves a path to a folder that accepts changes, or the teaching
 // error naming what to use instead.
-func (e *files) writable(tool, raw string) (WritableFolder, *ToolResult) {
+func (e *files) writable(tool, raw string) (WritableFolder, *agentic.ToolResult) {
 	f, fail := e.resolve(tool, raw)
 	if fail != nil {
 		return nil, fail
 	}
 	w, ok := f.(WritableFolder)
 	if !ok {
-		return nil, &ToolResult{Content: tool + ": " + readOnlyReason(f, raw), IsError: true}
+		return nil, &agentic.ToolResult{Content: tool + ": " + readOnlyReason(f, raw), IsError: true}
 	}
 	if allowed, why := w.Writable(raw); !allowed {
-		return nil, &ToolResult{Content: tool + ": " + why, IsError: true}
+		return nil, &agentic.ToolResult{Content: tool + ": " + why, IsError: true}
 	}
 	return w, nil
 }
@@ -116,16 +117,16 @@ func readOnlyReason(f Folder, p string) string {
 }
 
 // decodeArgs unmarshals a tool's arguments.
-func decodeArgs[In any](tool string, args json.RawMessage) (In, *ToolResult) {
+func decodeArgs[In any](tool string, args json.RawMessage) (In, *agentic.ToolResult) {
 	var in In
 	if err := json.Unmarshal(args, &in); err != nil {
 		var zero In
-		return zero, &ToolResult{Content: "invalid " + tool + " arguments: " + err.Error(), IsError: true}
+		return zero, &agentic.ToolResult{Content: "invalid " + tool + " arguments: " + err.Error(), IsError: true}
 	}
 	return in, nil
 }
 
-func (e *files) listDir(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) listDir(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[pathArgs](ListDirToolName, args)
 	if bad != nil {
 		return *bad, nil
@@ -136,12 +137,12 @@ func (e *files) listDir(ctx context.Context, args json.RawMessage) (ToolResult, 
 	}
 	listing, err := f.List(ctx, in.Path)
 	if err != nil {
-		return ToolResult{Content: ListDirToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: ListDirToolName + ": " + err.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: renderListing(f.Display(in.Path), listing)}, nil
+	return agentic.ToolResult{Content: renderListing(f.Display(in.Path), listing)}, nil
 }
 
-func (e *files) readFile(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) readFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[readArgs](ReadFileToolName, args)
 	if bad != nil {
 		return *bad, nil
@@ -152,7 +153,7 @@ func (e *files) readFile(ctx context.Context, args json.RawMessage) (ToolResult,
 	}
 	file, err := f.Read(ctx, in.Path)
 	if err != nil {
-		return ToolResult{Content: ReadFileToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: ReadFileToolName + ": " + err.Error(), IsError: true}, nil
 	}
 	header := f.Display(in.Path)
 	if file.Note != "" {
@@ -169,17 +170,17 @@ func (e *files) readFile(ctx context.Context, args json.RawMessage) (ToolResult,
 		// relative to.
 		header += "\n" + file.TruncatedNote
 	}
-	return ToolResult{Content: header + "\n\n" + body}, nil
+	return agentic.ToolResult{Content: header + "\n\n" + body}, nil
 }
 
-func (e *files) findFiles(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) findFiles(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[findArgs](FindFilesToolName, args)
 	if bad != nil {
 		return *bad, nil
 	}
 	pattern := strings.TrimSpace(in.Pattern)
 	if pattern == "" {
-		return ToolResult{Content: FindFilesToolName + ` requires "pattern": a filename glob (*.go) or a plain substring of the name or path.`, IsError: true}, nil
+		return agentic.ToolResult{Content: FindFilesToolName + ` requires "pattern": a filename glob (*.go) or a plain substring of the name or path.`, IsError: true}, nil
 	}
 	f, fail := e.resolve(FindFilesToolName, in.Path)
 	if fail != nil {
@@ -188,11 +189,11 @@ func (e *files) findFiles(ctx context.Context, args json.RawMessage) (ToolResult
 	limit := clampInt(in.Limit, FindDefaultLimit, 1, FindMaxLimit)
 	hits, err := f.Find(ctx, in.Path, pattern, limit)
 	if err != nil {
-		return ToolResult{Content: FindFilesToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: FindFilesToolName + ": " + err.Error(), IsError: true}, nil
 	}
 	where := f.Display(in.Path)
 	if len(hits) == 0 {
-		return ToolResult{Content: fmt.Sprintf("No file under %s matches %q.", where, pattern)}, nil
+		return agentic.ToolResult{Content: fmt.Sprintf("No file under %s matches %q.", where, pattern)}, nil
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d file(s) under %s matching %q", len(hits), where, pattern)
@@ -203,21 +204,21 @@ func (e *files) findFiles(ctx context.Context, args json.RawMessage) (ToolResult
 	for _, h := range hits {
 		b.WriteString(h + "\n")
 	}
-	return ToolResult{Content: strings.TrimRight(b.String(), "\n")}, nil
+	return agentic.ToolResult{Content: strings.TrimRight(b.String(), "\n")}, nil
 }
 
 // grep searches file contents below a path. Scope is the path and nothing
 // else, exactly as for find_files: the same tool searches one subdirectory,
 // one repository, or a whole owner, depending only on how much of the path is
 // given.
-func (e *files) grep(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) grep(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[grepArgs](GrepToolName, args)
 	if bad != nil {
 		return *bad, nil
 	}
 	pattern := strings.TrimSpace(in.Pattern)
 	if pattern == "" {
-		return ToolResult{Content: GrepToolName + ` requires "pattern": the text to find inside the files.`, IsError: true}, nil
+		return agentic.ToolResult{Content: GrepToolName + ` requires "pattern": the text to find inside the files.`, IsError: true}, nil
 	}
 	f, fail := e.resolve(GrepToolName, in.Path)
 	if fail != nil {
@@ -233,12 +234,12 @@ func (e *files) grep(ctx context.Context, args json.RawMessage) (ToolResult, err
 		MaxHits:       limit,
 	})
 	if err != nil {
-		return ToolResult{Content: GrepToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: GrepToolName + ": " + err.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: renderGrep(f.Display(in.Path), pattern, globs, res)}, nil
+	return agentic.ToolResult{Content: renderGrep(f.Display(in.Path), pattern, globs, res)}, nil
 }
 
-func (e *files) writeFile(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) writeFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[writeArgs](WriteFileToolName, args)
 	if bad != nil {
 		return *bad, nil
@@ -249,18 +250,18 @@ func (e *files) writeFile(ctx context.Context, args json.RawMessage) (ToolResult
 	}
 	note, err := w.Create(ctx, in.Path, in.Content)
 	if err != nil {
-		return ToolResult{Content: WriteFileToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: WriteFileToolName + ": " + err.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: note}, nil
+	return agentic.ToolResult{Content: note}, nil
 }
 
-func (e *files) editFile(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) editFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[editArgs](EditFileToolName, args)
 	if bad != nil {
 		return *bad, nil
 	}
 	if in.OldText == "" {
-		return ToolResult{Content: EditFileToolName + ` requires "old_text": the exact existing text to replace, occurring exactly once in the file. To add a brand-new file use ` + WriteFileToolName + ".", IsError: true}, nil
+		return agentic.ToolResult{Content: EditFileToolName + ` requires "old_text": the exact existing text to replace, occurring exactly once in the file. To add a brand-new file use ` + WriteFileToolName + ".", IsError: true}, nil
 	}
 	w, fail := e.writable(EditFileToolName, in.Path)
 	if fail != nil {
@@ -268,12 +269,12 @@ func (e *files) editFile(ctx context.Context, args json.RawMessage) (ToolResult,
 	}
 	note, err := w.Replace(ctx, in.Path, in.OldText, in.NewText)
 	if err != nil {
-		return ToolResult{Content: EditFileToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: EditFileToolName + ": " + err.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: note}, nil
+	return agentic.ToolResult{Content: note}, nil
 }
 
-func (e *files) deleteFile(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+func (e *files) deleteFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[pathArgs](DeleteFileToolName, args)
 	if bad != nil {
 		return *bad, nil
@@ -284,7 +285,7 @@ func (e *files) deleteFile(ctx context.Context, args json.RawMessage) (ToolResul
 	}
 	note, err := w.Remove(ctx, in.Path)
 	if err != nil {
-		return ToolResult{Content: DeleteFileToolName + ": " + err.Error(), IsError: true}, nil
+		return agentic.ToolResult{Content: DeleteFileToolName + ": " + err.Error(), IsError: true}, nil
 	}
-	return ToolResult{Content: note}, nil
+	return agentic.ToolResult{Content: note}, nil
 }

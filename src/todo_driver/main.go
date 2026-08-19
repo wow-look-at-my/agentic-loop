@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	agentic "github.com/wow-look-at-my/agentic-loop/go"
+	agentic "github.com/wow-look-at-my/agentic-loop/src"
 )
 
 // recorder is a host store: it appends every post-mutation list the executor

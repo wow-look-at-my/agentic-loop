@@ -72,7 +72,7 @@ func TestRepoReadWhatValidation(t *testing.T) {
 	// The reads that became filesystem operations redirect by name rather than
 	// reporting a merely unknown what.
 	for what, want := range map[string]string{
-		"tree": ListDirToolName, "file": ReadFileToolName, "filenames": FindFilesToolName,
+		"tree": "list_dir", "file": "read_file", "filenames": "find_files",
 	} {
 		res = execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: what, Org: "octo", Repo: "hello"})
 		assert.True(t, res.IsError, what)

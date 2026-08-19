@@ -1,7 +1,8 @@
-package agentic
+package vfs
 
 import (
 	"fmt"
+	agentic "github.com/wow-look-at-my/agentic-loop/src"
 	"path"
 	"sort"
 	"strings"
@@ -47,7 +48,7 @@ func renderListing(where string, l Listing) string {
 		}
 		fmt.Fprintf(&b, "%-5s %s", kind, name)
 		if !en.Dir && en.Kind == "" {
-			fmt.Fprintf(&b, " (%s)", HumanSize(en.Size))
+			fmt.Fprintf(&b, " (%s)", agentic.HumanSize(en.Size))
 		}
 		if en.Note != "" {
 			b.WriteString("  " + en.Note)
@@ -192,4 +193,11 @@ func clampInt(v, def, lo, hi int) int {
 		v = def
 	}
 	return max(lo, min(v, hi))
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
