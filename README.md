@@ -11,16 +11,15 @@ be embedded in other hosts.
 
 ## Layout
 
-- [`src/`](src/) — the Go library, grouped by concern:
-  - package `agentic` — loop, providers, dialects
-  - [`src/vfs/`](src/vfs/) — virtual-filesystem tools
-  - [`src/repo/`](src/repo/) — GitHub client and repo tools
-  - [`src/subagent/`](src/subagent/) — `run_subagent`
-  - [`src/webfetch/`](src/webfetch/) — `web_fetch`
-  - [`src/todo/`](src/todo/) — task-list tools
-  - [`src/resources/`](src/resources/) — MCP resource watch
+Package `agentic` is the module root:
 
-  See [src/README.md](src/README.md) for the API tour and examples.
+```go
+import agentic "github.com/wow-look-at-my/agentic-loop"
+```
+
+Optional families are sibling packages: [`vfs/`](vfs/), [`repo/`](repo/),
+[`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/),
+[`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
 
 ## Design points
 

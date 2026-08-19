@@ -5,8 +5,8 @@ Notes for Claude working in this repository.
 ## What this is
 
 `agentic-loop` — a reusable agentic-loop library for OpenAI-compatible and
-Anthropic chat APIs. `src/` holds the Go library, grouped by concern:
-package `agentic` (loop and providers) plus sibling packages `vfs`,
+Anthropic chat APIs. Package `agentic` is the module root
+(`github.com/wow-look-at-my/agentic-loop`). Sibling packages are `vfs`,
 `repo`, `subagent`, `webfetch`, `todo`, and `resources`. The loop package
 does not import the optional packages. There is no TypeScript port and none
 is planned.
@@ -41,14 +41,14 @@ redesign — check these when a behavior question comes up):
 
 The Responses dialect has NO source repo — it was written here, against the
 API's own shapes. Do not go looking for the semantics somewhere else; the
-answers are `src/README.md` and `responses_test.go`.
+answers are `USAGE.md` and `responses_test.go`.
 
 ## Build & test
 
 ALWAYS build and test with `go-toolchain` (no args) from the repo root.
 NEVER run bare `go build` / `go test` / `go mod tidy` — the toolchain does
 mod tidy, vet, lint, tests with an **80% coverage gate**, and the build.
-Build output goes in `/build` at the repo root, never under `src/`.
+Build output goes in `/build` at the repo root.
 
 ```sh
 go-toolchain
@@ -64,7 +64,7 @@ go-toolchain
 ## Layering — read this before moving anything between layers
 
 Two layers, and most design arguments in this repo are really this question
-asked sideways. `src/README.md` has the full statement; the short form:
+asked sideways. `USAGE.md` has the full statement; the short form:
 
 - **The loop (`Run`) is high-level.** It asks the model, runs the tools it
   asks for, feeds results back, repeats. It knows nothing about HTTP,
@@ -111,7 +111,7 @@ side of that line it falls on — do not put it on both.
   own default (third-party retention is the caller's decision to make out
   loud), `previous_response_id` is never sent (the transcript is the caller's),
   and detection can never name this dialect, since the model list looks
-  identical. Depth: `src/README.md`.
+  identical. Depth: `USAGE.md`.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
   end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
   nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
@@ -292,5 +292,5 @@ repository root. Org constraints:
 
 ## Documentation upkeep
 
-When changing the API surface or any behavior: update `src/README.md` and
+When changing the API surface or any behavior: update `USAGE.md` and
 this file in the same commit.
