@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,9 +44,44 @@ type openaiProvider struct {
 // oaReserved are the Extra keys the typed core always overrides.
 var oaReserved = set.Of("messages", "model", "stream", "tools")
 
-// Complete implements Provider over a streaming chat completion.
+// Complete implements Provider over a streaming chat completion. When the
+// first attempt fails before anything streamed with a 400 that names no
+// recoverable parameter (Z.AI answers "Invalid API parameter, please check
+// the documentation" -- no name at all, so NewParamStripper's regexes have
+// nothing to match), and the request carried the AUTO-added default
+// stream_options (never a caller-requested field, only a usage-in-stream
+// convenience), Complete retries once with that default left off. Dropping it
+// is always safe: the caller never asked for it, and its absence only means
+// no usage figures on this call, the same degradation an upstream with no
+// stream_options support already produces.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
-	body, err := o.buildBody(req)
+	comp, err := o.complete(ctx, req, ev, true)
+	if comp != nil || err == nil || !o.shouldRetryWithoutStreamOptions(req, err) {
+		return comp, err
+	}
+	return o.complete(ctx, req, ev, false)
+}
+
+// shouldRetryWithoutStreamOptions reports whether a failed first attempt is
+// worth retrying with the default stream_options left off: the failure must
+// be a pre-stream 400, and the request must actually have carried the
+// AUTO-added default -- a caller-supplied stream_options (via Extra) is never
+// touched.
+func (o *openaiProvider) shouldRetryWithoutStreamOptions(req Request, err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Status != 400 {
+		return false
+	}
+	_, hasOwn := req.ParamsFor(DialectOpenAI)["stream_options"]
+	return !hasOwn
+}
+
+// complete runs one attempt of the streaming chat completion.
+// includeDefaultStreamOptions gates the {"include_usage":true} default (see
+// buildBody); Complete calls this twice only when a first attempt with it set
+// is rejected outright.
+func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEvents, includeDefaultStreamOptions bool) (*Completion, error) {
+	body, err := o.buildBody(req, includeDefaultStreamOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -112,14 +148,16 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 // routing. stream is always forced true, tools are sent only when non-empty
 // (no tool_choice is ever sent), and stream_options defaults to
 // {"include_usage":true} only when the caller has not supplied a
-// stream_options key via Extra -- without it OpenAI and most compatibles omit
-// usage from streamed responses entirely. MaxTokens > 0 sets max_tokens
-// (overriding an Extra value); 0 leaves the field to Extra or the provider
-// default. CacheKey, when set, rides as prompt_cache_key, and selfHosted adds
-// cache_prompt:true. promptCache marks the per-request wire copy with the two
-// ephemeral cache breakpoints; replayReasoning echoes assistant reasoning back
-// as message.reasoning.
-func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
+// stream_options key via Extra AND includeDefaultStreamOptions is true --
+// without it OpenAI and most compatibles omit usage from streamed responses
+// entirely, but a few (Z.AI) reject the field outright, which is what
+// includeDefaultStreamOptions=false is for (see Complete's retry). MaxTokens
+// > 0 sets max_tokens (overriding an Extra value); 0 leaves the field to
+// Extra or the provider default. CacheKey, when set, rides as
+// prompt_cache_key, and selfHosted adds cache_prompt:true. promptCache marks
+// the per-request wire copy with the two ephemeral cache breakpoints;
+// replayReasoning echoes assistant reasoning back as message.reasoning.
+func (o *openaiProvider) buildBody(req Request, includeDefaultStreamOptions bool) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.ParamsFor(DialectOpenAI) {
 		if oaReserved.Contains(k) {
@@ -151,7 +189,7 @@ func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
 	if req.MaxTokens > 0 {
 		body["max_tokens"] = req.MaxTokens
 	}
-	if _, ok := body["stream_options"]; !ok {
+	if _, ok := body["stream_options"]; !ok && includeDefaultStreamOptions {
 		body["stream_options"] = map[string]any{"include_usage": true}
 	}
 	if req.CacheKey != "" {
