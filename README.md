@@ -7,10 +7,15 @@ model call and its answer, and the transports that carry it.
 
 ## Layout
 
-- [`src/`](src/) — the Go library. Package `agentic` is the loop and
-  providers; [`src/vfs/`](src/vfs/) is the optional virtual-filesystem
-  tools (`vfs.NewFileTools`). See [src/README.md](src/README.md) for the
-  API tour and examples.
+Package `agentic` is the module root:
+
+```go
+import agentic "github.com/wow-look-at-my/agentic-loop"
+```
+
+Optional families are sibling packages: [`vfs/`](vfs/), [`repo/`](repo/),
+[`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/),
+[`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
 
 ## Design points
 
@@ -32,7 +37,7 @@ model call and its answer, and the transports that carry it.
 cd go && go-toolchain
 ```
 
-Depth: [`CLAUDE.md`](CLAUDE.md), [`go/README.md`](go/README.md) and
+Depth: [`CLAUDE.md`](CLAUDE.md), [`USAGE.md`](USAGE.md) and
 [`docs/`](docs/).
 
 ## License

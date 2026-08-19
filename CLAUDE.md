@@ -5,9 +5,10 @@ Notes for Claude working in this repository.
 ## What this is
 
 `agentic-loop` — a reusable agentic-loop library for OpenAI-compatible and
-Anthropic chat APIs. `src/` holds the Go library: package `agentic` (the
-loop, providers, repo tools, sub-agent, web fetch) and `src/vfs` (package
-`vfs`, the virtual-filesystem tools). There is no TypeScript port and none
+Anthropic chat APIs. Package `agentic` is the module root
+(`github.com/wow-look-at-my/agentic-loop`). Sibling packages are `vfs`,
+`repo`, `subagent`, `webfetch`, `todo`, and `resources`. The loop package
+does not import the optional packages. There is no TypeScript port and none
 is planned.
 
 Where the semantics came from (the Go library is an extraction, not a
@@ -37,16 +38,17 @@ redesign — check these when a behavior question comes up):
 
 The Responses dialect has NO source repo — it was written here, against the
 API's own shapes. Do not go looking for the semantics somewhere else; the
-answers are `src/README.md` and `responses_test.go`.
+answers are `USAGE.md` and `responses_test.go`.
 
 ## Build & test
 
-ALWAYS build and test with `go-toolchain` (no args) from `src/`. NEVER run
-bare `go build` / `go test` / `go mod tidy` — the toolchain does mod tidy,
-vet, lint, tests with an **80% coverage gate**, and the build.
+ALWAYS build and test with `go-toolchain` (no args) from the repo root.
+NEVER run bare `go build` / `go test` / `go mod tidy` — the toolchain does
+mod tidy, vet, lint, tests with an **80% coverage gate**, and the build.
+Build output goes in `/build` at the repo root.
 
 ```sh
-cd src && go-toolchain
+go-toolchain
 ```
 
 - go-toolchain refuses a dirty tree: commit first, run it, then commit its
@@ -56,7 +58,7 @@ cd src && go-toolchain
 - Test against `httptest` fake servers (`upstream_test.go`) and the in-process
   `scriptProvider` stub (`run_test.go`) — no network, no credentials. A test
   whose subject is a DIALECT lives beside that dialect in `core/`; a test of
-  the loop's behavior when a call streams, retries, or breaks lives at `go/`.
+  the loop.s behavior when a call streams, retries, or breaks lives at the repo root.
 - No `go.work` and nothing to check out alongside: the only org dependencies
   are `xml-validator/validator` and `go-containers`, both resolved from the
   proxy.
@@ -64,7 +66,7 @@ cd src && go-toolchain
 ## Layering — read this before moving anything between layers
 
 Two layers, and most design arguments in this repo are really this question
-asked sideways. `src/README.md` has the full statement; the short form:
+asked sideways. `USAGE.md` has the full statement; the short form:
 
 - **The loop (`Run`) is high-level.** It asks the model, runs the tools it
   asks for, feeds results back, repeats. It knows nothing about HTTP,
@@ -120,7 +122,7 @@ side of that line it falls on — do not put it on both.
   own default (third-party retention is the caller's decision to make out
   loud), `previous_response_id` is never sent (the transcript is the caller's),
   and detection can never name this dialect, since the model list looks
-  identical. Depth: `src/README.md`.
+  identical. Depth: `USAGE.md`.
 - **Retry belongs to the Provider and is ON by default.** Both constructors
   end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
   nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
@@ -340,8 +342,8 @@ Concretely:
 
 ## CI
 
-`.github/workflows/ci.yml` runs the org go-toolchain action with
-`working-directory: src`. Org constraints:
+`.github/workflows/ci.yml` runs the org go-toolchain action at the
+repository root. Org constraints:
 
 - The workflow trigger stays `on: push:` only.
 - The required status check is named exactly **`all-builds`**, but it is
@@ -369,5 +371,5 @@ Concretely:
 
 ## Documentation upkeep
 
-When changing the API surface or any behavior: update `src/README.md` and
+When changing the API surface or any behavior: update `USAGE.md` and
 this file in the same commit.
