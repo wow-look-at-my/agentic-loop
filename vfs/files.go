@@ -1,14 +1,12 @@
 package vfs
 
 import (
-	"context"
 	agentic "github.com/wow-look-at-my/agentic-loop"
 	"strings"
-	"sync"
 )
 
 // The filesystem tools: one vocabulary for reading and writing files, whatever
-// is behind them. A host mounts FOLDERS under virtual path prefixes --
+// is behind them. A host mounts providers under virtual path prefixes --
 //
 //	/repos/...        a repository host, read-only
 //	/workspace/...    an editable working copy
@@ -19,9 +17,11 @@ import (
 // the argument schemas, the caps, and every word of the rendering. A host owns
 // what is behind a mount, and nothing about its storage reaches here.
 //
-// The module is optional: a host that mounts no folders gets non-nil tools
-// that return the unavailable message. Folders can be added or removed at
-// runtime via the AddFolder/RemoveFolder methods on the returned *FileTools.
+// The module is optional: a host that mounts no providers gets non-nil tools
+// that return the unavailable message. Providers can be added or removed at
+// runtime via the Add/AddFile/Remove methods on the returned *FileTools.
+// More specific path prefixes always shadow less specific ones, regardless
+// of registration order.
 
 // The advertised tool names.
 const (
@@ -68,7 +68,7 @@ type Listing struct {
 	Truncated bool
 }
 
-// File is a file's contents as served by a folder.
+// File is a file's contents as served by a provider.
 type File struct {
 	Content string
 	// Note annotates the header line, e.g. "staged: modified".
@@ -116,65 +116,14 @@ type GrepResult struct {
 	Note string
 }
 
-// Folder serves one virtual path prefix. Every method receives the WHOLE
-// virtual path as the model wrote it, because only the folder knows its own
-// grammar -- a repository host's `/repos/<org>/<repo>@<ref>/<path>` is its
-// business, not the tool layer's.
-//
-// Every error is model-facing: the tool layer renders it as a recoverable
-// teaching error, never a failed turn.
-type Folder interface {
-	// Display is the canonical rendering of a path, for message text.
-	Display(path string) string
-	List(ctx context.Context, path string) (Listing, error)
-	Read(ctx context.Context, path string) (File, error)
-	Find(ctx context.Context, path, pattern string, limit int) ([]string, error)
-	// Grep searches file CONTENTS below path. Scope comes from the path,
-	// exactly as it does for Find: a directory searches that subtree, and a
-	// single FILE is a scope too -- rendering one as a directory makes every
-	// file-scoped search answer "no matches" for text right there.
-	Grep(ctx context.Context, path string, q GrepQuery) (GrepResult, error)
-}
-
-// WritableFolder is a folder that accepts changes. A folder that does not
-// implement it is read-only, and the tool layer says so -- with the folder's
-// own words when it implements ReadOnlyExplainer.
-type WritableFolder interface {
-	Folder
-	// Writable reports whether THIS path accepts changes, and when it does
-	// not, the model-facing reason (which should name what to use instead). A
-	// read-only VIEW of a writable folder, and a path that is a directory,
-	// both answer false here.
-	Writable(path string) (bool, string)
-	// Create adds a brand-new file, failing when the path already exists.
-	Create(ctx context.Context, path, content string) (string, error)
-	// Replace swaps one exact occurrence of oldText for newText.
-	Replace(ctx context.Context, path, oldText, newText string) (string, error)
-	// Remove deletes an existing file.
-	Remove(ctx context.Context, path string) (string, error)
-}
-
-// ReadOnlyExplainer lets a read-only folder name the writable route instead of
-// being refused with a bare "read-only" -- the difference between a model
-// retrying the same call and one that goes where it should have.
-type ReadOnlyExplainer interface {
-	ReadOnlyReason(path string) string
-}
-
-// PathGuard vetoes a path before any folder sees it, with the model-facing
-// reason. It is the seam a host uses to redirect one mount to another (reading
-// an attached working copy's own repository through the read-only mount would
-// show the un-staged remote state). A nil guard allows everything.
-type PathGuard func(path string) (blocked bool, reason string)
-
 // FileToolsConfig configures NewFileTools.
 type FileToolsConfig struct {
-	// Folders are the mounts, keyed by their leading path segment WITHOUT the
-	// slash ("repos", "workspace"). Matching folds case -- a mount vocabulary
-	// is a handful of fixed words, and telling a model that wrote /Repos that
-	// no such mount exists teaches it something false. An empty map yields no
-	// tools at all.
-	Folders map[string]Folder
+	// Providers are the mounts, keyed by their virtual path prefix
+	// (e.g. "/repos", "/workspace"). Matching is case-insensitive but
+	// preserves the original casing for display. An empty map yields non-nil
+	// tools that return the unavailable message. Values are IFolderProvider
+	// or IFileProvider.
+	Providers map[string]any
 	// MountsBlurb is appended to every tool description: the host's own
 	// sentence naming what its mounts are, since the library cannot know.
 	MountsBlurb string
@@ -188,36 +137,35 @@ type FileToolsConfig struct {
 	// Unavailable explains a mount the model named that this run does not
 	// serve. It receives the mount name; a nil func gets a plain default.
 	Unavailable func(mount string) string
-	// Guard vetoes paths before the folder sees them.
+	// Guard vetoes paths before the provider sees them.
 	Guard PathGuard
 }
 
 // files is the shared state behind the seven tools.
 type files struct {
-	mu          sync.RWMutex
-	folders     map[string]Folder
+	registry    *registry
 	unavailable func(string) string
 	guard       PathGuard
 }
 
 // FileTools is a handle returned by NewFileTools that provides the seven
-// file tools and allows runtime mutation of the folder set.
+// file tools and allows runtime mutation of the provider set.
 type FileTools struct {
 	*files
 	tools agentic.Tools
 }
 
-// NewFileTools builds the filesystem tools over cfg.Folders, or returns nil
-// when nothing is mounted -- a run with no files is never offered a tool that
-// could only ever fail.
+// NewFileTools builds the filesystem tools over cfg.Providers. Returns a
+// non-nil *FileTools even when no providers are mounted — tool calls return
+// the unavailable message in that case.
 func NewFileTools(cfg FileToolsConfig) *FileTools {
-	mounted := map[string]Folder{}
-	for name, f := range cfg.Folders {
-		if name != "" && f != nil {
-			mounted[strings.ToLower(name)] = f
+	reg := newRegistry()
+	for prefix, p := range cfg.Providers {
+		if prefix != "" && p != nil {
+			_ = reg.add(prefix, p) // ignore error in constructor; duplicates are unlikely at init
 		}
 	}
-	e := &files{folders: mounted, unavailable: cfg.Unavailable, guard: cfg.Guard}
+	e := &files{registry: reg, unavailable: cfg.Unavailable, guard: cfg.Guard}
 	describe := func(name, base string) string {
 		return base + sentence(cfg.MountsBlurb) + sentence(cfg.Notes[name])
 	}
@@ -234,29 +182,35 @@ func NewFileTools(cfg FileToolsConfig) *FileTools {
 }
 
 // Tools returns the seven file tools. Safe for use in agentic.Config while
-// mutating the folder set concurrently.
+// mutating the provider set concurrently.
 func (ft *FileTools) Tools() agentic.Tools {
 	return ft.tools
 }
 
-// AddFolder registers a folder under the given mount name. The name is
-// lowercased and matched case-insensitively by the tools. If a folder already
-// exists with that name it is replaced.
-func (ft *FileTools) AddFolder(name string, f Folder) {
-	if name == "" || f == nil {
-		return
+// Add registers an IFolderProvider at the given path prefix. Returns a loud
+// error if a provider is already mounted at that prefix (case-insensitive).
+// More specific prefixes shadow less specific ones regardless of registration
+// order.
+func (ft *FileTools) Add(prefix string, p IFolderProvider) error {
+	if prefix == "" || p == nil {
+		return nil
 	}
-	ft.files.mu.Lock()
-	defer ft.files.mu.Unlock()
-	ft.files.folders[strings.ToLower(name)] = f
+	return ft.files.registry.add(prefix, p)
 }
 
-// RemoveFolder removes the folder registered under the given mount name.
-// Subsequent tool calls for that mount will return the unavailable message.
-func (ft *FileTools) RemoveFolder(name string) {
-	ft.files.mu.Lock()
-	defer ft.files.mu.Unlock()
-	delete(ft.files.folders, strings.ToLower(name))
+// AddFile registers an IFileProvider at the given path. Returns a loud error
+// if a provider is already mounted at that path (case-insensitive).
+func (ft *FileTools) AddFile(prefix string, p IFileProvider) error {
+	if prefix == "" || p == nil {
+		return nil
+	}
+	return ft.files.registry.add(prefix, p)
+}
+
+// Remove removes the provider registered at the given path prefix.
+// Subsequent tool calls for that path will return the unavailable message.
+func (ft *FileTools) Remove(prefix string) {
+	ft.files.registry.remove(prefix)
 }
 
 // sentence prepares a host addendum for appending: nothing for an empty one,
