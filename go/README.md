@@ -743,6 +743,16 @@ matches your snake_case key), removes that one key from `Extra`, and retries
 once. The strip is remembered for later calls through the same stripper. It
 never fires on context cancellation or after data streamed.
 
+The OpenAI provider handles one narrower case itself, below the stripper:
+some upstreams (Z.AI, for one) 400 on the auto-added `stream_options` default
+with an error that names no parameter at all, so the stripper's regexes have
+nothing to match. When a pre-stream 400 names no recoverable parameter and
+the request carried that default (never one you set via `Extra`), `Complete`
+retries once with it left off — safe because you never asked for it, and its
+absence only costs the usage figures on that one call. A 400 that DOES name a
+parameter is left for `NewParamStripper` to handle, and a context-overflow
+400 is never retried by either mechanism.
+
 ### Prompt caching
 
 - **Anthropic**: always on unless `DisableCaching` — exactly two ephemeral
