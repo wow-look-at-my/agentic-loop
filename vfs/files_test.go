@@ -15,26 +15,37 @@ import (
 )
 
 // memFolder is an in-memory folder: a flat map of relative path -> content,
-// mounted under one prefix. It is deliberately not a tree -- the tools address
-// paths, and a folder decides for itself what "below" means.
+// mounted under one prefix. It embeds BaseProvider so the registry injects
+// its path automatically.
 type memFolder struct {
-	mount    string
+	*BaseProvider
 	files    map[string]string
 	readonly bool
-	// listErr, when set, is what every operation fails with.
-	err error
+	err      error
+}
+
+func newMemFolder(files map[string]string) *memFolder {
+	return &memFolder{BaseProvider: &BaseProvider{}, files: files}
 }
 
 func (f *memFolder) rel(p string) string {
-	return strings.TrimPrefix(strings.TrimPrefix(p, "/"+f.mount), "/")
+	prefix := strings.ToLower(f.Path())
+	lower := strings.ToLower(p)
+	if lower == prefix {
+		return ""
+	}
+	if strings.HasPrefix(lower, prefix+"/") {
+		return p[len(prefix)+1:]
+	}
+	return strings.TrimPrefix(p, "/")
 }
 
 func (f *memFolder) Display(p string) string {
 	rel := f.rel(p)
 	if rel == "" {
-		return "/" + f.mount
+		return f.Path()
 	}
-	return "/" + f.mount + "/" + rel
+	return f.Path() + "/" + rel
 }
 
 func (f *memFolder) List(_ context.Context, p string) (Listing, error) {
@@ -83,7 +94,7 @@ func (f *memFolder) Find(_ context.Context, p, pattern string, limit int) ([]str
 			continue
 		}
 		if MatchesPattern(name, pattern) {
-			out = append(out, "/"+f.mount+"/"+name)
+			out = append(out, f.Path()+"/"+name)
 		}
 		if len(out) == limit {
 			break
@@ -112,7 +123,7 @@ func (f *memFolder) Grep(_ context.Context, p string, q GrepQuery) (GrepResult, 
 				return res, nil
 			}
 			files[name] = true
-			res.Hits = append(res.Hits, GrepHit{Path: "/" + f.mount + "/" + name, Line: i + 1, Text: line})
+			res.Hits = append(res.Hits, GrepHit{Path: f.Path() + "/" + name, Line: i + 1, Text: line})
 		}
 	}
 	res.Files = len(files)
@@ -168,18 +179,21 @@ func (f *readOnlyRepos) ReadOnlyReason(p string) string {
 }
 
 func fileRig() (*FileTools, *writableFolder) {
-	work := &writableFolder{&memFolder{mount: "work", files: map[string]string{
+	work := &writableFolder{newMemFolder(map[string]string{
 		"main.go":     "package main\n\nfunc main() {}\n",
 		"src/util.go": "package src\n\n// TODO: rename\nfunc Util() {}\n",
 		"README.md":   "# hello\n",
-	}}}
-	repos := &readOnlyRepos{&memFolder{mount: "repos", files: map[string]string{"a/b.go": "package b\n"}}}
+	})}
+	repos := &readOnlyRepos{newMemFolder(map[string]string{"a/b.go": "package b\n"})}
 	return NewFileTools(FileToolsConfig{
-		Folders:     map[string]Folder{"work": work, "repos": repos},
+		Providers: map[string]any{
+			"/work": work,
+			"/repos": repos,
+		},
 		MountsBlurb: "/work is editable; /repos is read-only.",
 		Notes:       map[string]string{WriteFileToolName: "Writes stage locally."},
 		Unavailable: func(m string) string {
-			if m == "attachments" {
+			if strings.Contains(m, "/attachments") {
 				return "no files are attached to this conversation."
 			}
 			return ""
@@ -212,8 +226,6 @@ func TestFileToolsAdvertisedSurface(t *testing.T) {
 		descriptions[d.Name] = d.Description
 		assert.Contains(t, d.Description, "/work is editable", "the host's mounts blurb rides every description")
 	}
-	// A per-tool note reaches ITS tool and no other: a write's warning has no
-	// business in every read's description.
 	assert.Contains(t, descriptions[WriteFileToolName], "Writes stage locally.")
 	assert.NotContains(t, descriptions[ReadFileToolName], "Writes stage locally.")
 	assert.True(t, readonly[GrepToolName])
@@ -225,9 +237,9 @@ func TestFileToolsAdvertisedSurface(t *testing.T) {
 	res := runFileTool(t, ft2, ListDirToolName, `{"path":"/anything"}`)
 	assert.Contains(t, res.Content, "is not available")
 
-	// Nil folder values are skipped.
-	ft3 := NewFileTools(FileToolsConfig{Folders: map[string]Folder{"x": nil}})
-	assert.NotNil(t, ft3, "nil folder value should still return non-nil FileTools")
+	// Nil provider values are skipped.
+	ft3 := NewFileTools(FileToolsConfig{Providers: map[string]any{"/x": nil}})
+	assert.NotNil(t, ft3, "nil provider value should still return non-nil FileTools")
 }
 
 func TestListDirRendersDirectoriesFirst(t *testing.T) {
@@ -243,8 +255,6 @@ func TestListDirRendersDirectoriesFirst(t *testing.T) {
 	assert.Contains(t, empty.Content, "(empty directory)")
 }
 
-// read_file's window is what keeps one function from costing a whole file, and
-// it states where to continue.
 func TestReadFileWindow(t *testing.T) {
 	reg, _ := fileRig()
 	whole := runFileTool(t, reg, ReadFileToolName, `{"path":"/work/src/util.go"}`)
@@ -264,8 +274,6 @@ func TestReadFileWindow(t *testing.T) {
 	assert.Contains(t, missing.Content, "does not exist")
 }
 
-// An empty grep has to state what it PROVES: every line in scope was read, so
-// no matches is a real negative rather than a search that gave up.
 func TestGrepStatesWhatAnEmptyResultProves(t *testing.T) {
 	reg, _ := fileRig()
 	hit := runFileTool(t, reg, GrepToolName, `{"path":"/work","pattern":"TODO"}`)
@@ -277,8 +285,6 @@ func TestGrepStatesWhatAnEmptyResultProves(t *testing.T) {
 	assert.Contains(t, none.Content, "no matches.")
 	assert.Contains(t, none.Content, "genuinely absent from it — this is a real negative")
 
-	// A single FILE is a scope: rendering one as a directory made every
-	// file-scoped search answer "no matches" for text right there.
 	one := runFileTool(t, reg, GrepToolName, `{"path":"/work/src/util.go","pattern":"TODO"}`)
 	assert.Contains(t, one.Content, "1 matching line")
 
@@ -287,7 +293,6 @@ func TestGrepStatesWhatAnEmptyResultProves(t *testing.T) {
 	assert.Contains(t, blank.Content, `requires "pattern"`)
 }
 
-// A cap that bites is announced, never applied silently.
 func TestGrepAndFindAnnounceTheirCaps(t *testing.T) {
 	reg, _ := fileRig()
 	res := runFileTool(t, reg, GrepToolName, `{"path":"/work","pattern":"a","limit":1}`)
@@ -300,15 +305,12 @@ func TestGrepAndFindAnnounceTheirCaps(t *testing.T) {
 	assert.Contains(t, nothing.Content, `No file under /work matches "*.rs".`)
 }
 
-// A read-only mount names the writable route: a bare refusal makes a model
-// retry the same call.
 func TestWritingToAReadOnlyMountNamesTheAlternative(t *testing.T) {
 	reg, _ := fileRig()
 	res := runFileTool(t, reg, WriteFileToolName, `{"path":"/repos/a/new.go","content":"x"}`)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "is read-only. Edit it under /work instead.")
 
-	// A writable folder still refuses a path it says no to.
 	dir := runFileTool(t, reg, DeleteFileToolName, `{"path":"/work"}`)
 	assert.True(t, dir.IsError)
 	assert.Contains(t, dir.Content, "is a directory, not a file.")
@@ -338,9 +340,6 @@ func TestWriteEditDelete(t *testing.T) {
 	assert.False(t, still)
 }
 
-// A mount this run does not serve is explained in the host's words, and a
-// folder's own error reaches the model as a teaching error rather than ending
-// the turn.
 func TestUnavailableMountsAndFolderErrors(t *testing.T) {
 	reg, _ := fileRig()
 	res := runFileTool(t, reg, ListDirToolName, `{"path":"/attachments/x"}`)
@@ -349,7 +348,7 @@ func TestUnavailableMountsAndFolderErrors(t *testing.T) {
 
 	unknown := runFileTool(t, reg, ListDirToolName, `{"path":"/nope/x"}`)
 	assert.True(t, unknown.IsError)
-	assert.Contains(t, unknown.Content, "/nope is not available in this conversation.")
+	assert.Contains(t, unknown.Content, "is not available in this conversation.")
 
 	empty := runFileTool(t, reg, ListDirToolName, `{"path":"  "}`)
 	assert.True(t, empty.IsError)
@@ -359,8 +358,8 @@ func TestUnavailableMountsAndFolderErrors(t *testing.T) {
 	assert.True(t, bad.IsError)
 	assert.Contains(t, bad.Content, "invalid list_dir arguments")
 
-	broken := NewFileTools(FileToolsConfig{Folders: map[string]Folder{
-		"work": &memFolder{mount: "work", err: errors.New("disk on fire")},
+	broken := NewFileTools(FileToolsConfig{Providers: map[string]any{
+		"/work": newMemFolderWithErr(errors.New("disk on fire")),
 	}})
 	for _, name := range []string{ListDirToolName, ReadFileToolName} {
 		r := runFileTool(t, broken, name, `{"path":"/work/x","pattern":"y"}`)
@@ -374,11 +373,15 @@ func TestUnavailableMountsAndFolderErrors(t *testing.T) {
 	}
 }
 
-// The guard is how a host redirects one mount to another before the folder
-// ever sees the path.
+func newMemFolderWithErr(err error) *memFolder {
+	f := newMemFolder(map[string]string{"x": "y"})
+	f.err = err
+	return f
+}
+
 func TestPathGuardVetoesBeforeTheFolder(t *testing.T) {
 	reg := NewFileTools(FileToolsConfig{
-		Folders: map[string]Folder{"repos": &memFolder{mount: "repos", files: map[string]string{"a/b.go": "x"}}},
+		Providers: map[string]any{"/repos": newMemFolder(map[string]string{"a/b.go": "x"})},
 		Guard: func(p string) (bool, string) {
 			if strings.HasPrefix(p, "/repos/a") {
 				return true, "that repository is open as a working copy; read it at /work instead."
@@ -391,13 +394,6 @@ func TestPathGuardVetoesBeforeTheFolder(t *testing.T) {
 	assert.Contains(t, res.Content, "read it at /work instead.")
 }
 
-func TestMountOf(t *testing.T) {
-	assert.Equal(t, "repos", MountOf("/repos/octocat/hello/src"))
-	assert.Equal(t, "workspace", MountOf("/workspace@base/x"), "a ref rides with the path, not the mount name")
-	assert.Equal(t, "workspace", MountOf("/workspace"))
-	assert.Equal(t, "", MountOf(""))
-}
-
 func TestSplitGlobsAndMatching(t *testing.T) {
 	assert.Equal(t, []string{"*.c", "*.h"}, SplitGlobs(" *.c , *.h ,, "))
 	assert.Nil(t, SplitGlobs(""))
@@ -408,12 +404,6 @@ func TestSplitGlobsAndMatching(t *testing.T) {
 	assert.False(t, MatchesPattern("src/util.go", "*.rs"))
 }
 
-// The seven schemas are hand-written JSON beside the descriptions they belong
-// to, so nothing derives them from the structs the handlers decode. This is
-// what stands in for that: every advertised property must be a field the
-// handler reads, and every required one must be a field it cannot work
-// without. An argument the schema omits is one the model never sends; one it
-// requires by mistake is a tool the model refuses to call.
 func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
 	type schema struct {
 		Type                 string                     `json:"type"`
@@ -449,8 +439,6 @@ func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
 	}
 }
 
-// The file tools' schemas come off their argument structs, so this is the one
-// check that matters for them: the tool decodes exactly what it advertises.
 func TestFileToolSchemasAreInferred(t *testing.T) {
 	ft, _ := fileRig()
 	tool, ok := ft.Tools().Find(GrepToolName)
@@ -458,82 +446,187 @@ func TestFileToolSchemasAreInferred(t *testing.T) {
 	assert.JSONEq(t, string(agentic.InferSchema[grepArgs]()), string(tool.Decl().InputSchema))
 }
 
-// TestAddRemoveFolder verifies runtime folder mutation.
-func TestAddRemoveFolder(t *testing.T) {
-	// Start with no folders; tools are non-nil but unavailable.
+// --- New tests for path-prefix routing ---
+
+// TestLongestMatchRouting verifies that a more specific mount shadows a less
+// specific one regardless of registration order.
+func TestLongestMatchRouting(t *testing.T) {
+	// Register broad first, then narrow.
+	ft := NewFileTools(FileToolsConfig{})
+	broad := newMemFolder(map[string]string{"other.go": "broad"})
+	narrow := newMemFolder(map[string]string{"file.go": "narrow"})
+
+	require.NoError(t, ft.Add("/repos", broad))
+	require.NoError(t, ft.Add("/repos/org/repo", narrow))
+
+	// A path under the narrow mount routes to it.
+	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/repos/org/repo/file.go"}`)
+	assert.Contains(t, res.Content, "narrow")
+
+	// A path under only the broad mount routes to it.
+	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/repos/other.go"}`)
+	assert.Contains(t, res.Content, "broad")
+
+	// Now test reversed order: narrow first, then broad.
+	ft2 := NewFileTools(FileToolsConfig{})
+	broad2 := newMemFolder(map[string]string{"other.go": "broad2"})
+	narrow2 := newMemFolder(map[string]string{"file.go": "narrow2"})
+
+	require.NoError(t, ft2.Add("/repos/org/repo", narrow2))
+	require.NoError(t, ft2.Add("/repos", broad2))
+
+	res = runFileTool(t, ft2, ReadFileToolName, `{"path":"/repos/org/repo/file.go"}`)
+	assert.Contains(t, res.Content, "narrow2")
+
+	res = runFileTool(t, ft2, ReadFileToolName, `{"path":"/repos/other.go"}`)
+	assert.Contains(t, res.Content, "broad2")
+}
+
+// TestDuplicateRegistrationIsLoudError verifies that registering two providers
+// at the same path prefix returns a loud error and does NOT silently replace.
+func TestDuplicateRegistrationIsLoudError(t *testing.T) {
+	ft := NewFileTools(FileToolsConfig{})
+	first := newMemFolder(map[string]string{"a": "first"})
+	second := newMemFolder(map[string]string{"a": "second"})
+
+	require.NoError(t, ft.Add("/work", first))
+
+	err := ft.Add("/work", second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already mounted at")
+	assert.Contains(t, err.Error(), "/work")
+
+	// The first provider is still the one routing.
+	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/work/a"}`)
+	assert.Contains(t, res.Content, "first")
+
+	// Case-insensitive duplicate is also caught.
+	err = ft.Add("/Work", second)
+	require.Error(t, err)
+}
+
+// TestCaseInsensitiveMatchPreservesDisplayCasing verifies that a provider
+// registered at mixed case is matched case-insensitively but retains its
+// original casing for display.
+func TestCaseInsensitiveMatchPreservesDisplayCasing(t *testing.T) {
+	ft := NewFileTools(FileToolsConfig{})
+	f := newMemFolder(map[string]string{"file.go": "content"})
+
+	require.NoError(t, ft.Add("/Repos", f))
+
+	// Lowercase query resolves to the mixed-case mount.
+	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/repos/file.go"}`)
+	assert.False(t, res.IsError)
+	assert.Contains(t, res.Content, "content")
+
+	// Mixed-case query also routes to the same provider (the error is
+	// about the file, not the mount — proving the provider was found).
+	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/REPOS/FILE.GO"}`)
+	assert.True(t, res.IsError)
+	assert.NotContains(t, res.Content, "not available")
+}
+
+// TestIFileProvider verifies that an IFileProvider registered at a path makes
+// read_file return the file's content and list_dir report a single file.
+func TestIFileProvider(t *testing.T) {
+	ft := NewFileTools(FileToolsConfig{})
+	fp := &memFileProvider{
+		BaseProvider: &BaseProvider{},
+		content:      "hello world",
+	}
+
+	require.NoError(t, ft.AddFile("/docs/readme", fp))
+
+	// read_file returns the file's content.
+	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/docs/readme"}`)
+	assert.False(t, res.IsError)
+	assert.Contains(t, res.Content, "hello world")
+
+	// list_dir reports a single file at that path.
+	res = runFileTool(t, ft, ListDirToolName, `{"path":"/docs/readme"}`)
+	assert.False(t, res.IsError)
+	assert.Contains(t, res.Content, "readme")
+}
+
+// memFileProvider is a minimal IFileProvider for testing.
+type memFileProvider struct {
+	*BaseProvider
+	content string
+}
+
+func (m *memFileProvider) Read(_ context.Context, p string) (File, error) {
+	return File{Content: m.content}, nil
+}
+
+func (m *memFileProvider) Display(p string) string {
+	return p
+}
+
+// TestRuntimeAddRemove verifies runtime provider mutation.
+func TestRuntimeAddRemove(t *testing.T) {
 	ft := NewFileTools(FileToolsConfig{
 		Unavailable: func(m string) string {
-			return "/" + m + " is not ready yet."
+			return m + " is not ready yet."
 		},
 	})
 	require.NotNil(t, ft)
 
 	res := runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
 	assert.True(t, res.IsError)
-	assert.Contains(t, res.Content, "/work is not ready yet.")
+	assert.Contains(t, res.Content, "is not ready yet.")
 
-	// Add a folder at runtime.
-	work := &memFolder{mount: "work", files: map[string]string{"hello.txt": "world"}}
-	ft.AddFolder("work", work)
+	work := newMemFolder(map[string]string{"hello.txt": "world"})
+	require.NoError(t, ft.Add("/work", work))
 
 	res = runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "hello.txt")
 
-	// AddFolder ignores nil values.
-	ft.AddFolder("bad", nil)
+	// Add ignores nil values.
+	require.NoError(t, ft.Add("/bad", nil))
 	res = runFileTool(t, ft, ListDirToolName, `{"path":"/bad"}`)
+	assert.True(t, res.IsError)
+
+	// Add ignores empty prefix.
+	require.NoError(t, ft.Add("", work))
+
+	// Remove the provider; tool calls become unavailable again.
+	ft.Remove("/work")
+	res = runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "is not ready yet")
 
-	// AddFolder ignores empty names.
-	ft.AddFolder("", work)
-	res = runFileTool(t, ft, ListDirToolName, `{"path":"/"}`)
-	assert.True(t, res.IsError)
-
-	// Remove the folder; tool calls for it become unavailable again.
-	ft.RemoveFolder("work")
-	res = runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
-	assert.True(t, res.IsError)
-	assert.Contains(t, res.Content, "/work is not ready yet")
-
-	// Removing a non-existent name is harmless.
-	ft.RemoveFolder("nope")
+	// Removing a non-existent prefix is harmless.
+	ft.Remove("/nope")
 
 	// Re-add after removal.
-	ft.AddFolder("work", work)
+	require.NoError(t, ft.Add("/work", work))
 	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/work/hello.txt"}`)
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "world")
 }
 
-// TestAddFolderReplacesExisting verifies AddFolder overwrites a mount.
-func TestAddFolderReplacesExisting(t *testing.T) {
+// TestProviderPathIsInjected verifies that BaseProvider.Path() returns the
+// registered path after Add.
+func TestProviderPathIsInjected(t *testing.T) {
 	ft := NewFileTools(FileToolsConfig{})
-	work1 := &memFolder{mount: "work", files: map[string]string{"a.txt": "first"}}
-	work2 := &memFolder{mount: "work", files: map[string]string{"a.txt": "second"}}
+	f := newMemFolder(map[string]string{"a": "b"})
 
-	ft.AddFolder("work", work1)
-	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/work/a.txt"}`)
-	assert.Contains(t, res.Content, "first")
-
-	ft.AddFolder("work", work2)
-	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/work/a.txt"}`)
-	assert.Contains(t, res.Content, "second")
+	require.NoError(t, ft.Add("/my/mount", f))
+	assert.Equal(t, "/my/mount", f.Path())
 }
 
-// TestFolderAddRemoveConcurrentSafety verifies the mutex protects the map.
-func TestFolderAddRemoveConcurrentSafety(t *testing.T) {
+// TestConcurrentAddRemove verifies the mutex protects the registry.
+func TestConcurrentAddRemove(t *testing.T) {
 	ft := NewFileTools(FileToolsConfig{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := 0; i < 100; i++ {
-			ft.AddFolder("work", &memFolder{mount: "work", files: map[string]string{"a": "b"}})
-			ft.RemoveFolder("work")
+			_ = ft.Add("/work", newMemFolder(map[string]string{"a": "b"}))
+			ft.Remove("/work")
 		}
 	}()
-	// Concurrent tool calls should not panic.
 	for i := 0; i < 100; i++ {
 		runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
 	}

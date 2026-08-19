@@ -8,13 +8,37 @@ import (
 	"sync"
 )
 
+// IProvider is the common base for every registered provider. It lets the
+// tool layer and hosts ask any provider what virtual path it was mounted at.
+type IProvider interface {
+	Path() string
+}
+
+// BaseProvider is embedded by providers that want Path() handled for them.
+// The registry calls setPath automatically on Add/AddFile, so a provider
+// that embeds *BaseProvider always reports the correct mount path.
+type BaseProvider struct {
+	path string
+}
+
+// Path returns the virtual path this provider was registered at.
+func (b *BaseProvider) Path() string { return b.path }
+
+// setPath is the internal hook the registry uses to inject the mount path.
+// Unexported so only the registry can call it.
+func (b *BaseProvider) setPath(p string) { b.path = p }
+
+// pathSetter is checked by the registry to inject the path at registration.
+type pathSetter interface {
+	setPath(string)
+}
+
 // IFileProvider serves exactly one virtual file at a registered path. Use it
 // when a host wants to expose a single document (a generated report, a
 // stitched-together brief, a config snapshot) without building a full folder
-// hierarchy behind it. The provider is responsible only for the file's
-// contents and its display rendering; the tool layer handles everything
-// else (listing, finding, grepping) by treating it as a one-file folder.
+// hierarchy behind it.
 type IFileProvider interface {
+	IProvider
 	// Read returns the file's contents. The path argument is the whole virtual
 	// path as the model wrote it.
 	Read(ctx context.Context, virtualPath string) (File, error)
@@ -30,6 +54,7 @@ type IFileProvider interface {
 // Every error is model-facing: the tool layer renders it as a recoverable
 // teaching error, never a failed turn.
 type IFolderProvider interface {
+	IProvider
 	Display(path string) string
 	List(ctx context.Context, path string) (Listing, error)
 	Read(ctx context.Context, path string) (File, error)
@@ -107,7 +132,6 @@ func normalizePrefix(p string) string {
 	if p == "/" {
 		return "/"
 	}
-	// Collapse double slashes.
 	for strings.Contains(p, "//") {
 		p = strings.ReplaceAll(p, "//", "/")
 	}
@@ -115,21 +139,24 @@ func normalizePrefix(p string) string {
 }
 
 func (r *registry) add(prefix string, provider any) error {
-	key := strings.ToLower(normalizePrefix(prefix))
+	normalized := normalizePrefix(prefix)
+	key := strings.ToLower(normalized)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.byKey[key]; exists {
 		return &DuplicateMountError{Path: key}
 	}
+	// Inject the path into providers that support it.
+	if ps, ok := provider.(pathSetter); ok {
+		ps.setPath(normalized)
+	}
 	m := &mount{
 		prefix:    key,
-		displayAs: normalizePrefix(prefix),
+		displayAs: normalized,
 		provider:  provider,
 	}
 	r.byKey[key] = m
 	r.mounts = append(r.mounts, m)
-	// Sort by segment count descending (longest first), then alphabetically.
-	// We re-sort on every add; the list is tiny.
 	registrySort(r.mounts)
 	return nil
 }
@@ -159,7 +186,7 @@ func (r *registry) resolve(raw string) *mount {
 	defer r.mu.RUnlock()
 	for _, m := range r.mounts {
 		if m.prefix == "/" {
-			return m // root catches everything
+			return m
 		}
 		if p == m.prefix || strings.HasPrefix(p, m.prefix+"/") {
 			return m
@@ -168,45 +195,36 @@ func (r *registry) resolve(raw string) *mount {
 	return nil
 }
 
-func (r *registry) empty() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return len(r.mounts) == 0
+// asFolderProvider normalizes a registered provider to an IFolderProvider,
+// wrapping an IFileProvider in an adapter so the tool handlers can treat
+// every provider uniformly.
+func asFolderProvider(provider any) IFolderProvider {
+	switch v := provider.(type) {
+	case IFolderProvider:
+		return v
+	case IFileProvider:
+		return &fileProviderAdapter{file: v}
+	}
+	return nil
 }
 
-// registrySort sorts mounts by prefix depth (longest first), then
-// alphabetically for deterministic ordering.
-func registrySort(mounts []*mount) {
-	// Simple insertion sort — the list is small (a handful of mounts).
-	for i := 1; i < len(mounts); i++ {
-		for j := i; j > 0; j-- {
-			if mountDepth(mounts[j].prefix) > mountDepth(mounts[j-1].prefix) {
-				mounts[j], mounts[j-1] = mounts[j-1], mounts[j]
-			} else if mountDepth(mounts[j].prefix) == mountDepth(mounts[j-1].prefix) && mounts[j].prefix < mounts[j-1].prefix {
-				mounts[j], mounts[j-1] = mounts[j-1], mounts[j]
-			} else {
-				break
-			}
-		}
+// asWritableProvider returns an IWritableFolderProvider if the provider
+// implements it, or nil.
+func asWritableProvider(provider any) IWritableFolderProvider {
+	if w, ok := provider.(IWritableFolderProvider); ok {
+		return w
 	}
-}
-
-func mountDepth(prefix string) int {
-	if prefix == "/" {
-		return 0
-	}
-	return strings.Count(prefix, "/") + 1
+	return nil
 }
 
 // fileProviderAdapter wraps an IFileProvider to satisfy the IFolderProvider
-// interface, so the tool handlers can treat it uniformly.
+// interface.
 type fileProviderAdapter struct {
 	file IFileProvider
 }
 
-func (a *fileProviderAdapter) Display(p string) string {
-	return a.file.Display(p)
-}
+func (a *fileProviderAdapter) Path() string         { return a.file.Path() }
+func (a *fileProviderAdapter) Display(p string) string { return a.file.Display(p) }
 
 func (a *fileProviderAdapter) List(_ context.Context, p string) (Listing, error) {
 	return Listing{Entries: []DirEntry{{Name: path.Base(p), Size: 0}}}, nil
@@ -243,25 +261,27 @@ func (a *fileProviderAdapter) Grep(ctx context.Context, p string, q GrepQuery) (
 	return res, nil
 }
 
-// asFolderProvider normalizes a registered provider to an IFolderProvider,
-// wrapping IFileProvider in an adapter.
-func asFolderProvider(provider any) IFolderProvider {
-	switch v := provider.(type) {
-	case IFolderProvider:
-		return v
-	case IFileProvider:
-		return &fileProviderAdapter{file: v}
+// registrySort sorts mounts by prefix depth (longest first), then
+// alphabetically for deterministic ordering.
+func registrySort(mounts []*mount) {
+	for i := 1; i < len(mounts); i++ {
+		for j := i; j > 0; j-- {
+			if mountDepth(mounts[j].prefix) > mountDepth(mounts[j-1].prefix) {
+				mounts[j], mounts[j-1] = mounts[j-1], mounts[j]
+			} else if mountDepth(mounts[j].prefix) == mountDepth(mounts[j-1].prefix) && mounts[j].prefix < mounts[j-1].prefix {
+				mounts[j], mounts[j-1] = mounts[j-1], mounts[j]
+			} else {
+				break
+			}
+		}
 	}
-	return nil
 }
 
-// asWritableProvider returns an IWritableFolderProvider if the provider
-// implements it, or nil.
-func asWritableProvider(provider any) IWritableFolderProvider {
-	if w, ok := provider.(IWritableFolderProvider); ok {
-		return w
+func mountDepth(prefix string) int {
+	if prefix == "/" {
+		return 0
 	}
-	return nil
+	return strings.Count(prefix, "/") + 1
 }
 
 // ErrNoProvider is returned internally when no provider matches a path.

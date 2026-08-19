@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// The seven file tools' handlers: decode, route to the folder, render. Every
+// The seven file tools' handlers: decode, route to the provider, render. Every
 // failure is a recoverable teaching error -- a bad path is something the model
 // can correct, never something that ends a turn.
 
@@ -49,20 +49,9 @@ type (
 	}
 )
 
-// MountOf is the leading path segment: the folder a virtual path addresses.
-// The mount name ends at the first "/" or "@", so a ref suffix rides with the
-// rest of the path rather than becoming part of the name.
-func MountOf(p string) string {
-	s := strings.TrimPrefix(strings.TrimSpace(p), "/")
-	if i := strings.IndexAny(s, "/@"); i >= 0 {
-		return s[:i]
-	}
-	return s
-}
-
-// resolve routes a path to its folder. Every failure is a recoverable teaching
-// error.
-func (e *files) resolve(tool, raw string) (Folder, *agentic.ToolResult) {
+// resolve routes a path to its provider via longest-prefix match. Every
+// failure is a recoverable teaching error.
+func (e *files) resolve(tool, raw string) (IFolderProvider, *agentic.ToolResult) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, &agentic.ToolResult{Content: tool + ` requires "path".`, IsError: true}
 	}
@@ -71,35 +60,41 @@ func (e *files) resolve(tool, raw string) (Folder, *agentic.ToolResult) {
 			return nil, &agentic.ToolResult{Content: reason, IsError: true}
 		}
 	}
-	mount := strings.ToLower(MountOf(raw))
-	e.mu.RLock()
-	f, ok := e.folders[mount]
-	e.mu.RUnlock()
-	if !ok {
-		return nil, &agentic.ToolResult{Content: tool + ": " + e.mountUnavailable(mount), IsError: true}
+	m := e.registry.resolve(raw)
+	if m == nil {
+		return nil, &agentic.ToolResult{Content: tool + ": " + e.mountUnavailable(raw), IsError: true}
 	}
-	return f, nil
+	return asFolderProvider(m.provider), nil
 }
 
-func (e *files) mountUnavailable(mount string) string {
+func (e *files) mountUnavailable(path string) string {
 	if e.unavailable != nil {
-		if s := e.unavailable(mount); s != "" {
+		if s := e.unavailable(path); s != "" {
 			return s
 		}
 	}
-	return "/" + mount + " is not available in this conversation."
+	return path + " is not available in this conversation."
 }
 
-// writable resolves a path to a folder that accepts changes, or the teaching
+// writable resolves a path to a provider that accepts changes, or the teaching
 // error naming what to use instead.
-func (e *files) writable(tool, raw string) (WritableFolder, *agentic.ToolResult) {
-	f, fail := e.resolve(tool, raw)
-	if fail != nil {
-		return nil, fail
+func (e *files) writable(tool, raw string) (IWritableFolderProvider, *agentic.ToolResult) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, &agentic.ToolResult{Content: tool + ` requires "path".`, IsError: true}
 	}
-	w, ok := f.(WritableFolder)
-	if !ok {
-		return nil, &agentic.ToolResult{Content: tool + ": " + readOnlyReason(f, raw), IsError: true}
+	if e.guard != nil {
+		if blocked, reason := e.guard(raw); blocked {
+			return nil, &agentic.ToolResult{Content: reason, IsError: true}
+		}
+	}
+	m := e.registry.resolve(raw)
+	if m == nil {
+		return nil, &agentic.ToolResult{Content: tool + ": " + e.mountUnavailable(raw), IsError: true}
+	}
+	w := asWritableProvider(m.provider)
+	if w == nil {
+		fp := asFolderProvider(m.provider)
+		return nil, &agentic.ToolResult{Content: tool + ": " + readOnlyReason(fp, raw), IsError: true}
 	}
 	if allowed, why := w.Writable(raw); !allowed {
 		return nil, &agentic.ToolResult{Content: tool + ": " + why, IsError: true}
@@ -107,9 +102,9 @@ func (e *files) writable(tool, raw string) (WritableFolder, *agentic.ToolResult)
 	return w, nil
 }
 
-// readOnlyReason asks a read-only folder to name the writable route, falling
+// readOnlyReason asks a read-only provider to name the writable route, falling
 // back to stating the refusal.
-func readOnlyReason(f Folder, p string) string {
+func readOnlyReason(f IFolderProvider, p string) string {
 	if ex, ok := f.(ReadOnlyExplainer); ok {
 		if s := ex.ReadOnlyReason(p); s != "" {
 			return s
@@ -166,10 +161,6 @@ func (e *files) readFile(ctx context.Context, args json.RawMessage) (agentic.Too
 		header += "\n" + rangeNote
 	}
 	if file.TruncatedNote != "" {
-		// Two different cuts can apply, so they are reported separately: the
-		// file was too long to serve whole, and then a window was taken of what
-		// survived. Merging them would misstate what the line numbers below are
-		// relative to.
 		header += "\n" + file.TruncatedNote
 	}
 	return agentic.ToolResult{Content: header + "\n\n" + body}, nil
@@ -209,10 +200,6 @@ func (e *files) findFiles(ctx context.Context, args json.RawMessage) (agentic.To
 	return agentic.ToolResult{Content: strings.TrimRight(b.String(), "\n")}, nil
 }
 
-// grep searches file contents below a path. Scope is the path and nothing
-// else, exactly as for find_files: the same tool searches one subdirectory,
-// one repository, or a whole owner, depending only on how much of the path is
-// given.
 func (e *files) grep(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[grepArgs](GrepToolName, args)
 	if bad != nil {

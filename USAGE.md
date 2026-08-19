@@ -745,43 +745,48 @@ word of the rendering. A host owns what is behind a mount, and nothing
 about its storage reaches here. Mount nothing and you get non-nil tools
 that return the unavailable message, rather than nil tools.
 
-A host mounts `Folder`s under virtual prefixes:
+A host mounts `IFolderProvider`s (folder hierarchies) and `IFileProvider`s
+(single files) under virtual path prefixes. More specific prefixes always
+shadow less specific ones, regardless of registration order:
 
 ```go
 import "github.com/wow-look-at-my/agentic-loop/vfs"
 
 ft := vfs.NewFileTools(vfs.FileToolsConfig{
-	Folders: map[string]vfs.Folder{
-		"repos":     repoFolder,      // /repos/<org>/<repo>[@<ref>]/<path>
-		"workspace": workspaceFolder, // a vfs.WritableFolder
+	Providers: map[string]any{
+		"/repos":             repoFolder,       // a vfs.IFolderProvider
+		"/repos/org/repo":    repoSubFolder,    // shadows /repos for this repo
+		"/workspace":         workspaceFolder,  // a vfs.IWritableFolderProvider
 	},
 	MountsBlurb: "/repos is read-only; /workspace is editable.",
-	Notes: map[string]string{ // appended to ONE tool's description
+	Notes: map[string]string{
 		vfs.WriteFileToolName: "Writes stage locally until the user pushes.",
 	},
 })
 
 // Use ft.Tools() in agentic.Config to pass the seven tools to the loop.
-// Add or remove folders at runtime:
-ft.AddFolder("tmp", tmpFolder)
-ft.RemoveFolder("repos")
+// Add or remove providers at runtime:
+err := ft.Add("/tmp", tmpFolder)       // returns error on duplicate path
+ft.AddFile("/docs/readme", singleFile) // register a single virtual file
+ft.Remove("/repos")
 ```
 
-- **`FileTools`** — the handle returned by `NewFileTools`. Use `ft.Tools()` to
-  get the seven tools for `agentic.Config`. Call `ft.AddFolder(name, f)` and
-  `ft.RemoveFolder(name)` to mutate the folder set at runtime; tool calls
-  immediately reflect the current set.
-
-- **`Folder`** — `Display`/`List`/`Read`/`Find`/`Grep`. Every method receives
-  the WHOLE virtual path as the model wrote it, because only the folder knows
-  its own grammar: `/repos/<org>/<repo>@<ref>/<path>` is the repository host's
-  business, not the tool layer's.
-- **`WritableFolder`** adds `Writable`/`Create`/`Replace`/`Remove`. A folder
-  that is not one gets the three write tools' refusals for free, and a
+- **`IProvider`** — the common base: `Path() string`. Every provider knows the
+  virtual path it was registered at. Embed `*BaseProvider` to get this for free;
+  the registry injects the path automatically.
+- **`IFolderProvider`** — embeds `IProvider`; adds `Display`/`List`/`Read`/
+  `Find`/`Grep`. Every method receives the WHOLE virtual path as the model
+  wrote it, because only the folder knows its own grammar.
+- **`IFileProvider`** — embeds `IProvider`; adds `Read`/`Display`. Serves
+  exactly one virtual file at its registered path. Use it when you only need
+  to expose a single document without a full folder hierarchy.
+- **`IWritableFolderProvider`** adds `Writable`/`Create`/`Replace`/`Remove`. A
+  folder that is not one gets the three write tools' refusals for free, and a
   `ReadOnlyExplainer` lets it say *why* a particular path is read-only.
-- **`PathGuard`** blocks a path before any folder sees it, with the reason the
-  model is shown — how a host redirects `/repos` writes at an attached
-  workspace.
+- **`PathGuard`** blocks a path before any provider sees it, with the reason
+  the model is shown.
+- **`DuplicateMountError`** — returned by `Add`/`AddFile` when a provider is
+  already registered at that path (case-insensitive). Never a silent overwrite.
 
 Two properties are the module's whole point, and a host cannot opt out of
 either. **A cap that bites is announced**: a truncated listing, a `find_files`
