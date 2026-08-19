@@ -145,6 +145,63 @@ func TestOpenAIMessageMarshalPin(t *testing.T) {
 	assert.JSONEq(t, `{"role":"tool","content":"","tool_call_id":"call_1"}`, string(b))
 }
 
+// rejectStreamOptionsHandler fails the first request with a Z.AI-shaped 400
+// that names no parameter at all, then serves a normal SSE stream on any
+// retry -- reproducing what Complete's stream_options retry must recover
+// from.
+type rejectStreamOptionsHandler struct {
+	sseHandler
+	bodies [][]byte
+}
+
+func (h *rejectStreamOptionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	b, _ := io.ReadAll(r.Body)
+	h.bodies = append(h.bodies, b)
+	if len(h.bodies) == 1 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"Provider returned error","code":400,` +
+			`"metadata":{"raw":"{\"error\":{\"code\":\"1210\",\"message\":\"Invalid API ` +
+			`parameter, please check the documentation.\"}}","provider_name":"Z.AI"}}}`))
+		return
+	}
+	h.sseHandler.ServeHTTP(w, r)
+}
+
+func TestOpenAIRetriesWithoutDefaultStreamOptionsOnUnnamed400(t *testing.T) {
+	h := &rejectStreamOptionsHandler{sseHandler: sseHandler{
+		payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`},
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	p := oaProvider(t, srv.URL)
+	req := Request{Model: "z-ai/glm-5.3", Messages: []Message{{Role: RoleUser, Content: "hi"}}}
+	comp, err := p.Complete(context.Background(), req, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", comp.Message.Content)
+
+	require.Len(t, h.bodies, 2, "one rejected attempt, one retry")
+	assert.Contains(t, bodyMap(t, h.bodies[0]), "stream_options", "first attempt carries the default")
+	assert.NotContains(t, bodyMap(t, h.bodies[1]), "stream_options", "retry drops it")
+}
+
+func TestOpenAINeverRetriesACallerSuppliedStreamOptions(t *testing.T) {
+	h := &rejectStreamOptionsHandler{}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	p := oaProvider(t, srv.URL)
+	req := Request{
+		Model:    "z-ai/glm-5.3",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+		Extra:    map[string]any{"stream_options": map[string]any{"include_usage": false}},
+	}
+	_, err := p.Complete(context.Background(), req, nil)
+	require.Error(t, err)
+	assert.Len(t, h.bodies, 1, "a caller-owned stream_options is never treated as retryable")
+}
+
 func TestOpenAIRequestBodyDefaults(t *testing.T) {
 	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"x"}}]}`}}
 	srv := httptest.NewServer(h)
