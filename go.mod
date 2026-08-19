@@ -1,6 +1,6 @@
 module github.com/wow-look-at-my/agentic-loop
 
-go 1.26.5
+go 1.26
 
 require (
 	github.com/stretchr/testify v1.11.1
