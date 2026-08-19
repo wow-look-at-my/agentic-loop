@@ -78,7 +78,7 @@ func TestRepoReadRejectsArgumentsTheReadIgnores(t *testing.T) {
 	assert.Empty(t, g.Calls(), "the call must not run: its result would look like an answer")
 	assert.Contains(t, r.Content, `"query"`)
 	assert.Contains(t, r.Content, "newest commits, unfiltered")
-	assert.Contains(t, r.Content, GrepToolName, "and must name the tool that does search contents")
+	assert.Contains(t, r.Content, "grep", "and must name the tool that does search contents")
 	assert.Contains(t, r.Content, "org, repo, path, ref, per_page")
 }
 

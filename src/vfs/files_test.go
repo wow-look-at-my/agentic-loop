@@ -1,12 +1,16 @@
-package agentic
+package vfs
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+<<<<<<< HEAD:go/files_test.go
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wow-look-at-my/go-containers/set"
+=======
+	agentic "github.com/wow-look-at-my/agentic-loop/src"
+>>>>>>> 3e4b846 (Move the library to src/ and split the virtual filesystem into vfs.):src/vfs/files_test.go
 	"maps"
 	"slices"
 	"strings"
@@ -165,7 +169,7 @@ func (f *readOnlyRepos) ReadOnlyReason(p string) string {
 	return f.Display(p) + " is read-only. Edit it under /work instead."
 }
 
-func fileRig() (Tools, *writableFolder) {
+func fileRig() (agentic.Tools, *writableFolder) {
 	work := &writableFolder{&memFolder{mount: "work", files: map[string]string{
 		"main.go":     "package main\n\nfunc main() {}\n",
 		"src/util.go": "package src\n\n// TODO: rename\nfunc Util() {}\n",
@@ -185,7 +189,7 @@ func fileRig() (Tools, *writableFolder) {
 	}), work
 }
 
-func runFileTool(t *testing.T, reg Tools, name, args string) ToolResult {
+func runFileTool(t *testing.T, reg agentic.Tools, name, args string) agentic.ToolResult {
 	t.Helper()
 	tool, ok := reg.Find(name)
 	require.True(t, ok, "tool %s must be advertised", name)
@@ -439,4 +443,13 @@ func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The file tools' schemas come off their argument structs, so this is the one
+// check that matters for them: the tool decodes exactly what it advertises.
+func TestFileToolSchemasAreInferred(t *testing.T) {
+	reg, _ := fileRig()
+	tool, ok := reg.Find(GrepToolName)
+	require.True(t, ok)
+	assert.JSONEq(t, string(agentic.InferSchema[grepArgs]()), string(tool.Decl().InputSchema))
 }

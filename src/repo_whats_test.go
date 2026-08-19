@@ -89,7 +89,7 @@ func TestEveryRepoReadWhatRefusesAnArgumentItDoesNotUse(t *testing.T) {
 func TestRepoReadHasNoContentSearchWhat(t *testing.T) {
 	for _, gone := range []string{"grep", "search", "code"} {
 		_, ok := repoReadWhats[gone]
-		assert.False(t, ok, "what=%s must not exist: content search is %s", gone, GrepToolName)
+		assert.False(t, ok, "what=%s must not exist: content search is grep", gone)
 	}
 	assert.NotContains(t, string(repoReadSchema), `"grep"`)
 	assert.NotContains(t, repoReadDescription, "code search")

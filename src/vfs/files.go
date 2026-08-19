@@ -1,7 +1,8 @@
-package agentic
+package vfs
 
 import (
 	"context"
+	agentic "github.com/wow-look-at-my/agentic-loop/src"
 	"strings"
 )
 
@@ -198,7 +199,7 @@ type files struct {
 // NewFileTools builds the filesystem tools over cfg.Folders, or returns nil
 // when nothing is mounted -- a run with no files is never offered a tool that
 // could only ever fail.
-func NewFileTools(cfg FileToolsConfig) Tools {
+func NewFileTools(cfg FileToolsConfig) agentic.Tools {
 	mounted := map[string]Folder{}
 	for name, f := range cfg.Folders {
 		if name != "" && f != nil {
@@ -212,14 +213,14 @@ func NewFileTools(cfg FileToolsConfig) Tools {
 	describe := func(name, base string) string {
 		return base + sentence(cfg.MountsBlurb) + sentence(cfg.Notes[name])
 	}
-	return Tools{
-		NewTool(ToolDecl{Name: ListDirToolName, Description: describe(ListDirToolName, listDirDescription), InputSchema: pathOnlySchema, Readonly: true}, e.listDir),
-		NewTool(ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true}, e.readFile),
-		NewTool(ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true}, e.findFiles),
-		NewTool(ToolDecl{Name: GrepToolName, Description: describe(GrepToolName, grepDescription), InputSchema: grepSchema, Readonly: true}, e.grep),
-		NewTool(ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema}, e.writeFile),
-		NewTool(ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema}, e.editFile),
-		NewTool(ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema}, e.deleteFile),
+	return agentic.Tools{
+		agentic.NewTool(agentic.ToolDecl{Name: ListDirToolName, Description: describe(ListDirToolName, listDirDescription), InputSchema: pathOnlySchema, Readonly: true}, e.listDir),
+		agentic.NewTool(agentic.ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true}, e.readFile),
+		agentic.NewTool(agentic.ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true}, e.findFiles),
+		agentic.NewTool(agentic.ToolDecl{Name: GrepToolName, Description: describe(GrepToolName, grepDescription), InputSchema: grepSchema, Readonly: true}, e.grep),
+		agentic.NewTool(agentic.ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema}, e.writeFile),
+		agentic.NewTool(agentic.ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema}, e.editFile),
+		agentic.NewTool(agentic.ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema}, e.deleteFile),
 	}
 }
 
