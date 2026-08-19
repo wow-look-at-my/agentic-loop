@@ -19,8 +19,20 @@ go get github.com/wow-look-at-my/agentic-loop/src
 ```
 
 ```go
-import agentic "github.com/wow-look-at-my/agentic-loop/src"
+import (
+	agentic "github.com/wow-look-at-my/agentic-loop/src"
+	"github.com/wow-look-at-my/agentic-loop/src/vfs"
+	"github.com/wow-look-at-my/agentic-loop/src/repo"
+	"github.com/wow-look-at-my/agentic-loop/src/subagent"
+	"github.com/wow-look-at-my/agentic-loop/src/webfetch"
+	"github.com/wow-look-at-my/agentic-loop/src/todo"
+	"github.com/wow-look-at-my/agentic-loop/src/resources"
+)
 ```
+
+The loop is `agentic.Run`. Optional tools are sibling packages: `vfs.NewFileTools`,
+`repo.NewRepoTools`, `subagent.NewSubagentTool`, `webfetch.NewWebFetchTool`,
+`todo.NewTodoTools`, `resources.NewResourceWatcher`.
 
 ## Quick start — OpenAI-compatible
 
@@ -347,13 +359,13 @@ tools := append(agentic.Tools{},
 	myTools...,
 )
 tools = append(tools,
-	agentic.NewWebFetchTool(agentic.WebFetchConfig{Provider: provider, Model: model}),
+	webfetch.NewWebFetchTool(webfetch.WebFetchConfig{Provider: provider, Model: model}),
 )
-tools = append(tools, agentic.NewSubagentTool(agentic.SubagentConfig{
+tools = append(tools, subagent.NewSubagentTool(subagent.SubagentConfig{
 	Provider: provider, Model: model,
 	Tools: tools,                 // the FULL parent toolset — grants select from it
 	Gate:  agentic.NewGate(1),    // serialize sub-agents (the source app's choice)
-	OnActivity: func(a agentic.SubagentActivity) { /* live telemetry */ },
+	OnActivity: func(a subagent.SubagentActivity) { /* live telemetry */ },
 }))
 ```
 
@@ -779,12 +791,12 @@ A nil client yields no tools — a run with no GitHub access is never offered on
 that could only fail.
 
 ```go
-gh := agentic.NewGitHub(agentic.GitHubConfig{
+gh := repo.NewGitHub(repo.GitHubConfig{
 	Tokens:      readTokens,                            // rotated, then anonymous
-	WriteTokens: agentic.ModelWriteTokens(readTokens),  // only what the user flagged
+	WriteTokens: repo.ModelWriteTokens(readTokens),  // only what the user flagged
 	Cache:       myRepoKeyCache,                        // which token works, per repo
 })
-tools := agentic.NewRepoTools(agentic.RepoToolsConfig{GitHub: gh})
+tools := repo.NewRepoTools(repo.RepoToolsConfig{GitHub: gh})
 ```
 
 Two properties run through all of it:

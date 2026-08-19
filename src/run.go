@@ -22,10 +22,10 @@ import (
 const wrapUpInstruction = "Stop researching and write your final answer now, using only the information already gathered above. " +
 	"Do not call any tools and do not keep thinking -- output the complete, self-contained report that directly answers the task."
 
-// noOutputPlaceholder is returned as the final content when the model
+// NoOutputPlaceholder is returned as the final content when the model
 // produced neither content nor reasoning, so the caller never gets a
 // confusing empty result.
-const noOutputPlaceholder = "(subagent produced no output)"
+const NoOutputPlaceholder = "(subagent produced no output)"
 
 // StuckNudgeAt and StuckFailAt bound a model that stops making progress: a
 // turn whose tool calls are byte-identical to the previous turn's cannot
@@ -165,24 +165,23 @@ type Config struct {
 	// otherwise END while sub-agents are still out instead waits for the next
 	// report and delivers it as a user message, so the loop keeps the promise
 	// the launch receipt made. nil means nothing was launched asynchronously.
-	Subagents *SubagentRuns
+	Subagents SubagentReports
 
 	// DisableOutputDedup opts out of collapsing byte-identical read-only tool
 	// results into [unchanged] markers. On by default; only set when the full
 	// output must always reach the model.
 	DisableOutputDedup bool
 
-	// turnHook, when non-nil, is invoked with the 1-based turn number as each
+	// TurnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
-	// turn). It is unexported: package-internal machinery -- the subagent
-	// tool's live activity telemetry -- not public API.
-	turnHook func(turn int)
+	// turn). The sub-agent tool uses this for live activity telemetry.
+	TurnHook func(turn int)
 
-	// unknownTool, when non-nil, replaces the text a call to an unoffered name
-	// is answered with. Unexported: the sub-agent run uses it to say WHY a name
-	// its parent has is not in this run's toolset (read-only only, or outside
-	// the granted allowed_tools), which a bare "unknown tool" would not teach.
-	unknownTool func(name string) string
+	// UnknownTool, when non-nil, replaces the text a call to an unoffered name
+	// is answered with. The sub-agent run uses it to say WHY a name its parent
+	// has is not in this run's toolset (read-only only, or outside the granted
+	// allowed_tools), which a bare "unknown tool" would not teach.
+	UnknownTool func(name string) string
 }
 
 // Result is the outcome of a Run. Messages is the input transcript plus
@@ -269,8 +268,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 
 	for turn := 0; ; turn++ {
-		if cfg.turnHook != nil {
-			cfg.turnHook(turn + 1)
+		if cfg.TurnHook != nil {
+			cfg.TurnHook(turn + 1)
 		}
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, advertised, res)
 		if err != nil {
@@ -372,13 +371,13 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// next report if none has) and keep looping, so the model actually
 		// sees them; that promise is the whole reason an asynchronous
 		// run_subagent may return before it has an answer.
-		if cfg.Subagents.Pending() > 0 {
-			reports, cerr := cfg.Subagents.Collect(ctx)
+		if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
+			content, cerr := cfg.Subagents.Delivery(ctx)
 			if cerr != nil {
 				res.Messages = transcript
 				return res, cerr
 			}
-			if len(reports) > 0 {
+			if content != "" {
 				if strings.TrimSpace(assistant.Content) != "" {
 					answered := assistant
 					answered.ToolCalls = nil
@@ -386,7 +385,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				}
 				transcript = append(transcript, Message{
 					Role:    RoleUser,
-					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
+					Content: content,
 				})
 				continue
 			}
@@ -481,8 +480,8 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 		// A name this run does not offer: the model hallucinated a tool, or it
 		// remembers one its parent has. Teach it rather than aborting.
 		text := "unknown tool: " + call.Name
-		if cfg.unknownTool != nil {
-			text = cfg.unknownTool(call.Name)
+		if cfg.UnknownTool != nil {
+			text = cfg.UnknownTool(call.Name)
 		}
 		return ToolResult{Content: text, IsError: true}, nil
 	}
@@ -524,5 +523,5 @@ func fallbackOutput(m Message) string {
 	if s := strings.TrimSpace(b.String()); s != "" {
 		return s
 	}
-	return noOutputPlaceholder
+	return NoOutputPlaceholder
 }

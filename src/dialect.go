@@ -123,7 +123,7 @@ func DetectDialect(ctx context.Context, cfg ProviderConfig) (Dialect, error) {
 		return DialectAuto, fmt.Errorf("detecting the dialect: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _, err := readCapped(resp.Body, detectMaxBytes)
+	body, _, err := ReadCapped(resp.Body, detectMaxBytes)
 	if err != nil {
 		return DialectAuto, fmt.Errorf("detecting the dialect: reading the model list: %w", err)
 	}

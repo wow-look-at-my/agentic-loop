@@ -271,7 +271,7 @@ func TestRunStallPlaceholderWithoutTools(t *testing.T) {
 	res, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 1, "no wrap-up turn without an executor")
-	assert.Equal(t, noOutputPlaceholder, res.Final.Content)
+	assert.Equal(t, NoOutputPlaceholder, res.Final.Content)
 }
 
 func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {

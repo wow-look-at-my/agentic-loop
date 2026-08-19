@@ -232,6 +232,14 @@ func renderHunks(ops []diffOp) string {
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
+// Plural renders "1 <one>" or "N <many>".
+func Plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
 // HumanSize renders a byte count the way a model reads it in a change summary.
 func HumanSize(n int64) string {
 	switch {

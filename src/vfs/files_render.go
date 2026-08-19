@@ -79,7 +79,7 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 		}
 		return b.String()
 	}
-	fmt.Fprintf(&b, ": %s in %s\n", plural(len(res.Hits), "matching line", "matching lines"), plural(res.Files, "file", "files"))
+	fmt.Fprintf(&b, ": %s in %s\n", agentic.Plural(len(res.Hits), "matching line", "matching lines"), agentic.Plural(res.Files, "file", "files"))
 	current := ""
 	for _, h := range res.Hits {
 		if h.Path != current {
@@ -193,11 +193,4 @@ func clampInt(v, def, lo, hi int) int {
 		v = def
 	}
 	return max(lo, min(v, hi))
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }

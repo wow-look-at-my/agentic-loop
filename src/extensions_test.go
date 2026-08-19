@@ -182,7 +182,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 		Tools:    exec.registry(),
 		Events:   Events{OnTurnBegin: func(turn int, _ *Request) error { begins = append(begins, turn); return nil }},
 	}
-	cfg.turnHook = func(turn int) { internal = append(internal, turn) }
+	cfg.TurnHook = func(turn int) { internal = append(internal, turn) }
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)

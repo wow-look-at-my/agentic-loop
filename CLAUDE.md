@@ -5,9 +5,10 @@ Notes for Claude working in this repository.
 ## What this is
 
 `agentic-loop` — a reusable agentic-loop library for OpenAI-compatible and
-Anthropic chat APIs. `src/` holds the Go library: package `agentic` (the
-loop, providers, repo tools, sub-agent, web fetch) and `src/vfs` (package
-`vfs`, the virtual-filesystem tools). There is no TypeScript port and none
+Anthropic chat APIs. `src/` holds the Go library, grouped by concern:
+package `agentic` (loop and providers) plus sibling packages `vfs`,
+`repo`, `subagent`, `webfetch`, `todo`, and `resources`. The loop package
+does not import the optional packages. There is no TypeScript port and none
 is planned.
 
 Where the semantics came from (the Go library is an extraction, not a

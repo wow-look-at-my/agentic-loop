@@ -11,10 +11,16 @@ be embedded in other hosts.
 
 ## Layout
 
-- [`src/`](src/) — the Go library. Package `agentic` is the loop and
-  providers; [`src/vfs/`](src/vfs/) is the optional virtual-filesystem
-  tools (`vfs.NewFileTools`). See [src/README.md](src/README.md) for the
-  API tour and examples.
+- [`src/`](src/) — the Go library, grouped by concern:
+  - package `agentic` — loop, providers, dialects
+  - [`src/vfs/`](src/vfs/) — virtual-filesystem tools
+  - [`src/repo/`](src/repo/) — GitHub client and repo tools
+  - [`src/subagent/`](src/subagent/) — `run_subagent`
+  - [`src/webfetch/`](src/webfetch/) — `web_fetch`
+  - [`src/todo/`](src/todo/) — task-list tools
+  - [`src/resources/`](src/resources/) — MCP resource watch
+
+  See [src/README.md](src/README.md) for the API tour and examples.
 
 ## Design points
 
