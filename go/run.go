@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // Run drives the agentic tool loop: it calls cfg.Provider on the growing
@@ -35,6 +36,17 @@ import (
 // Read-only tool results that are byte-identical to an earlier call in the
 // run are fed back as a short [unchanged] marker instead of the full content
 // (see OutputDeduper; Config.DisableOutputDedup opts out).
+//
+// Within a batch, read-only tool calls (ToolDecl.Readonly set) execute
+// concurrently via goroutines. Mutating calls execute sequentially in call
+// order; each mutating call waits for every in-flight read-only call to
+// finish first, so workspace state is consistent at the start of each
+// mutation. OnToolCall fires in call order, each call's
+// hook immediately before that call is dispatched; OnToolResult and
+// transcript append happen in call order after every call has resolved. The
+// only observable nondeterminism is the execution order among read-only
+// calls; the transcript, event callbacks, and exec count on abort are all
+// deterministic.
 //
 // A model-call error ENDS the run -- the loop assumes any failure reaching it
 // is permanent (see Config). Transient failures never get this far: the
@@ -270,24 +282,94 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: cleared, Status: "cancelled"})
 				return res, cause
 			}
-			for _, asked := range calls {
+			asks := make([]ToolCall, 0, len(calls))
+			results := make([]ToolResult, len(calls))
+			var mu sync.Mutex
+			var firstErr error
+			var wg sync.WaitGroup    // all goroutines, for the abort path
+			var reads sync.WaitGroup // read-only calls since the last barrier
+
+			// Dispatch: read-only calls run concurrently via goroutines;
+			// mutating calls run sequentially in call order. Each mutating
+			// call is a barrier -- it waits for every in-flight read-only
+			// call to finish first, so workspace state is consistent at the
+			// start of each mutation. When no read-only calls are present
+			// the entire batch runs sequentially on the calling goroutine.
+			//
+			// resolveCall returns a non-nil error ONLY when an approval
+			// decision never arrived (Approver.Ask failed). The guard is
+			// kept for that path; Execute failures become error results.
+			for i, asked := range calls {
 				// The hook sees a copy, not the transcript's own entry: what
 				// the model asked for is already recorded above and stays that
 				// way, while everything downstream from here -- the approval
 				// decision and the execution -- uses whatever the hook left.
 				call := asked
 				if cberr := cfg.Events.emitToolCall(ToolCallEvent{Call: &call}); cberr != nil {
+					// Wait for any read-only calls already dispatched so no
+					// goroutine outlives the batch, then clear it.
+					wg.Wait()
 					return abortBatch(cberr)
 				}
-				result, aerr := resolveCall(ctx, &cfg, call)
-				if aerr != nil {
-					return abortBatch(aerr)
+				asks = append(asks, call)
+
+				tool, known := cfg.Tools.Find(call.Name)
+				readonly := known && tool.Decl().Readonly
+
+				if readonly {
+					reads.Add(1)
+					wg.Add(1)
+					go func(idx int, c ToolCall) {
+						defer wg.Done()
+						defer reads.Done()
+						r, aerr := resolveCall(ctx, &cfg, c)
+						results[idx] = r
+						if aerr != nil {
+							mu.Lock()
+							if firstErr == nil {
+								firstErr = aerr
+							}
+							mu.Unlock()
+						}
+					}(i, call)
+					continue
 				}
-				content := result.Content
-				parts := result.Parts
+				// Mutating: barrier -- wait for every in-flight read-only
+				// call to finish so the sequential execution has a
+				// consistent view of workspace state.
+				reads.Wait()
+
+				result, aerr := resolveCall(ctx, &cfg, call)
+				results[i] = result
+				if aerr != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = aerr
+					}
+					mu.Unlock()
+					break
+				}
+			}
+
+			// Wait for all goroutines (including any still in flight when a
+			// mutating call errored above) before reading results or
+			// aborting, so no goroutine outlives the batch.
+			wg.Wait()
+			if firstErr != nil {
+				return abortBatch(firstErr)
+			}
+
+			// Record every result in call order: OnToolResult fires
+			// sequentially in call order, the transcript messages are
+			// appended in call order, and the deduper collapses byte-
+			// identical read-only results. This keeps the transcript fully
+			// deterministic regardless of goroutine completion order.
+			for i, call := range calls {
+				content := results[i].Content
+				parts := results[i].Parts
 				if deduper != nil {
 					if tool, known := cfg.Tools.Find(call.Name); known {
-						if collapsed, deduped := deduper.Collapse(tool.Decl(), result); deduped {
+						if collapsed, deduped := deduper.Collapse(tool.Decl(), results[i]); deduped {
 							content = collapsed
 							parts = nil
 						}
@@ -300,19 +382,19 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				recorded := Message{
 					Role:        RoleTool,
 					Content:     content,
-					ToolCallID:  asked.ID,
-					ToolIsError: result.IsError,
+					ToolCallID:  call.ID,
+					ToolIsError: results[i].IsError,
 				}
-				if cberr := cfg.Events.emitToolResult(ToolResultEvent{Call: call, Result: result, Recorded: recorded}); cberr != nil {
+				if cberr := cfg.Events.emitToolResult(ToolResultEvent{Call: asks[i], Result: results[i], Recorded: recorded}); cberr != nil {
 					return abortBatch(cberr)
 				}
 				transcript = append(transcript, recorded)
 				if terr := cfg.Events.emitToolMessage(ToolMessageEvent{
-					ToolCallID:        asked.ID,
+					ToolCallID:        call.ID,
 					ParentAssistantID: assistantID,
 					Content:           content,
 					Parts:             parts,
-					IsError:           result.IsError,
+					IsError:           results[i].IsError,
 				}); terr != nil {
 					return abortBatch(terr)
 				}
