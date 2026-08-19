@@ -187,7 +187,7 @@ func fileRig() (*FileTools, *writableFolder) {
 	repos := &readOnlyRepos{newMemFolder(map[string]string{"a/b.go": "package b\n"})}
 	return NewFileTools(FileToolsConfig{
 		Providers: map[string]any{
-			"/work": work,
+			"/work":  work,
 			"/repos": repos,
 		},
 		MountsBlurb: "/work is editable; /repos is read-only.",

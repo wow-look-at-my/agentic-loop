@@ -223,7 +223,7 @@ type fileProviderAdapter struct {
 	file IFileProvider
 }
 
-func (a *fileProviderAdapter) Path() string         { return a.file.Path() }
+func (a *fileProviderAdapter) Path() string            { return a.file.Path() }
 func (a *fileProviderAdapter) Display(p string) string { return a.file.Display(p) }
 
 func (a *fileProviderAdapter) List(_ context.Context, p string) (Listing, error) {
