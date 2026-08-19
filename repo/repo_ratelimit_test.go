@@ -43,6 +43,8 @@ func TestRateLimitIsReportedAsTransient(t *testing.T) {
 	assert.Regexp(t, `clears in \d+s`, r.Content, "a transient failure has to say how long it lasts")
 	assert.NotContains(t, r.Content, "Requires authentication",
 		"the anonymous attempt's answer must never be what a rate limit is reported as")
+	assert.Contains(t, r.Content, "one of your configured tokens",
+		"the winning attempt carried a real credential, and the message must say so")
 	assert.Contains(t, g.Auths(), "tok")
 }
 

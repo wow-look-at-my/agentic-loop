@@ -31,6 +31,11 @@ type GHResponse struct {
 	// token. A failure from a token explains far more than the anonymous
 	// attempt's, which is what failureRank uses it for.
 	authed bool
+	// credentialName is the Settings label of the token that produced this
+	// response, empty for the anonymous attempt. explainFailure uses it so a
+	// rate-limit message names WHICH credential's bucket was hit, rather than
+	// leaving that the one thing an otherwise-detailed failure never says.
+	credentialName string
 }
 
 // Status is the HTTP status GitHub answered with.
@@ -108,6 +113,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 			return res, nil
 		}
 		res.authed = att.token != ""
+		res.credentialName = att.name
 		if r := failureRank(res); r > bestRank {
 			bestRank, best = r, res
 		}
@@ -217,6 +223,7 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 			// Same most-informative-failure rule as FetchURLOpts: the
 			// anonymous attempt runs last and its answer explains least.
 			res.authed = att.token != ""
+			res.credentialName = att.name
 			if r := failureRank(res); r > bestRank {
 				bestRank, best = r, res
 			}

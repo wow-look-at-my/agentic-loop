@@ -88,7 +88,31 @@ func TestExplainFailureRateLimitIsMarkedTransientWithItsWait(t *testing.T) {
 	assert.Contains(t, msg, "42s")
 	assert.Contains(t, msg, "code_search")
 	assert.Contains(t, msg, "retry the same call")
+	assert.Contains(t, msg, "one of your configured tokens", "authed with no recorded name still says a real token was hit")
 	assert.NotContains(t, msg, "Settings -> github", "a rate limit must not send the user off to reconfigure a working token")
+}
+
+// The one fact a bare "rate limit exceeded" never used to say: whether the
+// request that got rate-limited carried a real credential at all.
+func TestExplainFailureRateLimitNamesTheCredentialThatHitIt(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	named := GHResponse{
+		status: http.StatusForbidden,
+		header: rateLimitHeaders("0", now.Add(time.Minute), "core"),
+		body:   []byte(`{"message":"API rate limit exceeded"}`),
+		authed: true, credentialName: "wow-look-at-my",
+	}
+	msg := explainFailure("read", "/repos/o/r", named, 1, now)
+	assert.Contains(t, msg, `your "wow-look-at-my" token`)
+
+	anon := GHResponse{
+		status: http.StatusForbidden,
+		header: rateLimitHeaders("0", now.Add(time.Minute), "core"),
+		body:   []byte(`{"message":"API rate limit exceeded"}`),
+		authed: false,
+	}
+	msg = explainFailure("read", "/repos/o/r", anon, 1, now)
+	assert.Contains(t, msg, "unauthenticated (anonymous) request, not one of your configured tokens")
 }
 
 func TestExplainFailureDistinguishesTheDenialModes(t *testing.T) {
