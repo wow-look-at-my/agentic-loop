@@ -28,15 +28,6 @@ func (c *memCache) Put(repo, id string) {
 	c.m[repo] = id
 }
 
-// recordingGitHub is a fake contents API that records the Authorization header
-// of every request and answers via a per-test responder.
-type recordingGitHub struct {
-	mu       sync.Mutex
-	auths    []string
-	respond  func(authToken, path, accept, ref string) (status int, ctype, body string)
-	requests int
-}
-
 func TestRepoReadWhatValidation(t *testing.T) {
 	ex := repoToolset(GitHubConfig{})
 	// Missing "what" teaches the valid set.
