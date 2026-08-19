@@ -7,58 +7,15 @@ model call and its answer, and the transports that carry it.
 
 ## Layout
 
-One module, `github.com/wow-look-at-my/agentic-loop/go`.
-
-| Package | What it is |
-| --- | --- |
-| [`go/`](go/) | the loop: `Run`, tools, approval, sub-agents, compaction (package `agentic`) |
-| [`go/core`](go/core/) | the format, its [schema](go/core/schema/), and the three dialects |
-| [`go/client`](go/client/) | the Go API: `Provider`, `Completion`, folded usage |
-| [`go/extras`](go/extras/) | retry and a fixed-rate request gate |
-| [`go/session`](go/session/) | conversation storage: memory and one document per file |
-| [`go/http`](go/http/) | HTTP, stateless and stateful |
-| [`go/socket`](go/socket/) | unix socket and websocket |
-| [`go/cli`](go/cli/) | the `cai` commands (`go/cmd/cai` is its `main`) |
-
-`ts/` is a planned TypeScript port. The Go source and
-[go/README.md](go/README.md) are its specification.
-
-## Two ways in
+Package `agentic` is the module root:
 
 ```go
-comp, err := agentic.Run(ctx, cfg, agentic.Request{Model: "claude-x", ...})
+import agentic "github.com/wow-look-at-my/agentic-loop"
 ```
 
-```sh
-cai ask "what is in this image?" --image shot.png   # a CLI, with no XML in sight
-cai serve --http :8080 --socket /run/cai.sock       # HTTP, websocket, unix socket
-```
-
-## The document
-
-```xml
-<?xml version="1.1" encoding="UTF-8"?>
-<request xmlns="https://github.com/wow-look-at-my/common-ai-api/schema/v1"
-         xmlns:anthropic="https://github.com/wow-look-at-my/common-ai-api/schema/v1/anthropic"
-         model="claude-x" max-tokens="4096" anthropic:top-k="40">
-  <system><text>You are ...</text></system>
-  <messages>
-    <message role="user">
-      <text>what is in this image?</text>
-      <image media-type="image/png">iVBORw0...</image>
-    </message>
-  </messages>
-</request>
-```
-
-A message's content is an ordered list of parts, so a reply whose text brackets
-a thinking block survives intact. Anything provider-specific is namespaced and
-declared: a scalar rides as a qualified attribute, anything object-shaped as a
-namespaced element. Nothing is a wildcard, so a misspelled provider parameter
-is a validation error here rather than a 400 from an upstream.
-
-Streaming is the same document, written as it arrives — one vocabulary, and a
-stream that cannot disagree with its own result.
+Optional families are sibling packages: [`vfs/`](vfs/), [`repo/`](repo/),
+[`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/),
+[`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
 
 ## Design points
 
@@ -80,7 +37,7 @@ stream that cannot disagree with its own result.
 cd go && go-toolchain
 ```
 
-Depth: [`CLAUDE.md`](CLAUDE.md), [`go/README.md`](go/README.md) and
+Depth: [`CLAUDE.md`](CLAUDE.md), [`USAGE.md`](USAGE.md) and
 [`docs/`](docs/).
 
 ## License
