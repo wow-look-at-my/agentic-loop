@@ -263,8 +263,8 @@ Concretely:
 
 ## CI
 
-`.github/workflows/ci.yml` runs the org go-toolchain action with
-`working-directory: .`. Org constraints:
+`.github/workflows/ci.yml` runs the org go-toolchain action at the
+repository root. Org constraints:
 
 - The workflow trigger stays `on: push:` only.
 - The required status check is named exactly **`all-builds`**, but it is
