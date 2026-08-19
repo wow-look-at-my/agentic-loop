@@ -20,9 +20,8 @@ func repoRoot(t *testing.T) string {
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok, "cannot locate this test file")
 	root := filepath.Dir(filepath.Dir(filepath.Dir(file)))
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Fatalf("cannot locate repo root from %s: %v", file, err)
-	}
+	_, err := os.Stat(filepath.Join(root, "go.mod"))
+	require.NoError(t, err, "cannot locate repo root from %s", file)
 	return root
 }
 
