@@ -64,6 +64,22 @@ func classifyRateLimit(res GHResponse, now time.Time) (rateLimit, bool) {
 	return rl, hit
 }
 
+// whichCredentialHit names the credential that produced a rate-limited
+// response: an unnamed anonymous fallback ran out of its own tiny
+// unauthenticated budget, or one specific configured token ran out of its
+// own -- distinct facts a bare "rate limit exceeded (403)" collapses into
+// one, and the reason a healthy-looking token can sit next to a genuinely
+// exhausted anonymous attempt with no way to tell them apart.
+func whichCredentialHit(res GHResponse) string {
+	if !res.authed {
+		return "the unauthenticated (anonymous) request, not one of your configured tokens"
+	}
+	if res.credentialName != "" {
+		return fmt.Sprintf("your %q token", res.credentialName)
+	}
+	return "one of your configured tokens"
+}
+
 // waitAdvice renders the wait a rate limit implies.
 func (rl rateLimit) waitAdvice() string {
 	if rl.retryIn <= 0 {
@@ -246,8 +262,8 @@ func explainFailure(op, what string, res GHResponse, numTokens int, now time.Tim
 		if rl.resource != "" {
 			bucket = " on the " + rl.resource + " quota"
 		}
-		return fmt.Sprintf("%s: GitHub %s exceeded%s (%d) — TRANSIENT, not an auth problem. %s; retry the same call after that.",
-			lead, kind, bucket, res.status, rl.waitAdvice())
+		return fmt.Sprintf("%s: GitHub %s exceeded%s (%d) — TRANSIENT, not an auth problem. This was %s. %s; retry the same call after that.",
+			lead, kind, bucket, res.status, whichCredentialHit(res), rl.waitAdvice())
 	}
 	switch res.status {
 	case http.StatusNotFound:
