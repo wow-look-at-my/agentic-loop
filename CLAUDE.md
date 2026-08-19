@@ -4,33 +4,9 @@ Notes for Claude working in this repository.
 
 ## What this is
 
-`agentic-loop` — an agentic tool loop and the wire half it runs on, in ONE Go
-module (`github.com/wow-look-at-my/agentic-loop/go`). `ts/` is a planned
-TypeScript port, and the Go source plus `go/README.md` are its specification.
-There is no PARITY.md: it was deleted deliberately, so do not recreate one — a
-second declaration of the Go package's behavior is a copy nothing keeps true.
-
-**One module, several packages.** `go/` itself is package `agentic` (the loop).
-The wire half sits beside it: `go/core` (the XML format, its schema and the
-three dialects), `go/client` (the Go API), `go/extras` (retry, rate limit),
-`go/session`, `go/http`, `go/socket`, `go/cli` (the `cai` commands).
-
-**Every `main` lives under `go/cmd/<binary>/`.** go-toolchain names a binary
-after the MODULE when its main package sits one level below the module root, so
-`go/cli` and `go/todo_driver` both wanted to be called `go` and only one of
-them got built. Two levels down, the leaf directory is the name: `cai` and
-`todo_driver`, both built.
-
-**It is ONE module on purpose.** These packages were briefly seven modules in a
-separate repository, and every one of them had to pin its siblings at a
-pseudo-version — which a commit cannot honestly state about itself, so the
-first publish pinned a commit with no modules in it and consumers got
-`missing go.mod at revision`. One `go.mod` has no sibling pins to rot, no
-cross-repo release ordering, and one CI job. Do not split it back up.
-
-`aliases.go` re-exports what the loop uses, as ALIASES: `agentic.Message` IS
-`client.Message`, so a value crosses between the loop and the wire half
-without conversion.
+`agentic-loop` — a reusable agentic-loop library for OpenAI-compatible and
+Anthropic chat APIs. `go/` holds the Go library (package `agentic`, a single
+package). There is no TypeScript port and none is planned.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
@@ -50,9 +26,16 @@ redesign — check these when a behavior question comes up):
   grants, Gate, activity telemetry) and `web_fetch`
   (`internal/tools/webfetch.go`: caps, URL validation, HTML cleanup, Tika,
   the model-backed summary).
-- `ai-shadertoy` `src/ai` `compact.ts`: compaction.
-- `model-benchmark` `src` (`env.ts`, `agent.ts`): context-overflow detection
-  and the transcript-tail cache marker discipline.
+- `ai-shadertoy` `src/ai` (`providers.ts`, `compact.ts`): the Anthropic
+  dialect reference (message/thinking/tool_result mapping, cache
+  breakpoints, stream events) and compaction.
+- `model-benchmark` `src` (`env.ts`, `agent.ts`): retry constants and
+  classification, context-overflow detection, the transcript-tail cache
+  marker discipline.
+
+The Responses dialect has NO source repo — it was written here, against the
+API's own shapes. Do not go looking for the semantics somewhere else; the
+answers are `go/README.md` and `responses_test.go`.
 
 ## Build & test
 
@@ -123,13 +106,25 @@ side of that line it falls on — do not put it on both.
 - **Providers are built ONLY via the per-dialect constructors**
   (`NewOpenAIProvider` / `NewResponsesProvider` / `NewAnthropicProvider`, each
   embedding the shared `ProviderConfig` connection base). The dialect
-  implementations live in `core/` and stay unexported there; do not add
-  construction side doors. `Dialect` NAMES a protocol for a host's settings —
-  it never constructs one.
-- **Retry belongs to the Provider and is ON by default.**
-  `ProviderConfig.Retry` (nil = `DefaultRetry` = 10 attempts; a one-attempt
-  policy turns it off) is the ONE retry knob — do NOT add another to `Config`
-  or `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
+  implementations (`openaiProvider`, `responsesProvider`, `anthropicProvider`)
+  stay unexported; do not re-export them or add construction side doors.
+  `Dialect` (dialect.go) NAMES a protocol for a host's settings — it never
+  constructs one.
+- **The Responses dialect exists for exactly one thing** (`responses.go` +
+  `responses_wire.go`): a reasoning model's chain of thought surviving a tool
+  call, which chat-completions has no field for. So the reasoning ITEM with its
+  `encrypted_content` is what gets replayed, never a summary alone — a summary
+  is prose about the reasoning. `Store` is FALSE by default against the API's
+  own default (third-party retention is the caller's decision to make out
+  loud), `previous_response_id` is never sent (the transcript is the caller's),
+  and detection can never name this dialect, since the model list looks
+  identical. Depth: `go/README.md`.
+- **Retry belongs to the Provider and is ON by default.** Both constructors
+  end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
+  nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
+  returns the dialect provider unwrapped). `ProviderConfig.Retry` is the
+  library's ONE retry knob — do NOT add another to `Config` or
+  `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
   safe. That is why it is a knob the loop passes along and never reads.
@@ -372,5 +367,5 @@ Concretely:
 
 ## Documentation upkeep
 
-When changing the API surface or any behavior: update `go/README.md` and this
-file in the same commit.
+When changing the API surface or any behavior: update `go/README.md` and
+this file in the same commit.
