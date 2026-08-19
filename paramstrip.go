@@ -3,6 +3,7 @@ package agentic
 import (
 	"context"
 	"errors"
+	"github.com/wow-look-at-my/go-containers/set"
 	"regexp"
 	"strings"
 	"sync"
@@ -69,7 +70,7 @@ type paramStripper struct {
 	inner Provider
 
 	mu       sync.Mutex
-	stripped map[string]bool // normalized names of params already stripped
+	stripped set.Set[string] // normalized names of params already stripped
 }
 
 // NewParamStripper wraps a Provider with rejected-parameter recovery: when a
@@ -82,7 +83,7 @@ type paramStripper struct {
 // context cancellation is never treated as a parameter problem, and a call
 // that already streamed (a non-nil completion) is never retried.
 func NewParamStripper(p Provider) Provider {
-	return &paramStripper{inner: p, stripped: map[string]bool{}}
+	return &paramStripper{inner: p, stripped: set.New[string]()}
 }
 
 // Complete implements Provider.
@@ -99,7 +100,7 @@ func (s *paramStripper) Complete(ctx context.Context, req Request, ev *StreamEve
 		return comp, err
 	}
 	s.mu.Lock()
-	s.stripped[normalizeParamName(key)] = true
+	s.stripped.Add(normalizeParamName(key))
 	s.mu.Unlock()
 	next := make(map[string]any, len(req.Extra))
 	for k, v := range req.Extra {
@@ -117,12 +118,12 @@ func (s *paramStripper) Complete(ctx context.Context, req Request, ev *StreamEve
 func (s *paramStripper) withoutStripped(extra map[string]any) map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.stripped) == 0 || len(extra) == 0 {
+	if s.stripped.Len() == 0 || len(extra) == 0 {
 		return extra
 	}
 	needs := false
 	for k := range extra {
-		if s.stripped[normalizeParamName(k)] {
+		if s.stripped.Contains(normalizeParamName(k)) {
 			needs = true
 			break
 		}
@@ -132,7 +133,7 @@ func (s *paramStripper) withoutStripped(extra map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(extra))
 	for k, v := range extra {
-		if s.stripped[normalizeParamName(k)] {
+		if s.stripped.Contains(normalizeParamName(k)) {
 			continue
 		}
 		out[k] = v

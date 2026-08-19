@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"net/http"
 	"net/url"
 	"sort"
@@ -140,7 +141,7 @@ const orgSweepMaxOrgs = 20
 // memberships via /user/orgs.
 func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []TokenTestRepo, orgOwners []string, truncated bool, errMsg string) {
 	now := time.Now()
-	seenOrg := map[string]bool{}
+	seenOrg := set.New[string]()
 	for page := 1; page <= OwnerReposMaxPages; page++ {
 		target := fmt.Sprintf("%s/user/repos?per_page=%d&page=%d&sort=full_name", e.base, OwnerReposPerPage, page)
 		res, err := e.doGet(ctx, target, token, "application/vnd.github+json")
@@ -156,8 +157,8 @@ func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []To
 		}
 		for _, r := range batch {
 			repos = append(repos, r.tokenTestRepo())
-			if r.Owner.Type == "Organization" && r.Owner.Login != "" && !seenOrg[strings.ToLower(r.Owner.Login)] {
-				seenOrg[strings.ToLower(r.Owner.Login)] = true
+			if r.Owner.Type == "Organization" && r.Owner.Login != "" && !seenOrg.Contains(strings.ToLower(r.Owner.Login)) {
+				seenOrg.Add(strings.ToLower(r.Owner.Login))
 				orgOwners = append(orgOwners, r.Owner.Login)
 			}
 		}
@@ -187,17 +188,17 @@ func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string
 		result.OrgsTruncated = true
 	}
 
-	seenRepo := map[string]bool{}
+	seenRepo := set.New[string]()
 	for _, r := range result.Repos {
-		seenRepo[strings.ToLower(r.FullName)] = true
+		seenRepo.Add(strings.ToLower(r.FullName))
 	}
 
 	for _, org := range orgs {
 		orgRepos, truncated, orgErr := e.listOrgRepos(ctx, token, org)
 		result.Orgs = append(result.Orgs, TokenTestOrg{Login: org, Repos: orgRepos, Truncated: truncated, Error: orgErr})
 		for _, r := range orgRepos {
-			if key := strings.ToLower(r.FullName); !seenRepo[key] {
-				seenRepo[key] = true
+			if key := strings.ToLower(r.FullName); !seenRepo.Contains(key) {
+				seenRepo.Add(key)
 				result.Repos = append(result.Repos, r)
 			}
 		}
@@ -208,17 +209,17 @@ func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string
 // deduplicated, preferring discovered's casing (it comes straight from
 // GitHub's own org listing) and preserving first-seen order.
 func mergeOrgLogins(discovered, fromRepos []string) []string {
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	var out []string
 	for _, login := range discovered {
-		if key := strings.ToLower(login); !seen[key] {
-			seen[key] = true
+		if key := strings.ToLower(login); !seen.Contains(key) {
+			seen.Add(key)
 			out = append(out, login)
 		}
 	}
 	for _, login := range fromRepos {
-		if key := strings.ToLower(login); !seen[key] {
-			seen[key] = true
+		if key := strings.ToLower(login); !seen.Contains(key) {
+			seen.Add(key)
 			out = append(out, login)
 		}
 	}

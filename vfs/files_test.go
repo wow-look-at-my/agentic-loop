@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	agentic "github.com/wow-look-at-my/agentic-loop"
+	"github.com/wow-look-at-my/go-containers/set"
 	"maps"
 	"slices"
 	"strings"
@@ -54,15 +55,15 @@ func (f *memFolder) List(_ context.Context, p string) (Listing, error) {
 	}
 	dir := f.rel(p)
 	var out Listing
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	for name, content := range f.files {
 		rest, ok := WithinDir(name, dir)
 		if !ok {
 			continue
 		}
 		if i := strings.Index(rest, "/"); i >= 0 {
-			if child := rest[:i]; !seen[child] {
-				seen[child] = true
+			if child := rest[:i]; !seen.Contains(child) {
+				seen.Add(child)
 				out.Entries = append(out.Entries, DirEntry{Name: child, Dir: true})
 			}
 			continue
@@ -109,7 +110,7 @@ func (f *memFolder) Grep(_ context.Context, p string, q GrepQuery) (GrepResult, 
 	}
 	scope := f.rel(p)
 	var res GrepResult
-	files := map[string]bool{}
+	files := set.New[string]()
 	for name, content := range f.files {
 		if _, ok := WithinScope(name, scope); !ok {
 			continue
@@ -122,11 +123,11 @@ func (f *memFolder) Grep(_ context.Context, p string, q GrepQuery) (GrepResult, 
 				res.Truncated = true
 				return res, nil
 			}
-			files[name] = true
+			files.Add(name)
 			res.Hits = append(res.Hits, GrepHit{Path: f.Path() + "/" + name, Line: i + 1, Text: line})
 		}
 	}
-	res.Files = len(files)
+	res.Files = files.Len()
 	return res, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"io"
 	"net/http"
 	"strings"
@@ -51,9 +52,7 @@ type responsesProvider struct {
 }
 
 // respReserved are the Extra keys the typed core always overrides.
-var respReserved = map[string]bool{
-	"input": true, "instructions": true, "model": true, "stream": true, "tools": true,
-}
+var respReserved = set.Of[string]("input", "instructions", "model", "stream", "tools")
 
 // Complete implements Provider over a streaming response.
 func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
@@ -132,7 +131,7 @@ func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *Strea
 func (o *responsesProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.Extra {
-		if respReserved[k] {
+		if respReserved.Contains(k) {
 			continue
 		}
 		body[k] = v

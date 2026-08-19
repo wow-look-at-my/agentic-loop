@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"io"
 	"net/http"
 	"strings"
@@ -39,10 +40,7 @@ type anthropicProvider struct {
 const defaultAnthropicVersion = "2023-06-01"
 
 // anReserved are the Extra keys the typed core always overrides.
-var anReserved = map[string]bool{
-	"model": true, "max_tokens": true, "stream": true,
-	"system": true, "messages": true, "tools": true,
-}
+var anReserved = set.Of[string]("model", "max_tokens", "stream", "system", "messages", "tools")
 
 // cacheEphemeral is the prompt-cache breakpoint marker. The Messages API
 // allows at most 4 breakpoints per request; this provider uses exactly 2.
@@ -124,7 +122,7 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 func (a *anthropicProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.Extra {
-		if anReserved[k] {
+		if anReserved.Contains(k) {
 			continue
 		}
 		body[k] = v

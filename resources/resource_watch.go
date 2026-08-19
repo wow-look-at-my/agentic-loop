@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"sort"
 	"strconv"
 	"strings"
@@ -144,7 +145,7 @@ type resourceWatcher struct {
 	// is reported once rather than re-announced every single turn. A warning
 	// that stops recurring and recurs again is delivered again.
 	mu     sync.Mutex
-	warned map[string]bool
+	warned set.Set[string]
 }
 
 // NewResourceWatcher returns a watcher over cfg.Sources, or nil when there is
@@ -165,7 +166,7 @@ func NewResourceWatcher(cfg ResourceWatchConfig) ResourceWatcher {
 		snapshots:    cfg.Snapshots,
 		maxResources: cfg.MaxResources,
 		maxBytes:     cfg.MaxBytes,
-		warned:       make(map[string]bool),
+		warned:       set.New[string](),
 	}
 	if w.maxResources <= 0 {
 		w.maxResources = DefaultResourceMax
@@ -219,10 +220,10 @@ func (w *resourceWatcher) Poll(ctx context.Context) (ResourcePoll, error) {
 	captures, warnings := w.readAll(ctx)
 	poll.Warnings = w.newWarnings(warnings)
 
-	seen := make(map[string]bool, len(captures))
+	seen := set.New[string](len(captures))
 	for _, c := range captures {
 		key := snapshotKey(c.sourceID, c.uri)
-		seen[key] = true
+		seen.Add(key)
 		before, existed := prev[key]
 		if existed && before.Hash == c.hash {
 			continue // unchanged; nothing to record and nothing to say
@@ -241,7 +242,7 @@ func (w *resourceWatcher) Poll(ctx context.Context) (ResourcePoll, error) {
 	// A resource that vanished from the listing is a change too: the model was
 	// told it existed, and must be told it no longer does.
 	for key, before := range prev {
-		if seen[key] || w.sourceFailed(before.SourceID, warnings) {
+		if seen.Contains(key) || w.sourceFailed(before.SourceID, warnings) {
 			// Never report a removal on a source whose listing failed this
 			// pass: absent-because-unreachable is not absent.
 			continue

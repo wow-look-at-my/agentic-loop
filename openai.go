@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"io"
 	"net/http"
 	"strings"
@@ -39,7 +40,7 @@ type openaiProvider struct {
 }
 
 // oaReserved are the Extra keys the typed core always overrides.
-var oaReserved = map[string]bool{"messages": true, "model": true, "stream": true, "tools": true}
+var oaReserved = set.Of[string]("messages", "model", "stream", "tools")
 
 // Complete implements Provider over a streaming chat completion.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
@@ -116,7 +117,7 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.Extra {
-		if oaReserved[k] {
+		if oaReserved.Contains(k) {
 			continue
 		}
 		body[k] = v

@@ -2,6 +2,7 @@ package repo
 
 import (
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"net/http"
 	"strconv"
 	"strings"
@@ -177,13 +178,13 @@ func oauthScopeDetail(res GHResponse) string {
 	if len(accepted) == 0 {
 		return ""
 	}
-	have := make(map[string]bool)
+	have := set.New[string]()
 	for _, scope := range splitScopeHeader(res.header.Get("X-OAuth-Scopes")) {
-		have[scope] = true
+		have.Add(scope)
 	}
 	var missing []string
 	for _, scope := range accepted {
-		if !have[scope] {
+		if !have.Contains(scope) {
 			missing = append(missing, scope)
 		}
 	}

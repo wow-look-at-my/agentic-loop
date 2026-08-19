@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/wow-look-at-my/agentic-loop/internal/jsontest"
+	"github.com/wow-look-at-my/go-containers/set"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -317,7 +318,7 @@ func TestTestTokenCapsTheNumberOfOrganizationsSwept(t *testing.T) {
 	}
 	orgsBody := jsontest.Must(orgs)
 
-	orgReposSeen := map[string]bool{}
+	orgReposSeen := set.New[string]()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -329,7 +330,7 @@ func TestTestTokenCapsTheNumberOfOrganizationsSwept(t *testing.T) {
 		case r.URL.Path == "/user/orgs":
 			_, _ = w.Write([]byte(orgsBody))
 		default:
-			orgReposSeen[r.URL.Path] = true
+			orgReposSeen.Add(r.URL.Path)
 			_, _ = w.Write([]byte(`[]`))
 		}
 	}))
@@ -339,5 +340,5 @@ func TestTestTokenCapsTheNumberOfOrganizationsSwept(t *testing.T) {
 	require.True(t, res.OK, res.Error)
 	assert.True(t, res.OrgsTruncated)
 	assert.Len(t, res.Orgs, orgSweepMaxOrgs)
-	assert.Len(t, orgReposSeen, orgSweepMaxOrgs, "only the capped set is actually swept, not every discovered org")
+	assert.Equal(t, orgSweepMaxOrgs, orgReposSeen.Len(), "only the capped set is actually swept, not every discovered org")
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	agentic "github.com/wow-look-at-my/agentic-loop"
+	"github.com/wow-look-at-my/go-containers/set"
 	"io"
 	"net/http"
 	"net/url"
@@ -126,12 +127,12 @@ type tokenAttempt struct {
 // (repo_write.go) instead, which never falls through to unauthenticated.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	add := func(id, name, token string) {
-		if seen[id] {
+		if seen.Contains(id) {
 			return
 		}
-		seen[id] = true
+		seen.Add(id)
 		order = append(order, tokenAttempt{id: id, name: name, token: token})
 	}
 	if e.cache != nil && cacheKey != "" {

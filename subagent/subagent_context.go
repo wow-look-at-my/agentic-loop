@@ -3,6 +3,7 @@ package subagent
 import (
 	"context"
 	agentic "github.com/wow-look-at-my/agentic-loop"
+	"github.com/wow-look-at-my/go-containers/set"
 	"strings"
 	"time"
 )
@@ -94,19 +95,19 @@ func SelectLastN(msgs []agentic.Message, n int) []agentic.Message {
 // indices (1 = most recent), in chronological order, de-duplicated. Indices that
 // fall outside the range are ignored.
 func SelectByEndIndices(msgs []agentic.Message, indices []int) []agentic.Message {
-	chosen := make(map[int]bool, len(indices))
+	chosen := set.New[int](len(indices))
 	for _, idx := range indices {
 		if idx < 1 {
 			continue
 		}
 		pos := len(msgs) - idx
 		if pos >= 0 && pos < len(msgs) {
-			chosen[pos] = true
+			chosen.Add(pos)
 		}
 	}
 	var out []agentic.Message
 	for i, m := range msgs {
-		if chosen[i] {
+		if chosen.Contains(i) {
 			out = append(out, m)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	agentic "github.com/wow-look-at-my/agentic-loop"
+	"github.com/wow-look-at-my/go-containers/set"
 	"sort"
 	"strconv"
 	"strings"
@@ -103,11 +104,11 @@ func (w *resourceWatcher) recordRemoval(ctx context.Context, before ResourceSnap
 func (w *resourceWatcher) newWarnings(warns []warning) []string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	current := make(map[string]bool, len(warns))
+	current := set.New[string](len(warns))
 	var fresh []string
 	for _, warn := range warns {
-		current[warn.text] = true
-		if !w.warned[warn.text] {
+		current.Add(warn.text)
+		if !w.warned.Contains(warn.text) {
 			fresh = append(fresh, warn.text)
 		}
 	}

@@ -3,6 +3,7 @@ package agentic
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"reflect"
 	"slices"
 	"strings"
@@ -42,12 +43,12 @@ func EnumSchema[In any](enums map[string][]string) json.RawMessage {
 	}
 	props := structProps(typ)
 
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	for _, p := range props {
-		seen[p.name] = true
+		seen.Add(p.name)
 	}
 	for name := range enums {
-		if !seen[name] {
+		if !seen.Contains(name) {
 			panic(fmt.Sprintf("agentic: cannot constrain unknown property %q on %s", name, typ))
 		}
 	}

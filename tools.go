@@ -3,6 +3,7 @@ package agentic
 import (
 	"context"
 	"encoding/json"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // A tool is an individual thing, and nothing groups them.
@@ -88,16 +89,13 @@ func (ts Tools) Subset(names []string) Tools {
 	if len(names) == 0 {
 		return nil
 	}
-	keep := make(map[string]bool, len(names))
-	for _, n := range names {
-		keep[n] = true
-	}
+	keep := set.Of[string](names...)
 	var out Tools
 	for _, t := range ts {
 		if t == nil {
 			continue
 		}
-		if d := t.Decl(); d.Name != "" && keep[d.Name] {
+		if d := t.Decl(); d.Name != "" && keep.Contains(d.Name) {
 			out = append(out, t)
 		}
 	}
