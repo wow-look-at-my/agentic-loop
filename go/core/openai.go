@@ -45,15 +45,23 @@ type openaiProvider struct {
 var oaReserved = set.Of("messages", "model", "stream", "tools")
 
 // Complete implements Provider over a streaming chat completion. When the
-// first attempt fails before anything streamed with a 400 that names no
-// recoverable parameter (Z.AI answers "Invalid API parameter, please check
-// the documentation" -- no name at all, so NewParamStripper's regexes have
-// nothing to match), and the request carried the AUTO-added default
+// first attempt fails before anything streamed with a 400 that names NO
+// recoverable parameter at all (Z.AI answers "Invalid API parameter, please
+// check the documentation" -- no name whatsoever, so NewParamStripper's
+// regexes have nothing to match and a caller wrapping this Provider in it
+// gets no help), and the request carried the AUTO-added default
 // stream_options (never a caller-requested field, only a usage-in-stream
-// convenience), Complete retries once with that default left off. Dropping it
-// is always safe: the caller never asked for it, and its absence only means
-// no usage figures on this call, the same degradation an upstream with no
-// stream_options support already produces.
+// convenience), Complete retries once with that default left off. A 400 that
+// DOES name a parameter is left untouched here -- that is NewParamStripper's
+// job, and guessing "it must be stream_options" over a name that points
+// somewhere else would just burn an extra round trip while the real culprit
+// (e.g. a caller-supplied reasoning_effort) survives untouched into the
+// retry. Dropping stream_options is always safe when it does fire: the
+// caller never asked for it, and its absence only means no usage figures on
+// this call, the same degradation an upstream with no stream_options support
+// already produces. A context-overflow 400 is excluded too: it is permanent
+// regardless of stream_options, and IsContextOverflow's callers expect it
+// unretried.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	comp, err := o.complete(ctx, req, ev, true)
 	if comp != nil || err == nil || !o.shouldRetryWithoutStreamOptions(req, err) {
@@ -64,12 +72,16 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 
 // shouldRetryWithoutStreamOptions reports whether a failed first attempt is
 // worth retrying with the default stream_options left off: the failure must
-// be a pre-stream 400, and the request must actually have carried the
-// AUTO-added default -- a caller-supplied stream_options (via Extra) is never
-// touched.
+// be a pre-stream 400 whose text names no recoverable parameter (a named one
+// is NewParamStripper's job, not a guess made here), and the request must
+// actually have carried the AUTO-added default -- a caller-supplied
+// stream_options (via Extra) is never touched.
 func (o *openaiProvider) shouldRetryWithoutStreamOptions(req Request, err error) bool {
 	var ae *APIError
-	if !errors.As(err, &ae) || ae.Status != 400 {
+	if !errors.As(err, &ae) || ae.Status != 400 || ae.ContextOverflow {
+		return false
+	}
+	if _, named := rejectedParamName(ae.Body); named {
 		return false
 	}
 	_, hasOwn := req.ParamsFor(DialectOpenAI)["stream_options"]

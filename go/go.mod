@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	github.com/wow-look-at-my/go-containers v0.0.0-20260815235059-bc089f373e68 // go-toolchain:auto-branch
+	github.com/wow-look-at-my/go-containers v0.0.0-20260818100925-5e01414a6ac3 // go-toolchain:auto-branch
 	github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260816073403-a21628c1fff2 // go-toolchain:auto-branch
 )
 
