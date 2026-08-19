@@ -45,12 +45,13 @@ answers are `src/README.md` and `responses_test.go`.
 
 ## Build & test
 
-ALWAYS build and test with `go-toolchain` (no args) from `src/`. NEVER run
-bare `go build` / `go test` / `go mod tidy` — the toolchain does mod tidy,
-vet, lint, tests with an **80% coverage gate**, and the build.
+ALWAYS build and test with `go-toolchain` (no args) from the repo root.
+NEVER run bare `go build` / `go test` / `go mod tidy` — the toolchain does
+mod tidy, vet, lint, tests with an **80% coverage gate**, and the build.
+Build output goes in `/build` at the repo root, never under `src/`.
 
 ```sh
-cd src && go-toolchain
+go-toolchain
 ```
 
 - go-toolchain refuses a dirty tree: commit first, run it, then commit its
@@ -263,7 +264,7 @@ Concretely:
 ## CI
 
 `.github/workflows/ci.yml` runs the org go-toolchain action with
-`working-directory: src`. Org constraints:
+`working-directory: .`. Org constraints:
 
 - The workflow trigger stays `on: push:` only.
 - The required status check is named exactly **`all-builds`**, but it is

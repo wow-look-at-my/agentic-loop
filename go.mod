@@ -1,4 +1,4 @@
-module github.com/wow-look-at-my/agentic-loop/src
+module github.com/wow-look-at-my/agentic-loop
 
 go 1.25.0
 
