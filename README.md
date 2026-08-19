@@ -11,12 +11,9 @@ be embedded in other hosts.
 
 ## Layout
 
-- [`go/`](go/) — the Go library (current). One package, `agentic`,
+- [`go/`](go/) — the Go library. One package, `agentic`,
   standard-library-only at runtime; see [go/README.md](go/README.md) for
   the API tour and examples.
-- `ts/` — a planned TypeScript port with full behavioral parity.
-  [PARITY.md](PARITY.md) is its specification: every dialect mapping,
-  normalization rule, exact string, and edge case the port must reproduce.
 
 ## Design points
 
