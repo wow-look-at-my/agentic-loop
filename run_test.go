@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // scriptStep is one scripted provider response.
@@ -135,7 +136,7 @@ func TestRunApprovalDeny(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
 		{comp: assistantComp("understood")},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: set.Of[string]("danger")}
 	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return false, nil })
 
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
@@ -156,7 +157,7 @@ func TestRunApprovalAllow(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
 		{comp: assistantComp("done")},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: set.Of[string]("danger")}
 	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return true, nil })
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: approver}, Request{Model: "m"})
 	require.NoError(t, err)
@@ -169,7 +170,7 @@ func TestRunNilApproverDeniesGatedCalls(t *testing.T) {
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
 		{comp: assistantComp("ok")},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: map[string]bool{"danger": true}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "danger"}}, ask: set.Of[string]("danger")}
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry()}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, DeniedMessage, res.Messages[1].Content, "no approver means gated calls fail closed")
@@ -188,7 +189,7 @@ func TestRunApprovalAskError(t *testing.T) {
 			},
 		}, StopReason: StopToolUse}},
 	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "safe"}, {Name: "danger"}}, ask: map[string]bool{"danger": true}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "safe"}, {Name: "danger"}}, ask: set.Of[string]("danger")}
 	interrupted := errors.New("stream closed")
 	approver := approverFunc(func(context.Context, ToolCall) (bool, error) { return false, interrupted })
 

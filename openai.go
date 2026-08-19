@@ -144,7 +144,7 @@ func (o *openaiProvider) buildBody(req Request) ([]byte, error) {
 		body["max_tokens"] = req.MaxTokens
 	}
 	if _, ok := body["stream_options"]; !ok {
-		body["stream_options"] = map[string]bool{"include_usage": true}
+		body["stream_options"] = map[string]any{"include_usage": true}
 	}
 	if req.CacheKey != "" {
 		body["prompt_cache_key"] = req.CacheKey

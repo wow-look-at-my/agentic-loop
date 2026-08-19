@@ -8,13 +8,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // fakeExec scripts a set of tools for tests: it declares them, records what
 // ran, and hands out the individual Tool values a Config takes.
 type fakeExec struct {
 	tools    []ToolDecl
-	ask      map[string]bool
+	ask      set.Set[string]
 	execute  func(ctx context.Context, call ToolCall) (ToolResult, error)
 	executed []ToolCall
 	results  map[string]ToolResult
@@ -36,7 +37,7 @@ type fakeTool struct {
 }
 
 func (t *fakeTool) Decl() ToolDecl      { return t.decl }
-func (t *fakeTool) NeedsApproval() bool { return t.owner.ask[t.decl.Name] }
+func (t *fakeTool) NeedsApproval() bool { return t.owner.ask.Contains(t.decl.Name) }
 
 func (t *fakeTool) Execute(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	call := ToolCall{ID: ToolCallID(ctx), Name: t.decl.Name, Arguments: string(args)}

@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	agentic "github.com/wow-look-at-my/agentic-loop"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // ScriptStep is one scripted provider response.
@@ -53,7 +54,7 @@ func AssistantComp(content string, calls ...agentic.ToolCall) *agentic.Completio
 // FakeExec scripts a set of tools for tests.
 type FakeExec struct {
 	Tools    []agentic.ToolDecl
-	Ask      map[string]bool
+	Ask      set.Set[string]
 	Execute  func(ctx context.Context, call agentic.ToolCall) (agentic.ToolResult, error)
 	Executed []agentic.ToolCall
 	Results  map[string]agentic.ToolResult
@@ -74,7 +75,7 @@ type fakeTool struct {
 }
 
 func (t *fakeTool) Decl() agentic.ToolDecl { return t.decl }
-func (t *fakeTool) NeedsApproval() bool    { return t.owner.Ask[t.decl.Name] }
+func (t *fakeTool) NeedsApproval() bool    { return t.owner.Ask.Contains(t.decl.Name) }
 
 func (t *fakeTool) Execute(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	call := agentic.ToolCall{ID: agentic.ToolCallID(ctx), Name: t.decl.Name, Arguments: string(args)}

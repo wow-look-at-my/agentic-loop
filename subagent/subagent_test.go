@@ -6,6 +6,7 @@ import (
 	"errors"
 	agentic "github.com/wow-look-at-my/agentic-loop"
 	"github.com/wow-look-at-my/agentic-loop/internal/testkit"
+	"github.com/wow-look-at-my/go-containers/set"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -110,7 +111,7 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 		{Comp: testkit.AssistantComp("wrote it")},
 	}}
 	parent := subParentExec()
-	parent.Ask = map[string]bool{"Repo__write": true} // an "always ask" parent flag
+	parent.Ask = set.Of[string]("Repo__write") // an "always ask" parent flag
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: parent.Registry()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"write","allowed_tools":["Repo__write"]}`))

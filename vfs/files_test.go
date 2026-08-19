@@ -220,7 +220,7 @@ func TestFileToolsAdvertisedSurface(t *testing.T) {
 		WriteFileToolName, EditFileToolName, DeleteFileToolName,
 	}, ft.Tools().Names())
 
-	readonly := map[string]bool{}
+	readonly := map[string]bool{} //nolint:set // lookup table, not a set
 	descriptions := map[string]string{}
 	for _, d := range ft.Tools().Decls() {
 		readonly[d.Name] = d.Readonly
