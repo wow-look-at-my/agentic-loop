@@ -72,7 +72,9 @@ func (e *files) resolve(tool, raw string) (Folder, *agentic.ToolResult) {
 		}
 	}
 	mount := strings.ToLower(MountOf(raw))
+	e.mu.RLock()
 	f, ok := e.folders[mount]
+	e.mu.RUnlock()
 	if !ok {
 		return nil, &agentic.ToolResult{Content: tool + ": " + e.mountUnavailable(mount), IsError: true}
 	}

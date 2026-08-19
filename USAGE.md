@@ -736,20 +736,21 @@ their own changes with the same words.
 
 ### Filesystem tools (optional, package `vfs`)
 
-`vfs.NewFileTools(vfs.FileToolsConfig)` returns the seven-tool file vocabulary —
-`list_dir`, `read_file`, `find_files`, `grep`, `write_file`, `edit_file`,
-`delete_file` — over whatever a host mounts. The library owns what a file tool
-IS: the names, the model-facing descriptions, the argument schemas, the caps
-and every word of the rendering. A host owns what is behind a mount, and
-nothing about its storage reaches here. Mount nothing and you get no tools at
-all, rather than tools that can only fail.
+`vfs.NewFileTools(vfs.FileToolsConfig)` returns a `*vfs.FileTools` handle
+providing the seven-tool file vocabulary — `list_dir`, `read_file`,
+`find_files`, `grep`, `write_file`, `edit_file`, `delete_file` — over
+whatever a host mounts. The library owns what a file tool IS: the names,
+the model-facing descriptions, the argument schemas, the caps and every
+word of the rendering. A host owns what is behind a mount, and nothing
+about its storage reaches here. Mount nothing and you get non-nil tools
+that return the unavailable message, rather than nil tools.
 
 A host mounts `Folder`s under virtual prefixes:
 
 ```go
 import "github.com/wow-look-at-my/agentic-loop/vfs"
 
-tools := vfs.NewFileTools(vfs.FileToolsConfig{
+ft := vfs.NewFileTools(vfs.FileToolsConfig{
 	Folders: map[string]vfs.Folder{
 		"repos":     repoFolder,      // /repos/<org>/<repo>[@<ref>]/<path>
 		"workspace": workspaceFolder, // a vfs.WritableFolder
@@ -759,7 +760,17 @@ tools := vfs.NewFileTools(vfs.FileToolsConfig{
 		vfs.WriteFileToolName: "Writes stage locally until the user pushes.",
 	},
 })
+
+// Use ft.Tools() in agentic.Config to pass the seven tools to the loop.
+// Add or remove folders at runtime:
+ft.AddFolder("tmp", tmpFolder)
+ft.RemoveFolder("repos")
 ```
+
+- **`FileTools`** — the handle returned by `NewFileTools`. Use `ft.Tools()` to
+  get the seven tools for `agentic.Config`. Call `ft.AddFolder(name, f)` and
+  `ft.RemoveFolder(name)` to mutate the folder set at runtime; tool calls
+  immediately reflect the current set.
 
 - **`Folder`** — `Display`/`List`/`Read`/`Find`/`Grep`. Every method receives
   the WHOLE virtual path as the model wrote it, because only the folder knows

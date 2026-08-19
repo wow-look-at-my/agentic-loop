@@ -4,6 +4,7 @@ import (
 	"context"
 	agentic "github.com/wow-look-at-my/agentic-loop"
 	"strings"
+	"sync"
 )
 
 // The filesystem tools: one vocabulary for reading and writing files, whatever
@@ -18,7 +19,9 @@ import (
 // the argument schemas, the caps, and every word of the rendering. A host owns
 // what is behind a mount, and nothing about its storage reaches here.
 //
-// The module is optional: a host that mounts no folders gets no file tools.
+// The module is optional: a host that mounts no folders gets non-nil tools
+// that return the unavailable message. Folders can be added or removed at
+// runtime via the AddFolder/RemoveFolder methods on the returned *FileTools.
 
 // The advertised tool names.
 const (
@@ -191,29 +194,34 @@ type FileToolsConfig struct {
 
 // files is the shared state behind the seven tools.
 type files struct {
+	mu          sync.RWMutex
 	folders     map[string]Folder
 	unavailable func(string) string
 	guard       PathGuard
 }
 
+// FileTools is a handle returned by NewFileTools that provides the seven
+// file tools and allows runtime mutation of the folder set.
+type FileTools struct {
+	*files
+	tools agentic.Tools
+}
+
 // NewFileTools builds the filesystem tools over cfg.Folders, or returns nil
 // when nothing is mounted -- a run with no files is never offered a tool that
 // could only ever fail.
-func NewFileTools(cfg FileToolsConfig) agentic.Tools {
+func NewFileTools(cfg FileToolsConfig) *FileTools {
 	mounted := map[string]Folder{}
 	for name, f := range cfg.Folders {
 		if name != "" && f != nil {
 			mounted[strings.ToLower(name)] = f
 		}
 	}
-	if len(mounted) == 0 {
-		return nil
-	}
 	e := &files{folders: mounted, unavailable: cfg.Unavailable, guard: cfg.Guard}
 	describe := func(name, base string) string {
 		return base + sentence(cfg.MountsBlurb) + sentence(cfg.Notes[name])
 	}
-	return agentic.Tools{
+	tools := agentic.Tools{
 		agentic.NewTool(agentic.ToolDecl{Name: ListDirToolName, Description: describe(ListDirToolName, listDirDescription), InputSchema: pathOnlySchema, Readonly: true}, e.listDir),
 		agentic.NewTool(agentic.ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true}, e.readFile),
 		agentic.NewTool(agentic.ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true}, e.findFiles),
@@ -222,6 +230,33 @@ func NewFileTools(cfg FileToolsConfig) agentic.Tools {
 		agentic.NewTool(agentic.ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema}, e.editFile),
 		agentic.NewTool(agentic.ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema}, e.deleteFile),
 	}
+	return &FileTools{files: e, tools: tools}
+}
+
+// Tools returns the seven file tools. Safe for use in agentic.Config while
+// mutating the folder set concurrently.
+func (ft *FileTools) Tools() agentic.Tools {
+	return ft.tools
+}
+
+// AddFolder registers a folder under the given mount name. The name is
+// lowercased and matched case-insensitively by the tools. If a folder already
+// exists with that name it is replaced.
+func (ft *FileTools) AddFolder(name string, f Folder) {
+	if name == "" || f == nil {
+		return
+	}
+	ft.files.mu.Lock()
+	defer ft.files.mu.Unlock()
+	ft.files.folders[strings.ToLower(name)] = f
+}
+
+// RemoveFolder removes the folder registered under the given mount name.
+// Subsequent tool calls for that mount will return the unavailable message.
+func (ft *FileTools) RemoveFolder(name string) {
+	ft.files.mu.Lock()
+	defer ft.files.mu.Unlock()
+	delete(ft.files.folders, strings.ToLower(name))
 }
 
 // sentence prepares a host addendum for appending: nothing for an empty one,

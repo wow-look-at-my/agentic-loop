@@ -167,7 +167,7 @@ func (f *readOnlyRepos) ReadOnlyReason(p string) string {
 	return f.Display(p) + " is read-only. Edit it under /work instead."
 }
 
-func fileRig() (agentic.Tools, *writableFolder) {
+func fileRig() (*FileTools, *writableFolder) {
 	work := &writableFolder{&memFolder{mount: "work", files: map[string]string{
 		"main.go":     "package main\n\nfunc main() {}\n",
 		"src/util.go": "package src\n\n// TODO: rename\nfunc Util() {}\n",
@@ -187,9 +187,9 @@ func fileRig() (agentic.Tools, *writableFolder) {
 	}), work
 }
 
-func runFileTool(t *testing.T, reg agentic.Tools, name, args string) agentic.ToolResult {
+func runFileTool(t *testing.T, ft *FileTools, name, args string) agentic.ToolResult {
 	t.Helper()
-	tool, ok := reg.Find(name)
+	tool, ok := ft.Tools().Find(name)
 	require.True(t, ok, "tool %s must be advertised", name)
 	res, err := tool.Execute(context.Background(), []byte(args))
 	require.NoError(t, err)
@@ -199,15 +199,15 @@ func runFileTool(t *testing.T, reg agentic.Tools, name, args string) agentic.Too
 // The seven tools are advertised together, the reads marked read-only so a
 // sub-agent gets them and the writes withheld unless explicitly granted.
 func TestFileToolsAdvertisedSurface(t *testing.T) {
-	reg, _ := fileRig()
+	ft, _ := fileRig()
 	assert.Equal(t, []string{
 		ListDirToolName, ReadFileToolName, FindFilesToolName, GrepToolName,
 		WriteFileToolName, EditFileToolName, DeleteFileToolName,
-	}, reg.Names())
+	}, ft.Tools().Names())
 
 	readonly := map[string]bool{}
 	descriptions := map[string]string{}
-	for _, d := range reg.Decls() {
+	for _, d := range ft.Tools().Decls() {
 		readonly[d.Name] = d.Readonly
 		descriptions[d.Name] = d.Description
 		assert.Contains(t, d.Description, "/work is editable", "the host's mounts blurb rides every description")
@@ -219,9 +219,15 @@ func TestFileToolsAdvertisedSurface(t *testing.T) {
 	assert.True(t, readonly[GrepToolName])
 	assert.False(t, readonly[WriteFileToolName], "a write must never be in a sub-agent's default toolset")
 
-	// Nothing mounted means no tools at all, rather than tools that can only fail.
-	assert.Nil(t, NewFileTools(FileToolsConfig{}))
-	assert.Nil(t, NewFileTools(FileToolsConfig{Folders: map[string]Folder{"x": nil}}))
+	// Nothing mounted returns non-nil tools that return the unavailable message.
+	ft2 := NewFileTools(FileToolsConfig{})
+	assert.NotNil(t, ft2, "empty config should return non-nil FileTools")
+	res := runFileTool(t, ft2, ListDirToolName, `{"path":"/anything"}`)
+	assert.Contains(t, res.Content, "is not available")
+
+	// Nil folder values are skipped.
+	ft3 := NewFileTools(FileToolsConfig{Folders: map[string]Folder{"x": nil}})
+	assert.NotNil(t, ft3, "nil folder value should still return non-nil FileTools")
 }
 
 func TestListDirRendersDirectoriesFirst(t *testing.T) {
@@ -427,8 +433,8 @@ func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
 		WriteFileToolName: {[]string{"path", "content"}, []string{"path", "content"}},
 		EditFileToolName:  {[]string{"path", "old_text", "new_text"}, []string{"path", "old_text", "new_text"}},
 	}
-	reg, _ := fileRig()
-	for _, d := range reg.Decls() {
+	ft, _ := fileRig()
+	for _, d := range ft.Tools().Decls() {
 		t.Run(d.Name, func(t *testing.T) {
 			var s schema
 			require.NoError(t, json.Unmarshal(d.InputSchema, &s))
@@ -446,8 +452,90 @@ func TestFileToolSchemasMatchWhatTheHandlersDecode(t *testing.T) {
 // The file tools' schemas come off their argument structs, so this is the one
 // check that matters for them: the tool decodes exactly what it advertises.
 func TestFileToolSchemasAreInferred(t *testing.T) {
-	reg, _ := fileRig()
-	tool, ok := reg.Find(GrepToolName)
+	ft, _ := fileRig()
+	tool, ok := ft.Tools().Find(GrepToolName)
 	require.True(t, ok)
 	assert.JSONEq(t, string(agentic.InferSchema[grepArgs]()), string(tool.Decl().InputSchema))
+}
+
+// TestAddRemoveFolder verifies runtime folder mutation.
+func TestAddRemoveFolder(t *testing.T) {
+	// Start with no folders; tools are non-nil but unavailable.
+	ft := NewFileTools(FileToolsConfig{
+		Unavailable: func(m string) string {
+			return "/" + m + " is not ready yet."
+		},
+	})
+	require.NotNil(t, ft)
+
+	res := runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Content, "/work is not ready yet.")
+
+	// Add a folder at runtime.
+	work := &memFolder{mount: "work", files: map[string]string{"hello.txt": "world"}}
+	ft.AddFolder("work", work)
+
+	res = runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
+	assert.False(t, res.IsError)
+	assert.Contains(t, res.Content, "hello.txt")
+
+	// AddFolder ignores nil values.
+	ft.AddFolder("bad", nil)
+	res = runFileTool(t, ft, ListDirToolName, `{"path":"/bad"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Content, "is not ready yet")
+
+	// AddFolder ignores empty names.
+	ft.AddFolder("", work)
+	res = runFileTool(t, ft, ListDirToolName, `{"path":"/"}`)
+	assert.True(t, res.IsError)
+
+	// Remove the folder; tool calls for it become unavailable again.
+	ft.RemoveFolder("work")
+	res = runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Content, "/work is not ready yet")
+
+	// Removing a non-existent name is harmless.
+	ft.RemoveFolder("nope")
+
+	// Re-add after removal.
+	ft.AddFolder("work", work)
+	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/work/hello.txt"}`)
+	assert.False(t, res.IsError)
+	assert.Contains(t, res.Content, "world")
+}
+
+// TestAddFolderReplacesExisting verifies AddFolder overwrites a mount.
+func TestAddFolderReplacesExisting(t *testing.T) {
+	ft := NewFileTools(FileToolsConfig{})
+	work1 := &memFolder{mount: "work", files: map[string]string{"a.txt": "first"}}
+	work2 := &memFolder{mount: "work", files: map[string]string{"a.txt": "second"}}
+
+	ft.AddFolder("work", work1)
+	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/work/a.txt"}`)
+	assert.Contains(t, res.Content, "first")
+
+	ft.AddFolder("work", work2)
+	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/work/a.txt"}`)
+	assert.Contains(t, res.Content, "second")
+}
+
+// TestFolderAddRemoveConcurrentSafety verifies the mutex protects the map.
+func TestFolderAddRemoveConcurrentSafety(t *testing.T) {
+	ft := NewFileTools(FileToolsConfig{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			ft.AddFolder("work", &memFolder{mount: "work", files: map[string]string{"a": "b"}})
+			ft.RemoveFolder("work")
+		}
+	}()
+	// Concurrent tool calls should not panic.
+	for i := 0; i < 100; i++ {
+		runFileTool(t, ft, ListDirToolName, `{"path":"/work"}`)
+	}
+	<-done
 }
