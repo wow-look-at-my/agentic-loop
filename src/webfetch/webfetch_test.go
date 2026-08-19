@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	agentic "github.com/wow-look-at-my/agentic-loop/src"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/testkit"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +46,7 @@ func TestWebFetchSuccessCleansHTML(t *testing.T) {
 	defer srv.Close()
 
 	exec := NewWebFetchTool(WebFetchConfig{UserAgent: "agentic-test/1.0"})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL + "/page"})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL + "/page"})))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
 	assert.Equal(t, "URL: "+srv.URL+"/page\n\nBig Title\nHello & welcome.\nLine two.", res.Content,
@@ -59,7 +61,7 @@ func TestWebFetchTruncationNote(t *testing.T) {
 	defer srv.Close()
 
 	exec := NewWebFetchTool(WebFetchConfig{})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL})))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "Note: cleaned content was truncated to 200000 runes.\n")
@@ -72,7 +74,7 @@ func TestWebFetchBodySizeCap(t *testing.T) {
 	defer srv.Close()
 
 	exec := NewWebFetchTool(WebFetchConfig{})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL})))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.Equal(t, "web_fetch response exceeds 5242880 bytes", res.Content)
@@ -85,7 +87,7 @@ func TestWebFetchNon2xx(t *testing.T) {
 	defer srv.Close()
 
 	exec := NewWebFetchTool(WebFetchConfig{})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL})))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.Equal(t, "web_fetch GET failed: status 404 Not Found", res.Content)
@@ -96,7 +98,7 @@ func TestWebFetchConnectionError(t *testing.T) {
 	url := srv.URL
 	srv.Close()
 	exec := NewWebFetchTool(WebFetchConfig{})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": url})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": url})))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.True(t, strings.HasPrefix(res.Content, "web_fetch GET failed: "), res.Content)
@@ -114,7 +116,7 @@ func TestWebFetchURLValidation(t *testing.T) {
 	exec := NewWebFetchTool(WebFetchConfig{})
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": tc.url})))
+			res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": tc.url})))
 			require.NoError(t, err)
 			assert.True(t, res.IsError)
 			assert.Equal(t, tc.want, res.Content)
@@ -148,7 +150,7 @@ func TestWebFetchBlockHook(t *testing.T) {
 			return "fetching this repository is disabled; use the workspace tools instead"
 		},
 	})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL + "/repo"})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL + "/repo"})))
 	require.NoError(t, err)
 	assert.True(t, res.IsError)
 	assert.Equal(t, "fetching this repository is disabled; use the workspace tools instead", res.Content,
@@ -161,7 +163,7 @@ func TestWebFetchBlockHook(t *testing.T) {
 		_, _ = io.WriteString(w, "fine")
 	}))
 	defer srv2.Close()
-	res, err = allow.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv2.URL})))
+	res, err = allow.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv2.URL})))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "fine")
@@ -173,11 +175,11 @@ func TestWebFetchSummaryPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("  a fine summary  ")}}}
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("  a fine summary  ")}}}
 	exec := NewWebFetchTool(WebFetchConfig{
 		Provider: provider, Model: "m", MaxTokens: 256, Extra: map[string]any{"temperature": 0.1},
 	})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL + "/doc", "summary_prompt": "list the key points"})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL + "/doc", "summary_prompt": "list the key points"})))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
 	assert.Equal(t, "URL: "+srv.URL+"/doc\n\nSummary:\na fine summary", res.Content)
@@ -202,23 +204,23 @@ func TestWebFetchSummaryErrors(t *testing.T) {
 
 	t.Run("no model available", func(t *testing.T) {
 		exec := NewWebFetchTool(WebFetchConfig{})
-		res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL, "summary_prompt": "sum"})))
+		res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL, "summary_prompt": "sum"})))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Equal(t, "web_fetch summary requested, but no model is available for summarization", res.Content)
 	})
 	t.Run("summary call fails", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Err: &agentic.APIError{Status: 500, Body: "down"}}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Err: &agentic.APIError{Status: 500, Body: "down"}}}}
 		exec := NewWebFetchTool(WebFetchConfig{Provider: provider, Model: "m"})
-		res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL, "summary_prompt": "sum"})))
+		res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL, "summary_prompt": "sum"})))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.True(t, strings.HasPrefix(res.Content, "web_fetch summary failed: "))
 	})
 	t.Run("summary empty", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("   ")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("   ")}}}
 		exec := NewWebFetchTool(WebFetchConfig{Provider: provider, Model: "m"})
-		res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL, "summary_prompt": "sum"})))
+		res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL, "summary_prompt": "sum"})))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Equal(t, "web_fetch summary returned empty output", res.Content)
@@ -242,7 +244,7 @@ func TestWebFetchTika(t *testing.T) {
 		defer tika.Close()
 
 		exec := NewWebFetchTool(WebFetchConfig{TikaURL: tika.URL + "/"})
-		res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": page.URL})))
+		res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": page.URL})))
 		require.NoError(t, err)
 		assert.False(t, res.IsError)
 		assert.Equal(t, "URL: "+page.URL+"\n\nExtracted text\n\nmore", res.Content,
@@ -260,7 +262,7 @@ func TestWebFetchTika(t *testing.T) {
 		}))
 		defer tika.Close()
 		exec := NewWebFetchTool(WebFetchConfig{TikaURL: tika.URL})
-		res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": page.URL})))
+		res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": page.URL})))
 		require.NoError(t, err)
 		assert.False(t, res.IsError)
 		assert.Contains(t, res.Content, "%PDF-raw-bytes", "fallback cleans the raw bytes instead")
@@ -272,7 +274,7 @@ func TestWebFetchTika(t *testing.T) {
 		}))
 		defer tika.Close()
 		exec := NewWebFetchTool(WebFetchConfig{TikaURL: tika.URL})
-		res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": page.URL})))
+		res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": page.URL})))
 		require.NoError(t, err)
 		assert.Contains(t, res.Content, "%PDF-raw-bytes")
 	})
@@ -284,7 +286,7 @@ func TestWebFetchNoExtractableContent(t *testing.T) {
 	}))
 	defer srv.Close()
 	exec := NewWebFetchTool(WebFetchConfig{})
-	res, err := exec.Execute(context.Background(), wfCall(jsonMust(jsonObj{"url": srv.URL})))
+	res, err := exec.Execute(context.Background(), wfCall(jsontest.Must(jsontest.Obj{"url": srv.URL})))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
 	assert.Equal(t, "URL: "+srv.URL+"\n\n(no extractable content)", res.Content)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 	"net/http"
 	"testing"
 
@@ -40,7 +41,7 @@ func fileWriteResponder(t *testing.T, goodToken, existingSHA string) func(c ghCa
 			if existingSHA == "" {
 				return http.StatusNotFound, `{"message":"Not Found"}`
 			}
-			return http.StatusOK, jsonMust(jsonObj{
+			return http.StatusOK, jsontest.Must(jsontest.Obj{
 				"sha":  existingSHA,
 				"type": "file",
 			})

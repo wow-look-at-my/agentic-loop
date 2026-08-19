@@ -3,6 +3,7 @@ package subagent
 import (
 	"context"
 	agentic "github.com/wow-look-at-my/agentic-loop/src"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/testkit"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -81,7 +82,7 @@ func TestComposeSubagentTask(t *testing.T) {
 }
 
 func TestGenerateContextSummaryEmptyTranscriptSkipsModel(t *testing.T) {
-	provider := &scriptProvider{} // any call would fail with "script exhausted"
+	provider := &testkit.ScriptProvider{} // any call would fail with "script exhausted"
 	got, err := generateContextSummary(context.Background(), provider, "m", nil, 0, nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)

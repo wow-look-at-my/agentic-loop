@@ -2,6 +2,7 @@ package repo
 
 import (
 	"fmt"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,7 +52,7 @@ func TestRepoPRReadRendersDetailsAndFiles(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Cache: newMemCache()}, func(c ghCall) (int, string) {
 		switch {
 		case c.Path == "/repos/octo/hello/pulls/7" && strings.Contains(c.Accept, "vnd.github+json"):
-			return http.StatusOK, jsonMust(jsonObj{
+			return http.StatusOK, jsontest.Must(jsontest.Obj{
 				"number":        7,
 				"title":         "Add feature",
 				"state":         "open",
@@ -60,13 +61,13 @@ func TestRepoPRReadRendersDetailsAndFiles(t *testing.T) {
 				"html_url":      "https://github.com/octo/hello/pull/7",
 				"updated_at":    "2026-07-01T10:00:00Z",
 				"changed_files": 2,
-				"user": jsonObj{
+				"user": jsontest.Obj{
 					"login": "alice",
 				},
-				"head": jsonObj{
+				"head": jsontest.Obj{
 					"ref": "feature-x",
 				},
-				"base": jsonObj{
+				"base": jsontest.Obj{
 					"ref": "main",
 				},
 			})
@@ -119,7 +120,7 @@ func TestRepoPRReadIncludeDiff(t *testing.T) {
 func TestRepoPRReadFilesTruncationNote(t *testing.T) {
 	var fileRows []string
 	for i := 0; i < repoPRMaxFiles; i++ {
-		fileRows = append(fileRows, jsonMust(jsonObj{
+		fileRows = append(fileRows, jsontest.Must(jsontest.Obj{
 			"filename":  fmt.Sprintf("f%03d.go", i),
 			"additions": 1,
 			"deletions": 1,

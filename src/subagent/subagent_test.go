@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	agentic "github.com/wow-look-at-my/agentic-loop/src"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/testkit"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,8 +17,8 @@ import (
 
 // subParentExec is the canonical parent toolset for subagent tests: two
 // namespaced tools (one read-only, one not) and a bare read-only one.
-func subParentExec() *fakeExec {
-	return &fakeExec{Tools: []agentic.ToolDecl{
+func subParentExec() *testkit.FakeExec {
+	return &testkit.FakeExec{Tools: []agentic.ToolDecl{
 		{Name: "Repo__read", Readonly: true},
 		{Name: "Repo__write"},
 		{Name: "web_read", Readonly: true},
@@ -68,9 +69,9 @@ func TestSubagentAdvertisementStaticSchemaWithoutTools(t *testing.T) {
 }
 
 func TestSubagentExecuteDefaultReadonlyToolset(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{
-		{Comp: assistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: `{"path":"a"}`})},
-		{Comp: assistantComp("  the report  ")},
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+		{Comp: testkit.AssistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: `{"path":"a"}`})},
+		{Comp: testkit.AssistantComp("  the report  ")},
 	}}
 	parent := subParentExec()
 	exec := NewSubagentTool(SubagentConfig{
@@ -104,9 +105,9 @@ func TestSubagentExecuteDefaultReadonlyToolset(t *testing.T) {
 }
 
 func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{
-		{Comp: assistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__write", Arguments: "{}"})},
-		{Comp: assistantComp("wrote it")},
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+		{Comp: testkit.AssistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__write", Arguments: "{}"})},
+		{Comp: testkit.AssistantComp("wrote it")},
 	}}
 	parent := subParentExec()
 	parent.Ask = map[string]bool{"Repo__write": true} // an "always ask" parent flag
@@ -127,7 +128,7 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 }
 
 func TestSubagentAllowedToolsBareNameFallback(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: subParentExec().Registry()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["write"]}`))
@@ -138,11 +139,11 @@ func TestSubagentAllowedToolsBareNameFallback(t *testing.T) {
 }
 
 func TestSubagentAllowedToolsAmbiguousBareName(t *testing.T) {
-	parent := &fakeExec{Tools: []agentic.ToolDecl{
+	parent := &testkit.FakeExec{Tools: []agentic.ToolDecl{
 		{Name: "A__read", Readonly: true},
 		{Name: "B__read", Readonly: true},
 	}}
-	provider := &scriptProvider{}
+	provider := &testkit.ScriptProvider{}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: parent.Registry()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["read"]}`))
@@ -155,7 +156,7 @@ func TestSubagentAllowedToolsAmbiguousBareName(t *testing.T) {
 }
 
 func TestSubagentAllowedToolsUnknownNameTeaches(t *testing.T) {
-	provider := &scriptProvider{}
+	provider := &testkit.ScriptProvider{}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: subParentExec().Registry()})
 
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["nope"]}`))
@@ -168,14 +169,14 @@ func TestSubagentAllowedToolsUnknownNameTeaches(t *testing.T) {
 
 func TestSubagentAllowedToolsEdgeCases(t *testing.T) {
 	t.Run("no tools at all", func(t *testing.T) {
-		exec := NewSubagentTool(SubagentConfig{Provider: &scriptProvider{}, Model: "m"})
+		exec := NewSubagentTool(SubagentConfig{Provider: &testkit.ScriptProvider{}, Model: "m"})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["x"]}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Equal(t, "run_subagent: the sub-agent has no tools available, so allowed_tools cannot be applied -- omit it.", res.Content)
 	})
 	t.Run("only blank names", func(t *testing.T) {
-		exec := NewSubagentTool(SubagentConfig{Provider: &scriptProvider{}, Model: "m", Tools: subParentExec().Registry()})
+		exec := NewSubagentTool(SubagentConfig{Provider: &testkit.ScriptProvider{}, Model: "m", Tools: subParentExec().Registry()})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p","allowed_tools":["", "  "]}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
@@ -188,11 +189,11 @@ func TestSubagentNoRecursion(t *testing.T) {
 	// A parent toolset that (like the source composite) carries the subagent
 	// tool itself: it is excluded from the grantable set, from the schema
 	// enum, and — not being read-only — from the default sub toolset.
-	parent := &fakeExec{Tools: []agentic.ToolDecl{
+	parent := &testkit.FakeExec{Tools: []agentic.ToolDecl{
 		{Name: SubagentToolName},
 		{Name: "Repo__read", Readonly: true},
 	}}
-	provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("done")}}}
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("done")}}}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Tools: parent.Registry()})
 
 	var schema map[string]any
@@ -218,14 +219,14 @@ func TestSubagentShareContextModes(t *testing.T) {
 		{Role: agentic.RoleAssistant, Content: "second"},
 		{Role: agentic.RoleUser, Content: "third"},
 	}
-	base := func(provider *scriptProvider) SubagentConfig {
+	base := func(provider *testkit.ScriptProvider) SubagentConfig {
 		return SubagentConfig{
 			Provider: provider, Model: "m",
 			ParentSystem:   "sys prompt",
 			ParentMessages: parentMsgs,
 		}
 	}
-	taskOf := func(t *testing.T, provider *scriptProvider) string {
+	taskOf := func(t *testing.T, provider *testkit.ScriptProvider) string {
 		t.Helper()
 		require.NotEmpty(t, provider.Reqs)
 		last := provider.Reqs[len(provider.Reqs)-1]
@@ -234,14 +235,14 @@ func TestSubagentShareContextModes(t *testing.T) {
 	}
 
 	t.Run("none is the default", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 		_, err := NewSubagentTool(base(provider)).Execute(context.Background(), subCall(`{"prompt":"task"}`))
 		require.NoError(t, err)
 		assert.Equal(t, "task", taskOf(t, provider))
 	})
 
 	t.Run("custom", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 		_, err := NewSubagentTool(base(provider)).Execute(context.Background(),
 			subCall(`{"prompt":"task","share_context":"custom","custom_context":" my notes "}`))
 		require.NoError(t, err)
@@ -251,7 +252,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	})
 
 	t.Run("full includes the system prompt", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 		_, err := NewSubagentTool(base(provider)).Execute(context.Background(),
 			subCall(`{"prompt":"task","share_context":"full"}`))
 		require.NoError(t, err)
@@ -263,7 +264,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	})
 
 	t.Run("last_n", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 		_, err := NewSubagentTool(base(provider)).Execute(context.Background(),
 			subCall(`{"prompt":"task","share_context":"last_n","context_message_count":1}`))
 		require.NoError(t, err)
@@ -274,7 +275,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	})
 
 	t.Run("messages by end index", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 		_, err := NewSubagentTool(base(provider)).Execute(context.Background(),
 			subCall(`{"prompt":"task","share_context":"messages","context_message_indices":[2]}`))
 		require.NoError(t, err)
@@ -284,9 +285,9 @@ func TestSubagentShareContextModes(t *testing.T) {
 	})
 
 	t.Run("summary runs one briefing call", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{
-			{Comp: assistantComp("  the briefing  ")},
-			{Comp: assistantComp("ok")},
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+			{Comp: testkit.AssistantComp("  the briefing  ")},
+			{Comp: testkit.AssistantComp("ok")},
 		}}
 		_, err := NewSubagentTool(base(provider)).Execute(context.Background(),
 			subCall(`{"prompt":"task","share_context":"summary"}`))
@@ -303,7 +304,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	})
 
 	t.Run("summary with no parent context shares nothing", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("ok")}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("ok")}}}
 		cfg := base(provider)
 		cfg.ParentSystem, cfg.ParentMessages = "", nil
 		_, err := NewSubagentTool(cfg).Execute(context.Background(),
@@ -314,7 +315,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	})
 
 	t.Run("summary failure is a recoverable error", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Err: &agentic.APIError{Status: 400, Body: "nope"}}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Err: &agentic.APIError{Status: 400, Body: "nope"}}}}
 		res, err := NewSubagentTool(base(provider)).Execute(context.Background(),
 			subCall(`{"prompt":"task","share_context":"summary"}`))
 		require.NoError(t, err)
@@ -336,7 +337,7 @@ func TestSubagentShareContextModes(t *testing.T) {
 	}
 	for _, tc := range misuses {
 		t.Run(tc.name, func(t *testing.T) {
-			provider := &scriptProvider{}
+			provider := &testkit.ScriptProvider{}
 			res, err := NewSubagentTool(base(provider)).Execute(context.Background(), subCall(tc.args))
 			require.NoError(t, err)
 			assert.True(t, res.IsError)
@@ -347,9 +348,9 @@ func TestSubagentShareContextModes(t *testing.T) {
 }
 
 func TestSubagentActivityTelemetry(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{
-		{Comp: assistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: "  {\"q\":\n \"x\"} "})},
-		{Comp: assistantComp("report")},
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+		{Comp: testkit.AssistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: "  {\"q\":\n \"x\"} "})},
+		{Comp: testkit.AssistantComp("report")},
 	}}
 	parent := subParentExec()
 	longOut := strings.Repeat("r", 300)
@@ -390,11 +391,11 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 // TestSubagentActivityReportsThinking: a turn that reasons without answering
 // still shows its reasoning, which used to be invisible to the host entirely.
 func TestSubagentActivityReportsThinking(t *testing.T) {
-	thinking := assistantComp("")
+	thinking := testkit.AssistantComp("")
 	thinking.Message.Thinking = []agentic.ThinkingBlock{{Text: "first I check the layout"}, {Text: "then the callers"}}
-	provider := &scriptProvider{Steps: []scriptStep{
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
 		{Comp: thinking},
-		{Comp: assistantComp("report")},
+		{Comp: testkit.AssistantComp("report")},
 	}}
 	var acts []SubagentActivity
 	exec := NewSubagentTool(SubagentConfig{
@@ -417,9 +418,9 @@ func TestSubagentActivityReportsThinking(t *testing.T) {
 }
 
 func TestSubagentActivityToolError(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{
-		{Comp: assistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: "{}"})},
-		{Comp: assistantComp("report")},
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+		{Comp: testkit.AssistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: "{}"})},
+		{Comp: testkit.AssistantComp("report")},
 	}}
 	parent := subParentExec()
 	parent.Execute = func(context.Context, agentic.ToolCall) (agentic.ToolResult, error) {
@@ -454,7 +455,7 @@ func TestSubagentGateSerializes(t *testing.T) {
 	hold, err := gate.Acquire(context.Background())
 	require.NoError(t, err)
 
-	provider := &countingProvider{inner: &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("done")}}}}
+	provider := &countingProvider{inner: &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("done")}}}}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Gate: gate})
 
 	done := make(chan agentic.ToolResult, 1)
@@ -479,7 +480,7 @@ func TestSubagentGateCancelledWhileWaiting(t *testing.T) {
 	require.NoError(t, err)
 	defer hold()
 
-	provider := &scriptProvider{}
+	provider := &testkit.ScriptProvider{}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Gate: gate})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -499,21 +500,21 @@ func TestSubagentExecuteErrors(t *testing.T) {
 		assert.Equal(t, "run_subagent is unavailable: no model is configured for the sub-agent", res.Content)
 	})
 	t.Run("invalid arguments", func(t *testing.T) {
-		exec := NewSubagentTool(SubagentConfig{Provider: &scriptProvider{}, Model: "m"})
+		exec := NewSubagentTool(SubagentConfig{Provider: &testkit.ScriptProvider{}, Model: "m"})
 		res, err := exec.Execute(context.Background(), subCall(`{`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.True(t, strings.HasPrefix(res.Content, "invalid run_subagent arguments: "))
 	})
 	t.Run("empty prompt", func(t *testing.T) {
-		exec := NewSubagentTool(SubagentConfig{Provider: &scriptProvider{}, Model: "m"})
+		exec := NewSubagentTool(SubagentConfig{Provider: &testkit.ScriptProvider{}, Model: "m"})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"  "}`))
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Equal(t, "run_subagent requires a non-empty prompt describing the task", res.Content)
 	})
 	t.Run("sub-run failure is a recoverable result", func(t *testing.T) {
-		provider := &scriptProvider{Steps: []scriptStep{{Err: &agentic.APIError{Status: 400, Body: "bad"}}}}
+		provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Err: &agentic.APIError{Status: 400, Body: "bad"}}}}
 		exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m"})
 		res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
 		require.NoError(t, err, "the parent loop never aborts on tool failure")
@@ -525,10 +526,10 @@ func TestSubagentExecuteErrors(t *testing.T) {
 func TestSubagentCustomSystemPromptAndUncappedTurns(t *testing.T) {
 	// A custom system prompt replaces the default, and the nested loop runs as
 	// long as the sub-agent keeps working -- no cap cuts its research short.
-	provider := &scriptProvider{Steps: []scriptStep{
-		{Comp: assistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: `{"i":1}`})},
-		{Comp: assistantComp("", agentic.ToolCall{ID: "s2", Name: "Repo__read", Arguments: `{"i":2}`})},
-		{Comp: assistantComp("the report")},
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+		{Comp: testkit.AssistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: `{"i":1}`})},
+		{Comp: testkit.AssistantComp("", agentic.ToolCall{ID: "s2", Name: "Repo__read", Arguments: `{"i":2}`})},
+		{Comp: testkit.AssistantComp("the report")},
 	}}
 	exec := NewSubagentTool(SubagentConfig{
 		Provider: provider, Model: "m", Tools: subParentExec().Registry(),
@@ -545,7 +546,7 @@ func TestSubagentCustomSystemPromptAndUncappedTurns(t *testing.T) {
 }
 
 func TestSubagentNoOutputPlaceholder(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
 		{Comp: &agentic.Completion{Message: agentic.Message{Role: agentic.RoleAssistant}, StopReason: agentic.StopEndTurn}},
 	}}
 	exec := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m"})

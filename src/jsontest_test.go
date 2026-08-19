@@ -1,8 +1,6 @@
 package agentic
 
 import (
-	"encoding/json"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 )
 
 // Test fixtures are built from Go VALUES, never spliced into JSON text.
@@ -27,24 +27,12 @@ import (
 // Static JSON with nothing interpolated into it is not this problem and stays
 // as it is: no value can corrupt a constant.
 
-// jsonMust marshals v to compact JSON. It panics rather than returning an
-// error: the input is a literal written in a test, so a failure is a mistake
-// in the test itself, and a fixture that silently became "" would make the
-// assertion that reads it meaningless.
-func jsonMust(v any) string {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		panic(fmt.Sprintf("jsonMust: marshaling %T: %v", v, err))
-	}
-	return string(raw)
-}
+// jsonMust / jsonObj / jsonArr are the names this package's tests use.
+// The implementation lives in internal/jsontest.
+var jsonMust = jsontest.Must
 
-// jsonObj is a JSON object literal, shorter than map[string]any at every call
-// site: jsonMust(jsonObj{"sha": sha, "type": "file"}).
-type jsonObj = map[string]any
-
-// jsonArr is a JSON array literal.
-type jsonArr = []any
+type jsonObj = jsontest.Obj
+type jsonArr = jsontest.Arr
 
 // sprintfJSON matches fmt.Sprintf over a template that opens as JSON.
 var sprintfJSON = regexp.MustCompile("fmt\\.Sprintf\\(`\\s*[\\[{]")
@@ -89,7 +77,7 @@ func TestNoTestSplicesAValueIntoJSONText(t *testing.T) {
 	assert.Empty(t, offenders,
 		"these build JSON by splicing a value into text, which breaks on a quote, a backslash or a newline in the value.\n"+
 			"Build the fixture from a Go value instead:\n"+
-			"\tjsonMust(jsonObj{\"sha\": sha})\n"+
+			"\tjsontest.Must(jsontest.Obj{\"sha\": sha})\n"+
 			"A JSON fragment that must stay raw (a deliberately wrong-typed value) is json.RawMessage(frag).\n"+
 			"Offenders:\n%s", strings.Join(offenders, "\n"))
 }

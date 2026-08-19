@@ -6,25 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	agentic "github.com/wow-look-at-my/agentic-loop/src"
 )
-
-// Must marshals v to compact JSON. It panics: the input is a test literal.
-func Must(v any) string {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		panic(fmt.Sprintf("jsonMust: marshaling %T: %v", v, err))
-	}
-	return string(raw)
-}
-
-// Obj is a JSON object literal.
-type Obj = map[string]any
-
-// Arr is a JSON array literal.
-type Arr = []any
 
 // ScriptStep is one scripted provider response.
 type ScriptStep struct {

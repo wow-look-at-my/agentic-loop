@@ -2,6 +2,7 @@ package repo
 
 import (
 	"fmt"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 	"net/http"
 	"strings"
 	"testing"
@@ -58,18 +59,18 @@ func TestRepoIssueReadRendersBodyAndComments(t *testing.T) {
 				"updated_at":"2026-07-01T10:00:00Z","user":{"login":"alice"},"labels":[{"name":"bug"}]}`
 		case "/repos/octo/hello/issues/11/comments":
 			assert.Equal(t, fmt.Sprint(repoIssueMaxComments), c.Query.Get("per_page"))
-			return http.StatusOK, jsonMust(jsonArr{
-				jsonObj{
+			return http.StatusOK, jsontest.Must(jsontest.Arr{
+				jsontest.Obj{
 					"body":       "Repro steps here",
 					"created_at": "2026-07-01T11:00:00Z",
-					"user": jsonObj{
+					"user": jsontest.Obj{
 						"login": "bob",
 					},
 				},
-				jsonObj{
+				jsontest.Obj{
 					"body":       longComment,
 					"created_at": "2026-07-01T12:00:00Z",
-					"user": jsonObj{
+					"user": jsontest.Obj{
 						"login": "carol",
 					},
 				},

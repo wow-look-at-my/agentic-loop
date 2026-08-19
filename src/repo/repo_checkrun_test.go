@@ -2,6 +2,7 @@ package repo
 
 import (
 	"fmt"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 	"net/http"
 	"strings"
 	"testing"
@@ -16,8 +17,8 @@ import (
 // rather than dropped, and that what=check_run is the drill-down.
 
 // checkRun builds one check-run fixture.
-func checkRun(id int, name, conclusion string, extra jsonObj) jsonObj {
-	o := jsonObj{
+func checkRun(id int, name, conclusion string, extra jsontest.Obj) jsontest.Obj {
+	o := jsontest.Obj{
 		"id": id, "name": name, "status": "completed", "conclusion": conclusion,
 		"html_url": fmt.Sprintf("https://example.com/run/%d", id),
 	}
@@ -31,15 +32,15 @@ func TestRepoStatusExplainsEveryFailingCheck(t *testing.T) {
 	g, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/commits/main/status":
-			return http.StatusOK, jsonMust(jsonObj{"state": "failure", "sha": "0123456789abcdef", "statuses": jsonArr{}})
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"state": "failure", "sha": "0123456789abcdef", "statuses": jsontest.Arr{}})
 		case "/repos/octo/hello/commits/main/check-runs":
-			return http.StatusOK, jsonMust(jsonObj{"check_runs": jsonArr{
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"check_runs": jsontest.Arr{
 				checkRun(41, "build", "failure", nil),
 				checkRun(42, "lint", "success", nil),
 			}})
 		case "/repos/octo/hello/check-runs/41":
-			return http.StatusOK, jsonMust(checkRun(41, "build", "failure", jsonObj{
-				"output": jsonObj{
+			return http.StatusOK, jsontest.Must(checkRun(41, "build", "failure", jsontest.Obj{
+				"output": jsontest.Obj{
 					"title":             "Process completed with exit code 1",
 					"summary":           "go.mod was rewritten during the run\nworking tree is dirty in CI",
 					"annotations_count": 2,
@@ -73,11 +74,11 @@ func TestRepoStatusNamesTheChecksItCouldNotExplain(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/commits/main/status":
-			return http.StatusOK, jsonMust(jsonObj{"state": "failure", "sha": "abc", "statuses": jsonArr{}})
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"state": "failure", "sha": "abc", "statuses": jsontest.Arr{}})
 		case "/repos/octo/hello/commits/main/check-runs":
-			return http.StatusOK, jsonMust(jsonObj{"check_runs": jsonArr{checkRun(41, "build", "failure", nil)}})
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"check_runs": jsontest.Arr{checkRun(41, "build", "failure", nil)}})
 		case "/repos/octo/hello/check-runs/41":
-			return http.StatusForbidden, jsonMust(jsonObj{"message": "Resource not accessible by personal access token"})
+			return http.StatusForbidden, jsontest.Must(jsontest.Obj{"message": "Resource not accessible by personal access token"})
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -91,18 +92,18 @@ func TestRepoStatusNamesTheChecksItCouldNotExplain(t *testing.T) {
 
 // The follow-up count is bounded, and the bound says what it left out.
 func TestRepoStatusBoundsTheDetailReadsAndSaysSo(t *testing.T) {
-	failing := jsonArr{}
+	failing := jsontest.Arr{}
 	for i := 1; i <= statusFailureDetailLimit+2; i++ {
 		failing = append(failing, checkRun(i, fmt.Sprintf("job-%d", i), "failure", nil))
 	}
 	g, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		switch {
 		case c.Path == "/repos/octo/hello/commits/main/status":
-			return http.StatusOK, jsonMust(jsonObj{"state": "failure", "sha": "abc", "statuses": jsonArr{}})
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"state": "failure", "sha": "abc", "statuses": jsontest.Arr{}})
 		case c.Path == "/repos/octo/hello/commits/main/check-runs":
-			return http.StatusOK, jsonMust(jsonObj{"check_runs": failing})
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"check_runs": failing})
 		case strings.HasPrefix(c.Path, "/repos/octo/hello/check-runs/"):
-			return http.StatusOK, jsonMust(jsonObj{"id": 1, "name": "job", "status": "completed", "conclusion": "failure"})
+			return http.StatusOK, jsontest.Must(jsontest.Obj{"id": 1, "name": "job", "status": "completed", "conclusion": "failure"})
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -126,14 +127,14 @@ func TestRepoCheckRunReportsOutputAndAnnotations(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/check-runs/41":
-			return http.StatusOK, jsonMust(checkRun(41, "build", "failure", jsonObj{
-				"output": jsonObj{
+			return http.StatusOK, jsontest.Must(checkRun(41, "build", "failure", jsontest.Obj{
+				"output": jsontest.Obj{
 					"title": "Process completed with exit code 1", "summary": "one step failed",
 					"text": "go-toolchain: working tree is dirty in CI", "annotations_count": 1,
 				},
 			}))
 		case "/repos/octo/hello/check-runs/41/annotations":
-			return http.StatusOK, jsonMust(jsonArr{jsonObj{
+			return http.StatusOK, jsontest.Must(jsontest.Arr{jsontest.Obj{
 				"path": "go.mod", "start_line": 14, "end_line": 14,
 				"annotation_level": "failure", "message": "unexpected rewrite",
 			}})
@@ -156,9 +157,9 @@ func TestRepoCheckRunSaysWhenTheCheckReportedNothing(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/check-runs/41":
-			return http.StatusOK, jsonMust(checkRun(41, "build", "failure", nil))
+			return http.StatusOK, jsontest.Must(checkRun(41, "build", "failure", nil))
 		case "/repos/octo/hello/check-runs/41/annotations":
-			return http.StatusOK, jsonMust(jsonArr{})
+			return http.StatusOK, jsontest.Must(jsontest.Arr{})
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -176,11 +177,11 @@ func TestRepoCheckRunNotesAnUnreadableAnnotationList(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Name: "one", Token: "tok"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/check-runs/41":
-			return http.StatusOK, jsonMust(checkRun(41, "build", "failure", jsonObj{
-				"output": jsonObj{"title": "boom"},
+			return http.StatusOK, jsontest.Must(checkRun(41, "build", "failure", jsontest.Obj{
+				"output": jsontest.Obj{"title": "boom"},
 			}))
 		case "/repos/octo/hello/check-runs/41/annotations":
-			return http.StatusForbidden, jsonMust(jsonObj{"message": "Resource not accessible by personal access token"})
+			return http.StatusForbidden, jsontest.Must(jsontest.Obj{"message": "Resource not accessible by personal access token"})
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -196,16 +197,16 @@ func TestRepoCheckRunNotesAnUnreadableAnnotationList(t *testing.T) {
 // A capped annotation listing must say it was capped, or it reads as the full
 // set of everything that went wrong.
 func TestRepoCheckRunSaysWhenTheAnnotationListingIsCapped(t *testing.T) {
-	full := jsonArr{}
+	full := jsontest.Arr{}
 	for i := 0; i < checkRunAnnotationLimit; i++ {
-		full = append(full, jsonObj{"path": "x.go", "start_line": i + 1, "annotation_level": "failure", "message": "bad"})
+		full = append(full, jsontest.Obj{"path": "x.go", "start_line": i + 1, "annotation_level": "failure", "message": "bad"})
 	}
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/check-runs/41":
-			return http.StatusOK, jsonMust(checkRun(41, "build", "failure", nil))
+			return http.StatusOK, jsontest.Must(checkRun(41, "build", "failure", nil))
 		case "/repos/octo/hello/check-runs/41/annotations":
-			return http.StatusOK, jsonMust(full)
+			return http.StatusOK, jsontest.Must(full)
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -244,7 +245,7 @@ func TestRepoCheckRunRequiresOrgRepo(t *testing.T) {
 
 func TestRepoCheckRunUnreadableCheckIsAnError(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(ghCall) (int, string) {
-		return http.StatusNotFound, jsonMust(jsonObj{"message": "Not Found"})
+		return http.StatusNotFound, jsontest.Must(jsontest.Obj{"message": "Not Found"})
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "check_run", Org: "octo", Repo: "hello", ID: 7})
 	require.True(t, res.IsError)
@@ -257,9 +258,9 @@ func TestRepoCheckRunUnreadableCheckIsAnError(t *testing.T) {
 // API by hand.
 func TestRepoCommitsNamesTheRefEvenWhenUnspecified(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
-		return http.StatusOK, jsonMust(jsonArr{jsonObj{
+		return http.StatusOK, jsontest.Must(jsontest.Arr{jsontest.Obj{
 			"sha":    "abcdef1234567890",
-			"commit": jsonObj{"message": "hi", "author": jsonObj{"name": "a", "date": "2026-01-01T00:00:00Z"}},
+			"commit": jsontest.Obj{"message": "hi", "author": jsontest.Obj{"name": "a", "date": "2026-01-01T00:00:00Z"}},
 		}})
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "commits", Org: "octo", Repo: "hello"})

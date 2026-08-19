@@ -3,6 +3,7 @@ package subagent
 import (
 	"context"
 	agentic "github.com/wow-look-at-my/agentic-loop/src"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/testkit"
 	"sync"
 	"testing"
 	"time"
@@ -201,7 +202,7 @@ func TestFormatSubagentDeliverySaysWhatWasAbandoned(t *testing.T) {
 // answer -- which is what lets a model fan several out in one turn -- and the
 // report arrives through the registry.
 func TestSubagentToolLaunchesAsynchronously(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{{Comp: assistantComp("no defects found")}}}
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{{Comp: testkit.AssistantComp("no defects found")}}}
 	runs := NewSubagentRuns(nil)
 	tool := NewSubagentTool(SubagentConfig{Provider: provider, Model: "m", Runs: runs})
 
@@ -226,7 +227,7 @@ func TestSubagentToolLaunchesAsynchronously(t *testing.T) {
 // report, instead of as the launch's result.
 func TestAsyncSubagentMisuseArrivesAsTheReport(t *testing.T) {
 	runs := NewSubagentRuns(nil)
-	tool := NewSubagentTool(SubagentConfig{Provider: &scriptProvider{}, Model: "m", Runs: runs})
+	tool := NewSubagentTool(SubagentConfig{Provider: &testkit.ScriptProvider{}, Model: "m", Runs: runs})
 
 	res, err := tool.Execute(agentic.WithToolCallID(context.Background(), "call_1"), []byte(`{"prompt":"  "}`))
 	require.NoError(t, err)
@@ -244,9 +245,9 @@ func TestAsyncSubagentMisuseArrivesAsTheReport(t *testing.T) {
 // A turn that would END while a sub-agent is out instead waits for it and
 // hands the report to the model -- the promise the receipt made.
 func TestRunDeliversAnOutstandingSubagentReport(t *testing.T) {
-	provider := &scriptProvider{Steps: []scriptStep{
-		{Comp: assistantComp("launched one; waiting")},
-		{Comp: assistantComp("the auth middleware is fine")},
+	provider := &testkit.ScriptProvider{Steps: []testkit.ScriptStep{
+		{Comp: testkit.AssistantComp("launched one; waiting")},
+		{Comp: testkit.AssistantComp("the auth middleware is fine")},
 	}}
 	runs := NewSubagentRuns(nil)
 	runs.Launch("call_a", "audit auth", "look")

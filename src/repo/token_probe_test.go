@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -310,11 +311,11 @@ func TestTestTokenReportsAPerOrgListingFailureWithoutFailingTheToken(t *testing.
 
 func TestTestTokenCapsTheNumberOfOrganizationsSwept(t *testing.T) {
 	const orgCount = orgSweepMaxOrgs + 5
-	var orgs jsonArr
+	var orgs jsontest.Arr
 	for i := 0; i < orgCount; i++ {
-		orgs = append(orgs, jsonObj{"login": fmt.Sprintf("org%02d", i)})
+		orgs = append(orgs, jsontest.Obj{"login": fmt.Sprintf("org%02d", i)})
 	}
-	orgsBody := jsonMust(orgs)
+	orgsBody := jsontest.Must(orgs)
 
 	orgReposSeen := map[string]bool{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

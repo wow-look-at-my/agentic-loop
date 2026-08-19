@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	agentic "github.com/wow-look-at-my/agentic-loop/src"
+	"github.com/wow-look-at-my/agentic-loop/src/internal/jsontest"
 	"strings"
 	"testing"
 
@@ -144,7 +145,7 @@ func TestInterleavedMutationsTouchOnlyTheNamedTask(t *testing.T) {
 	byName := todoTools(t, rec)
 
 	for _, title := range []string{"one", "two", "three", "four"} {
-		res := run(t, byName[TodoAddToolName], jsonMust(jsonObj{"title": title}))
+		res := run(t, byName[TodoAddToolName], jsontest.Must(jsontest.Obj{"title": title}))
 		require.False(t, res.IsError, res.Content)
 	}
 	// Host now holds one..four with ids 1..4, all pending.
@@ -305,7 +306,7 @@ func TestUnusableAddArgumentsAreRefused(t *testing.T) {
 	assert.Equal(t, "title is empty; every task needs one", res.Content)
 
 	long := strings.Repeat("x", todoMaxTitleRunes+1)
-	res = run(t, add, jsonMust(jsonObj{"title": long}))
+	res = run(t, add, jsontest.Must(jsontest.Obj{"title": long}))
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "title has 201 characters; the limit is 200")
 
