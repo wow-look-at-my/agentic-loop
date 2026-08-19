@@ -103,6 +103,44 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 	require.NotNil(t, res)
 }
 
+// A call that fails before producing any completion must still finalize as
+// "cancelled" when its error is a context cancellation, matching the
+// classification the mid-stream partial-completion path already applies.
+// Before the fix, a nil completion always finalized "error" regardless of
+// cause, so an outbound call torn down before it streamed a single byte
+// (e.g. "openai: Post ...: context canceled") persisted as a permanent
+// failure instead of the graceful cancellation it actually was.
+func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"context canceled", fmt.Errorf("post: %w", context.Canceled), "cancelled"},
+		{"deadline exceeded", fmt.Errorf("post: %w", context.DeadlineExceeded), "cancelled"},
+		{"plain error", errors.New("boom"), "error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := &scriptProvider{steps: []scriptStep{{err: tc.err}}}
+			var statuses []string
+			events := Events{}
+			finalizeCb := func(ev FinalizeAssistantEvent) error {
+				statuses = append(statuses, ev.Status)
+				return nil
+			}
+			events.OnFinalizeAssistant.Subscribe(&finalizeCb)
+			cfg := Config{Provider: provider, Events: &events}
+			_, err := Run(context.Background(), cfg, Request{
+				Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
+			})
+			require.Error(t, err)
+			require.Len(t, statuses, 1)
+			assert.Equal(t, tc.want, statuses[0])
+		})
+	}
+}
+
 func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 	sentinel := errors.New("begin abort")
 	provider := &scriptProvider{steps: []scriptStep{

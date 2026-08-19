@@ -201,6 +201,15 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
 		if err != nil {
+			// A cancelled or timed-out call is never an "error", whether or
+			// not it produced a partial completion: the host's own hard rule
+			// is that a stopped stream finalizes as cancelled, and a call
+			// that failed before streaming any bytes cancels exactly as
+			// validly as one that broke mid-stream.
+			status := "cancelled"
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				status = "error"
+			}
 			if comp != nil {
 				// Mid-stream break/cancel: keep the partial content, reasoning
 				// and usage, but drop any assembled tool calls -- they were
@@ -211,17 +220,13 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				if assistantID != "" {
 					partial.ID = string(assistantID)
 				}
-				status := "cancelled"
-				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-					status = "error"
-				}
 				transcript = append(transcript, partial)
 				res.Messages = transcript
 				res.Final = partial
 				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: partial, Status: status})
 				return res, err
 			}
-			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: status})
 			res.Messages = transcript
 			return res, err
 		}
