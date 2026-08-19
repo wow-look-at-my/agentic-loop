@@ -14,12 +14,6 @@ import (
 // the one place a 401/403/404/429 becomes a sentence naming what the reader can
 // act on. see docs/diagnostics.md
 
-type ghEntry struct {
-	Name string `json:"name"`
-	Type string `json:"type"` // "file", "dir", "symlink", "submodule"
-	Size int64  `json:"size"`
-}
-
 // GHRepo is one repository in an org/user repos response. Only the fields the
 // listing surfaces are decoded.
 type GHRepo struct {

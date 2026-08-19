@@ -1,8 +1,6 @@
 package repo
 
 import (
-	"net/http"
-	"strings"
 	"sync"
 	"testing"
 
@@ -37,22 +35,6 @@ type recordingGitHub struct {
 	auths    []string
 	respond  func(authToken, path, accept, ref string) (status int, ctype, body string)
 	requests int
-}
-
-func (g *recordingGitHub) handler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		g.mu.Lock()
-		g.auths = append(g.auths, token)
-		g.requests++
-		g.mu.Unlock()
-		status, ctype, body := g.respond(token, r.URL.Path, r.Header.Get("Accept"), r.URL.Query().Get("ref"))
-		if ctype != "" {
-			w.Header().Set("Content-Type", ctype)
-		}
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
-	}
 }
 
 func TestRepoReadWhatValidation(t *testing.T) {
