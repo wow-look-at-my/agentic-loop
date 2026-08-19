@@ -40,9 +40,10 @@ type TurnEndEvent struct {
 // StopEvent is the param to OnStop: the turn that produced a non-empty final
 // answer and the completion the loop would finish with. The event is purely
 // observational — a listener that wants the loop to continue calls
-// cfg.SystemMessages.Queue(msg) rather than returning anything. The loop
-// checks the queue after Invoke and continues if non-empty. Invoked at most
-// once per run (guarded by stopHookFired in the loop).
+// cfg.SystemMessages.Queue(msg) rather than returning anything, and the loop
+// takes another turn because the queue is non-empty. Invoked at most once per
+// run (guarded by stopHookFired in the loop), which bounds THIS hook only: a
+// message queued from anywhere else continues the loop every time.
 type StopEvent struct {
 	event.Args
 	Turn int
