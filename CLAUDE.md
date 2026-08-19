@@ -259,7 +259,7 @@ side of that line it falls on — do not put it on both.
   caller's), and detection can never name this dialect, since the model list
   looks identical.
 - **`&#0;` is how NUL travels.** Our writer emits it and our validator accepts
-  it — see `docs/nul.md`.
+  it — see `docs/nul-char.md`.
 - **No environment reads outside `cli/`.** Endpoints and keys are explicit
   fields; all I/O goes through an injectable `*http.Client`.
 
@@ -271,7 +271,7 @@ side of that line it falls on — do not put it on both.
   event vocabulary.
 - `docs/module-layout.md` — why this is one module, and what the seven-module
   split cost before it was collapsed.
-- `docs/nul.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
+- `docs/nul-char.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
 
 ## Fix the bug. Never build around it.
 
