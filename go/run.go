@@ -37,11 +37,11 @@ import (
 // run are fed back as a short [unchanged] marker instead of the full content
 // (see OutputDeduper; Config.DisableOutputDedup opts out).
 //
-// Within a batch, read-only ungated tool calls (ToolDecl.Readonly set, no
-// NeedsApproval) execute concurrently via goroutines. Mutating or gated calls
-// execute sequentially in call order; each mutating call waits for every
-// in-flight read-only call to finish first, so workspace state is consistent
-// at the start of each mutation. OnToolCall fires in call order, each call's
+// Within a batch, read-only tool calls (ToolDecl.Readonly set) execute
+// concurrently via goroutines. Mutating calls execute sequentially in call
+// order; each mutating call waits for every in-flight read-only call to
+// finish first, so workspace state is consistent at the start of each
+// mutation. OnToolCall fires in call order, each call's
 // hook immediately before that call is dispatched; OnToolResult and
 // transcript append happen in call order after every call has resolved. The
 // only observable nondeterminism is the execution order among read-only
@@ -289,18 +289,16 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			var wg sync.WaitGroup    // all goroutines, for the abort path
 			var reads sync.WaitGroup // read-only calls since the last barrier
 
-			// Dispatch: read-only ungated calls run concurrently via
-			// goroutines; mutating or gated calls run sequentially in call
-			// order. Each mutating call is a barrier -- it waits for every
-			// in-flight read-only call to finish first, so workspace state
-			// is consistent at the start of each mutation. When no
-			// read-only calls are present the entire batch runs sequentially
-			// on the calling goroutine.
+			// Dispatch: read-only calls run concurrently via goroutines;
+			// mutating calls run sequentially in call order. Each mutating
+			// call is a barrier -- it waits for every in-flight read-only
+			// call to finish first, so workspace state is consistent at the
+			// start of each mutation. When no read-only calls are present
+			// the entire batch runs sequentially on the calling goroutine.
 			//
 			// resolveCall returns a non-nil error ONLY when an approval
-			// decision never arrived (Approver.Ask failed). Read-only
-			// ungated calls skip approval entirely, so they never produce
-			// that error -- but the guard is kept for robustness.
+			// decision never arrived (Approver.Ask failed). The guard is
+			// kept for that path; Execute failures become error results.
 			for i, asked := range calls {
 				// The hook sees a copy, not the transcript's own entry: what
 				// the model asked for is already recorded above and stays that
@@ -316,7 +314,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				asks = append(asks, call)
 
 				tool, known := cfg.Tools.Find(call.Name)
-				readonly := known && tool.Decl().Readonly && !tool.NeedsApproval()
+				readonly := known && tool.Decl().Readonly
 
 				if readonly {
 					reads.Add(1)
@@ -336,9 +334,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					}(i, call)
 					continue
 				}
-				// Mutating or gated: barrier -- wait for every in-flight
-				// read-only call to finish so the sequential execution has
-				// a consistent view of workspace state.
+				// Mutating: barrier -- wait for every in-flight read-only
+				// call to finish so the sequential execution has a
+				// consistent view of workspace state.
 				reads.Wait()
 
 				result, aerr := resolveCall(ctx, &cfg, call)
@@ -392,11 +390,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				}
 				transcript = append(transcript, recorded)
 				if terr := cfg.Events.emitToolMessage(ToolMessageEvent{
-					ToolCallID:        asked.ID,
+					ToolCallID:        call.ID,
 					ParentAssistantID: assistantID,
 					Content:           content,
 					Parts:             parts,
-					IsError:           result.IsError,
+					IsError:           results[i].IsError,
 				}); terr != nil {
 					return abortBatch(terr)
 				}
