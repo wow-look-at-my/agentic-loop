@@ -272,6 +272,10 @@ func toolFrom(el *validator.Element) (ToolDecl, error) {
 		Name:        attrOf(el, "name"),
 		Description: attrOf(el, "description"),
 		Readonly:    attrOf(el, "readonly") == "true",
+		Destructive: optBoolOf(el, "destructive"),
+		Idempotent:  attrOf(el, "idempotent") == "true",
+		OpenWorld:   optBoolOf(el, "open-world"),
+		Unvouched:   attrOf(el, "unvouched") == "true",
 	}
 	for _, c := range el.ChildElements() {
 		if c.Local != elInputSchema {
@@ -485,6 +489,19 @@ func attrOf(el *validator.Element, name string) string {
 		}
 	}
 	return ""
+}
+
+// optBoolOf reads a tri-state boolean attribute. An ABSENT attribute is nil
+// (unknown), which is a different answer from an explicit "false" — the caller
+// resolves unknown to whatever the cautious value is for that fact.
+func optBoolOf(el *validator.Element, name string) *bool {
+	for _, a := range el.Attrs {
+		if a.Local == name && (a.Namespace == "" || a.Namespace == NS) {
+			v := a.Value == "true"
+			return &v
+		}
+	}
+	return nil
 }
 
 // attrOfNS returns a qualified attribute's value.

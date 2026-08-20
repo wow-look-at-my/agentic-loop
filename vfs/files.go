@@ -170,13 +170,13 @@ func NewFileTools(cfg FileToolsConfig) *FileTools {
 		return base + sentence(cfg.MountsBlurb) + sentence(cfg.Notes[name])
 	}
 	tools := agentic.Tools{
-		agentic.NewTool(agentic.ToolDecl{Name: ListDirToolName, Description: describe(ListDirToolName, listDirDescription), InputSchema: pathOnlySchema, Readonly: true}, e.listDir),
-		agentic.NewTool(agentic.ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true}, e.readFile),
-		agentic.NewTool(agentic.ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true}, e.findFiles),
-		agentic.NewTool(agentic.ToolDecl{Name: GrepToolName, Description: describe(GrepToolName, grepDescription), InputSchema: grepSchema, Readonly: true}, e.grep),
-		agentic.NewTool(agentic.ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema}, e.writeFile),
-		agentic.NewTool(agentic.ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema}, e.editFile),
-		agentic.NewTool(agentic.ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema}, e.deleteFile),
+		agentic.NewTool(agentic.ToolDecl{Name: ListDirToolName, Description: describe(ListDirToolName, listDirDescription), InputSchema: pathOnlySchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.listDir),
+		agentic.NewTool(agentic.ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.readFile),
+		agentic.NewTool(agentic.ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.findFiles),
+		agentic.NewTool(agentic.ToolDecl{Name: GrepToolName, Description: describe(GrepToolName, grepDescription), InputSchema: grepSchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.grep),
+		agentic.NewTool(agentic.ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema, Destructive: agentic.Bool(true), Idempotent: true, OpenWorld: agentic.Bool(false)}, e.writeFile),
+		agentic.NewTool(agentic.ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema, Destructive: agentic.Bool(true), OpenWorld: agentic.Bool(false)}, e.editFile),
+		agentic.NewTool(agentic.ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema, Destructive: agentic.Bool(true), Idempotent: true, OpenWorld: agentic.Bool(false)}, e.deleteFile),
 	}
 	return &FileTools{files: e, tools: tools}
 }

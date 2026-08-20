@@ -143,3 +143,7 @@ func DecodeModelList(body []byte) (*ModelList, error) { return client.DecodeMode
 // tokens than there were prompt tokens. Rates.Cost clamps rather than going
 // negative, and this is how a host learns that it clamped.
 func Anomalous(u Usage) bool { return client.Anomalous(u) }
+
+// Bool addresses a boolean, for ToolDecl's tri-state behaviour fields. A nil
+// Destructive or OpenWorld means "not stated", which is not the same as false.
+func Bool(v bool) *bool { return client.Bool(v) }
