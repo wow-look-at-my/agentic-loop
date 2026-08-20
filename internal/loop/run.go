@@ -101,9 +101,6 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Undelivered = left
 		}
 	}()
-	// stopHookFired prevents a host hook from trapping the run in an infinite
-	// continuation cycle.
-	stopHookFired := false
 	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call
 	// fingerprint and how many turns in a row have repeated it.
 	lastBatch := ""
@@ -521,17 +518,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(assistant.Content) != "" {
 			final := assistant
 			final.ToolCalls = nil
-			if !stopHookFired {
-				stopHookFired = true
-				cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
-			}
-			// Something is queued: it arrived while the model was working, so
-			// it is an instruction the answer above could not have accounted
-			// for. Keep the answer and take another turn, which drains the
-			// queue at the top. The check is deliberately NOT behind
-			// stopHookFired -- that flag bounds the loop's OWN hook, and
-			// nothing else. A message a user sent or a watcher raised is
-			// external, and there is no count of them the loop may drop.
+			cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
+			// Something is queued: either the stop hook above put it there, or
+			// it arrived while the model was working and the answer could not
+			// have accounted for it. Keep the answer and take another turn,
+			// which drains the queue at the top.
 			if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
 				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 				transcript = append(transcript, final)
