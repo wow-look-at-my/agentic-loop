@@ -124,6 +124,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			panic(r) // re-panic so the caller's recover sees it
 		}
 	}()
+	// moreTurnsAllowed reports whether a host cap still permits a turn after
+	// this one. A capped run that cannot deliver a queued message returns it
+	// in Result.Undelivered instead, so the host can start a new run with it.
+	moreTurnsAllowed := func(turn int) bool {
+		return cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1
+	}
 	finish := func(final Message) (*Result, error) {
 		transcript = append(transcript, final)
 		res.Messages = transcript
@@ -526,7 +532,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// stopHookFired -- that flag bounds the loop's OWN hook, and
 			// nothing else. A message a user sent or a watcher raised is
 			// external, and there is no count of them the loop may drop.
-			if Pending(cfg.SystemMessages, cfg.UserMessages) {
+			if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
 				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 				transcript = append(transcript, final)
 				continue
@@ -539,7 +545,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// queued. Deliver that instead of spending a wrap-up call on a turn
 		// with nothing to wrap up: the queued message is newer than anything
 		// the model could synthesize here, and the next turn drains it.
-		if Pending(cfg.SystemMessages, cfg.UserMessages) {
+		if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
 			stalled := assistant
 			stalled.ToolCalls = nil
 			stalled.Content = fallbackOutput(assistant)

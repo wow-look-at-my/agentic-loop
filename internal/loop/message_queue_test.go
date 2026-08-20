@@ -132,6 +132,22 @@ func TestUndeliveredMessagesComeBackWhenTheRunFails(t *testing.T) {
 	require.Equal(t, []string{"CI went red", "and stop"}, contents(res.Undelivered))
 }
 
+// A host cap still bounds the run: the queued message is handed back rather
+// than delivered, and the model's own answer stays the final one.
+func TestQueuedMessageDoesNotOutrunAHostCap(t *testing.T) {
+	sys := &MessageQueue{}
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("capped answer")}}}
+	cfg := Config{Provider: provider, SystemMessages: sys, MaxTurns: 1}
+	cfg.TurnHook = func(int) {
+		assert.True(t, sys.Queue(Message{Role: RoleUser, Content: "CI went red"}))
+	}
+	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	require.NoError(t, err)
+	assert.Equal(t, "capped answer", res.Final.Content)
+	assert.Equal(t, 1, res.Turns)
+	assert.Equal(t, []string{"CI went red"}, contents(res.Undelivered))
+}
+
 // A nil queue accepts nothing: there is no run behind it to deliver anything.
 func TestNilQueueAcceptsNothing(t *testing.T) {
 	var q *MessageQueue

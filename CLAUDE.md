@@ -160,6 +160,15 @@ side of that line it falls on — do not put it on both.
   What bounds a run is `ErrStuck` (repetition is the only mechanically
   detectable form of not-progressing) and the caller's `ctx`.
   `TestRunHasNoTurnCap` guards this.
+- **A message a queue ACCEPTS reaches the model.** `SystemMessages` and
+  `UserMessages` are drained at the top of every turn, system first, and a
+  message queued when the model would otherwise finish starts another turn —
+  every time. The one-shot `stopHookFired` flag bounds the loop's OWN stop
+  hook and nothing else; gating the queue check behind it dropped every
+  later notice on the floor. `Queue` returns whether the queue took it, `Run`
+  closes both queues as it returns (so a racing producer starts a new run
+  instead), and whatever a failed, cancelled or capped run never delivered
+  comes back in `Result.Undelivered`. Depth: `USAGE.md`.
 - **Every entry point that makes a model call surfaces its `*Completion`.**
   Never a `Usage`, never a bare string: only `Completion.UsageReported`
   separates "reported zeros" from "reported nothing", and a projection drops

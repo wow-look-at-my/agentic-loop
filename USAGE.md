@@ -648,6 +648,46 @@ requested tools, feed the results back, repeat. Key behaviors:
   **not summed**: successive prompts overlap (each turn re-sends the growing
   transcript), so summing would double-count the shared prefix.
 
+#### Delivering a message into a running loop
+
+A run is not a closed box. Two queues carry a message from anywhere in your
+program into the transcript the model is working on: `Config.SystemMessages`
+for automated notices (a CI status change, a stop-hook nudge, a sub-agent
+report) and `Config.UserMessages` for what the user typed while the model was
+busy. Both are `*MessageQueue`, safe for concurrent producers.
+
+```go
+sys := &agentic.MessageQueue{}
+go func() {
+    if !sys.Queue(agentic.Message{Role: agentic.RoleUser, Kind: "ci_status_change",
+        Content: "[CI status changed] checks went red on abc1234 ..."}) {
+        startANewRun(notice) // the run ended; nothing else will deliver it
+    }
+}()
+res, err := agentic.Run(ctx, agentic.Config{Provider: p, SystemMessages: sys, ...}, req)
+```
+
+- **A queued message always reaches the model.** Both queues are drained at
+  the top of every turn, system first, and a message queued when the model
+  would otherwise have finished **starts another turn** — every time, not once
+  per run. There is nothing to poll and no window in which a notice is quietly
+  dropped: a turn boundary is either coming or is created.
+- **`Queue` reports whether the queue took the message.** Run closes both
+  queues as it returns, so `false` means the run has ended and no other run
+  will show that message to anyone. That is the signal to start a new run
+  with it — the alternative, a hopeful `true`, is how a CI notice ends up
+  sitting in a queue nothing reads. A nil queue is closed by the same logic.
+- **`Result.Undelivered` is what the run never delivered**, system first.
+  It is empty for a run that ended normally, and non-empty when the run ended
+  first for another reason — a cancelled `ctx`, a model-call error, or a host
+  `MaxTurns` cap that left no turn to deliver into. Re-deliver those into the
+  next run rather than dropping them.
+- **The host persists them**, through `Events.OnSystemMessage`: the loop hands
+  over each message it is about to append and takes back the durable id the
+  host minted for it, so the stored thread and the transcript agree.
+- The `Kind` you set rides along untouched (`SubagentReportKind` is the loop's
+  own), which is what lets a host render a CI notice differently from a nudge.
+
 ### Retry and error classification
 
 `RetryPolicy` (default `DefaultRetry`: **10 attempts**, 500ms base, delay =
