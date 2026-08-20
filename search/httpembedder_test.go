@@ -47,7 +47,7 @@ func TestHTTPEmbedderSendsTheModelAndReturnsAVectorPerInput(t *testing.T) {
 	srv, got := embeddingsServer(t, http.StatusOK, nil)
 	e := HTTPEmbedder{BaseURL: srv.URL, Model: "text-embed", APIKey: "k", HTTP: srv.Client()}
 
-	vecs, err := e.Embed(context.Background(), []string{"one", "two"})
+	vecs, err := e.EmbedDocuments(context.Background(),[]string{"one", "two"})
 	require.NoError(t, err)
 	require.Len(t, vecs, 2)
 	assert.Equal(t, []float32{1, 1}, vecs[0])
@@ -73,7 +73,7 @@ func TestHTTPEmbedderRestoresTheProvidersStatedOrder(t *testing.T) {
 	})
 	e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
 
-	vecs, err := e.Embed(context.Background(), []string{"first", "second"})
+	vecs, err := e.EmbedDocuments(context.Background(),[]string{"first", "second"})
 	require.NoError(t, err)
 	assert.Equal(t, []float32{1, 1}, vecs[0], "index 0's vector must land on the first input")
 	assert.Equal(t, []float32{9, 9}, vecs[1])
@@ -83,7 +83,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 	t.Run("http status", func(t *testing.T) {
 		srv, _ := embeddingsServer(t, http.StatusTooManyRequests, map[string]any{"error": "slow down"})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.Embed(context.Background(), []string{"x"})
+		_, err := e.EmbedDocuments(context.Background(),[]string{"x"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "429")
 		assert.Contains(t, err.Error(), "slow down")
@@ -96,7 +96,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 			"error": map[string]any{"message": "model not found"},
 		})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.Embed(context.Background(), []string{"x"})
+		_, err := e.EmbedDocuments(context.Background(),[]string{"x"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "model not found")
 	})
@@ -107,7 +107,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 			"data":   []map[string]any{{"index": 0, "embedding": []float32{1}}},
 		})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.Embed(context.Background(), []string{"one", "two"})
+		_, err := e.EmbedDocuments(context.Background(),[]string{"one", "two"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "1 vectors for 2 inputs")
 	})
@@ -118,16 +118,67 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 			"data":   []map[string]any{{"index": 0, "embedding": []float32{}}},
 		})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.Embed(context.Background(), []string{"x"})
+		_, err := e.EmbedDocuments(context.Background(),[]string{"x"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty vector")
 	})
 }
 
+// Retrieval is asymmetric in most modern embedding models: the stored passage
+// and the question that should find it are embedded differently, and the model
+// is told which it is being given. Applying one side's prefix to the other is
+// invisible at runtime -- every call succeeds and the results are merely worse
+// -- so it is worth a test rather than a careful reading.
+func TestHTTPEmbedderPrefixesEachSideWithItsOwnTask(t *testing.T) {
+	srv, got := embeddingsServer(t, http.StatusOK, nil)
+	e := HTTPEmbedder{
+		BaseURL: srv.URL, Model: "m", HTTP: srv.Client(),
+		DocumentPrefix: NomicDocumentPrefix,
+		QueryPrefix:    NomicQueryPrefix,
+	}
+
+	_, err := e.EmbedDocuments(context.Background(), []string{"a stored passage"})
+	require.NoError(t, err)
+	_, err = e.EmbedQuery(context.Background(), "a question")
+	require.NoError(t, err)
+
+	require.Len(t, *got, 2)
+	assert.Equal(t, []string{"search_document: a stored passage"}, (*got)[0].Input)
+	assert.Equal(t, []string{"search_query: a question"}, (*got)[1].Input)
+}
+
+func TestHTTPEmbedderSendsNoPrefixByDefault(t *testing.T) {
+	srv, got := embeddingsServer(t, http.StatusOK, nil)
+	e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
+
+	_, err := e.EmbedQuery(context.Background(), "plain")
+	require.NoError(t, err)
+	require.Len(t, *got, 1)
+	assert.Equal(t, []string{"plain"}, (*got)[0].Input,
+		"a symmetric model must not have a prefix invented for it")
+}
+
+// The batch cap belongs to the endpoint, and endpoints disagree. Without the
+// split, an index batching more than one allows fails every pass forever --
+// which reads as a broken index rather than a setting.
+func TestHTTPEmbedderSplitsABatchTheEndpointCannotTake(t *testing.T) {
+	srv, got := embeddingsServer(t, http.StatusOK, nil)
+	e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client(), MaxBatch: 2}
+
+	vecs, err := e.EmbedDocuments(context.Background(), []string{"a", "b", "c", "d", "e"})
+	require.NoError(t, err)
+	require.Len(t, vecs, 5, "the caller still gets one vector per input, in order")
+
+	require.Len(t, *got, 3)
+	assert.Equal(t, []string{"a", "b"}, (*got)[0].Input)
+	assert.Equal(t, []string{"c", "d"}, (*got)[1].Input)
+	assert.Equal(t, []string{"e"}, (*got)[2].Input)
+}
+
 func TestHTTPEmbedderSendsNoRequestForNoInput(t *testing.T) {
 	srv, got := embeddingsServer(t, http.StatusOK, nil)
 	e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-	vecs, err := e.Embed(context.Background(), nil)
+	vecs, err := e.EmbedDocuments(context.Background(),nil)
 	require.NoError(t, err)
 	assert.Empty(t, vecs)
 	assert.Empty(t, *got)

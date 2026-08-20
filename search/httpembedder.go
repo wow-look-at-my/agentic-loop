@@ -30,7 +30,46 @@ type HTTPEmbedder struct {
 	Headers map[string]string
 	// HTTP is the client; nil uses http.DefaultClient.
 	HTTP *http.Client
+
+	// DocumentPrefix and QueryPrefix are prepended to each input on their
+	// respective side. They are empty by default, which is correct for a
+	// symmetric model such as OpenAI's.
+	//
+	// Set them for a model that was trained with task prefixes. Getting this
+	// wrong is not an error anybody sees: every call succeeds and the results
+	// are merely worse, so the prefixes are configuration rather than a guess
+	// this package makes from a model's name. NomicDocumentPrefix and
+	// NomicQueryPrefix are the literals for one such family; for any other,
+	// read that model's card.
+	//
+	// Changing a prefix changes the vectors it produces, so it is a re-index:
+	// DropModel that model and let the backfill run again.
+	DocumentPrefix string
+	QueryPrefix    string
+
+	// MaxBatch caps how many inputs go in one request, splitting a larger call
+	// into several. Zero sends whatever it is given in one request.
+	//
+	// It exists because the cap is the ENDPOINT's, and endpoints disagree:
+	// a self-hosted inference server commonly caps a batch far below what a
+	// hosted API accepts. Without it, an index batching more than the endpoint
+	// allows fails every pass forever, which looks like a broken index rather
+	// than a setting.
+	MaxBatch int
 }
+
+// Nomic's text models require a task instruction prefix on every input -- the
+// model card for nomic-embed-text-v1.5 states the prompt "must include a task
+// instruction prefix". These are the two that matter for retrieval, verbatim
+// from that card's own examples, colon and trailing space included.
+//
+// They are constants rather than a default because nothing here knows which
+// model an endpoint is really serving, and applying a prefix to a model that
+// was not trained on it is the same silent damage in the other direction.
+const (
+	NomicDocumentPrefix = "search_document: "
+	NomicQueryPrefix    = "search_query: "
+)
 
 // embeddingsMaxBytes caps one response. A batch of 64 vectors at 3072
 // dimensions is about 4 MB of JSON floats, so the cap sits well above what a
@@ -58,11 +97,44 @@ type embeddingsResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// Embed implements Embedder.
-func (e HTTPEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+// EmbedDocuments implements Embedder, prefixing each input with
+// DocumentPrefix and splitting the call to respect MaxBatch.
+func (e HTTPEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
+	prefixed := make([]string, len(texts))
+	for i, t := range texts {
+		prefixed[i] = e.DocumentPrefix + t
+	}
+
+	size := e.MaxBatch
+	if size <= 0 {
+		size = len(prefixed)
+	}
+	out := make([][]float32, 0, len(prefixed))
+	for start := 0; start < len(prefixed); start += size {
+		end := min(start+size, len(prefixed))
+		vecs, err := e.post(ctx, prefixed[start:end])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vecs...)
+	}
+	return out, nil
+}
+
+// EmbedQuery implements Embedder, prefixing the query with QueryPrefix.
+func (e HTTPEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	vecs, err := e.post(ctx, []string{e.QueryPrefix + text})
+	if err != nil {
+		return nil, err
+	}
+	return vecs[0], nil
+}
+
+// post makes one embeddings request.
+func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, error) {
 	body, err := json.Marshal(embeddingsRequest{Model: e.Model, Input: texts, EncodingFormat: "float"})
 	if err != nil {
 		return nil, fmt.Errorf("search: encode embeddings request: %w", err)

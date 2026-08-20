@@ -27,14 +27,31 @@ const (
 	embedBatchSize = 64
 )
 
-// Embedder turns text into vectors. One call takes many inputs and must return
-// exactly one vector per input, in the same order.
+// Embedder turns text into vectors.
+//
+// The two sides are separate methods because retrieval is ASYMMETRIC in most
+// modern embedding models: a stored passage and the question that should find
+// it are embedded differently, and the model is told which it is being given.
+// Nomic's text models require a task prefix on every input -- their card says
+// the prompt "must include a task instruction prefix" -- and the E5 and BGE
+// families have their own. Getting it wrong costs retrieval quality and costs
+// it SILENTLY: every call succeeds, every vector is well-formed, and the
+// results are quietly worse. One symmetric Embed method makes that mistake the
+// default and invisible, so there isn't one.
+//
+// An implementation for a symmetric model (OpenAI's, say) does the same thing
+// on both sides, which is a one-line method, not a burden.
 //
 // It is an interface because the index does no HTTP of its own and holds no
-// endpoint or key -- the same rule the rest of this module follows. HTTPEmbedder
-// is the implementation for an OpenAI-compatible /v1/embeddings endpoint.
+// endpoint or key -- the same rule the rest of this module follows.
+// HTTPEmbedder is the implementation for an OpenAI-compatible /v1/embeddings
+// endpoint.
 type Embedder interface {
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	// EmbedDocuments embeds text that is being STORED, to be found later. It
+	// must return exactly one vector per input, in the same order.
+	EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)
+	// EmbedQuery embeds one search query.
+	EmbedQuery(ctx context.Context, text string) ([]float32, error)
 }
 
 // chunkContent splits content into overlapping windows of runes. It returns
@@ -175,7 +192,7 @@ func (i *Index) EmbedPending(ctx context.Context, owner, model string, e Embedde
 // lets the pending query trust embed_status: a message either has its full set
 // of chunks stored, or it has no record at all and is picked up again.
 func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batch) (n int, err error) {
-	vecs, err := e.Embed(ctx, b.texts)
+	vecs, err := e.EmbedDocuments(ctx, b.texts)
 	if err != nil {
 		return 0, fmt.Errorf("search: embed %d chunks with %q: %w", len(b.texts), model, err)
 	}

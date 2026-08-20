@@ -93,7 +93,17 @@ type bagEmbedder struct {
 	short bool
 }
 
-func (b *bagEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+// EmbedQuery embeds one query the same way a document is embedded: the bag
+// projection is symmetric, so a query matches the documents sharing its words.
+func (b *bagEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	vecs, err := b.EmbedDocuments(ctx, []string{text})
+	if err != nil {
+		return nil, err
+	}
+	return vecs[0], nil
+}
+
+func (b *bagEmbedder) EmbedDocuments(_ context.Context, texts []string) ([][]float32, error) {
 	b.calls++
 	if b.fail != nil {
 		return nil, b.fail

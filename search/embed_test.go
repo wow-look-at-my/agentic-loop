@@ -173,7 +173,11 @@ type batchRecorder struct {
 	sizes []int
 }
 
-func (b *batchRecorder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+func (b *batchRecorder) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
 	b.sizes = append(b.sizes, len(texts))
-	return b.inner.Embed(ctx, texts)
+	return b.inner.EmbedDocuments(ctx, texts)
+}
+
+func (b *batchRecorder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	return b.inner.EmbedQuery(ctx, text)
 }

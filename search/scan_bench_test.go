@@ -63,10 +63,20 @@ func fillVectors(tb testing.TB, dir string, n, dim int) *Index {
 // measures the scan and not an embedding call.
 type fixedEmbedder struct{ dim int }
 
-func (f fixedEmbedder) Embed(context.Context, []string) ([][]float32, error) {
+func (f fixedEmbedder) EmbedQuery(context.Context, string) ([]float32, error) {
 	v := make([]float32, f.dim)
 	v[0] = 1
-	return [][]float32{v}, nil
+	return v, nil
+}
+
+func (f fixedEmbedder) EmbedDocuments(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range out {
+		v := make([]float32, f.dim)
+		v[0] = 1
+		out[i] = v
+	}
+	return out, nil
 }
 
 func BenchmarkVectorScan(b *testing.B) {

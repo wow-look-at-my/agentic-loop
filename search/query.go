@@ -250,14 +250,11 @@ func isSeparator(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(
 // see docs/search.md for what that costs at real corpus sizes and why the
 // answer is "less than the embedding call that precedes it".
 func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit int) ([]candidate, error) {
-	vecs, err := q.Embedder.Embed(ctx, []string{text})
+	vec, err := q.Embedder.EmbedQuery(ctx, text)
 	if err != nil {
 		return nil, fmt.Errorf("search: embed query: %w", err)
 	}
-	if len(vecs) != 1 {
-		return nil, fmt.Errorf("search: %q returned %d vectors for one query", q.Model, len(vecs))
-	}
-	unit, ok := normalize(vecs[0])
+	unit, ok := normalize(vec)
 	if !ok {
 		return nil, fmt.Errorf("search: %q returned a vector with no direction for the query", q.Model)
 	}
