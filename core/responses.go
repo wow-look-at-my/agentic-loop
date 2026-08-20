@@ -319,7 +319,7 @@ func (st *respStream) addItem(item respItem) {
 			st.itemText.WriteString(c.Text)
 		}
 	case respItemFuncCall:
-		st.parts = append(st.parts, ToolCallPart{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
+		st.parts = append(st.parts, ToolCallPart{ID: item.CallID, Name: item.Name, Arguments: toolArgs(item.Arguments)})
 		st.haveCall = true
 	case respItemReasoning:
 		tb := respThinkingBlock(item)
@@ -474,7 +474,7 @@ func parseResponsesObject(data []byte) (*Completion, error) {
 			}
 		case respItemFuncCall:
 			comp.Message.Parts = append(comp.Message.Parts,
-				ToolCallPart{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
+				ToolCallPart{ID: item.CallID, Name: item.Name, Arguments: toolArgs(item.Arguments)})
 			haveCall = true
 		case respItemReasoning:
 			tb := respThinkingBlock(item)

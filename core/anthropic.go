@@ -278,7 +278,7 @@ func (b *anBlock) part() Part {
 			return TextPart{Text: s}
 		}
 	case "tool_use":
-		return ToolCallPart{ID: b.id, Name: b.name, Arguments: b.json.String()}
+		return ToolCallPart{ID: b.id, Name: b.name, Arguments: toolArgs(b.json.String())}
 	case "thinking":
 		return ThinkingPart{Text: b.thinking.String(), Signature: b.signature.String()}
 	case "redacted_thinking":
@@ -568,12 +568,8 @@ func parseAnthropicNonStream(data []byte) (*Completion, error) {
 		case "redacted_thinking":
 			comp.Message.Parts = append(comp.Message.Parts, RedactedThinkingPart{Data: b.Data})
 		case "tool_use":
-			args := b.Input
-			if len(args) == 0 {
-				args = json.RawMessage(`{}`)
-			}
 			comp.Message.Parts = append(comp.Message.Parts, ToolCallPart{
-				ID: b.ID, Name: b.Name, Arguments: string(args),
+				ID: b.ID, Name: b.Name, Arguments: toolArgs(string(b.Input)),
 			})
 		}
 	}
