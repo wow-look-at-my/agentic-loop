@@ -46,8 +46,8 @@ var oaReserved = set.Of("messages", "model", "stream", "tools")
 
 // Complete implements Provider over a streaming chat completion. When the
 // first attempt fails before anything streamed with a 400 that names NO
-// recoverable parameter at all (Z.AI answers "Invalid API parameter, please
-// check the documentation" -- no name whatsoever, so NewParamStripper's
+// recoverable parameter at all (some servers answer "Invalid API parameter,
+// please check the documentation" -- no name whatsoever, so NewParamStripper's
 // regexes have nothing to match and a caller wrapping this Provider in it
 // gets no help), and the request carried the AUTO-added default
 // stream_options (never a caller-requested field, only a usage-in-stream
@@ -162,7 +162,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 // {"include_usage":true} only when the caller has not supplied a
 // stream_options key via Extra AND includeDefaultStreamOptions is true --
 // without it OpenAI and most compatibles omit usage from streamed responses
-// entirely, but a few (Z.AI) reject the field outright, which is what
+// entirely, but a few reject the field outright, which is what
 // includeDefaultStreamOptions=false is for (see Complete's retry). MaxTokens
 // > 0 sets max_tokens (overriding an Extra value); 0 leaves the field to
 // Extra or the provider default. CacheKey, when set, rides as
