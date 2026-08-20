@@ -115,18 +115,17 @@ func TestQueueAfterTheRunEndsIsRefused(t *testing.T) {
 func TestUndeliveredMessagesComeBackWhenTheRunFails(t *testing.T) {
 	sys, user := &MessageQueue{}, &MessageQueue{}
 	boom := errors.New("upstream gave up")
-	provider := &scriptProvider{steps: []scriptStep{
-		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
-		{err: boom},
-	}}
-	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
-	exec.execute = func(context.Context, ToolCall) (ToolResult, error) {
-		assert.True(t, sys.Queue(Message{Role: RoleUser, Content: "CI went red"}))
-		assert.True(t, user.Queue(Message{Role: RoleUser, Content: "and stop"}))
-		return ToolResult{Content: "ran"}, nil
-	}
+	// Both messages are queued DURING the call that then fails, so the run
+	// ends with no turn boundary left to drain them at.
+	provider := &scriptProvider{steps: []scriptStep{{
+		emit: func(*StreamEvents) {
+			assert.True(t, sys.Queue(Message{Role: RoleUser, Content: "CI went red"}))
+			assert.True(t, user.Queue(Message{Role: RoleUser, Content: "and stop"}))
+		},
+		err: boom,
+	}}}
 	res, err := Run(context.Background(), Config{
-		Provider: provider, Tools: exec.registry(), SystemMessages: sys, UserMessages: user,
+		Provider: provider, SystemMessages: sys, UserMessages: user,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.ErrorIs(t, err, boom)
 	require.NotNil(t, res)
