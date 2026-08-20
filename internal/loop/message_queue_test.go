@@ -25,7 +25,7 @@ func TestQueuedMessageIsDeliveredAtTheNextTurn(t *testing.T) {
 	}
 	res, err := Run(context.Background(), Config{
 		Provider:     provider,
-		Tools:        exec.tools2(),
+		Tools:        exec.registry(),
 		UserMessages: user,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestQueuedMessageContinuesAStalledTurn(t *testing.T) {
 		{comp: assistantComp("answered")},
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
-	cfg := Config{Provider: provider, Tools: exec.tools2(), SystemMessages: sys}
+	cfg := Config{Provider: provider, Tools: exec.registry(), SystemMessages: sys}
 	cfg.TurnHook = func(turn int) {
 		if turn == 1 {
 			assert.True(t, sys.Queue(Message{Role: RoleUser, Content: "CI went red"}))
@@ -126,7 +126,7 @@ func TestUndeliveredMessagesComeBackWhenTheRunFails(t *testing.T) {
 		return ToolResult{Content: "ran"}, nil
 	}
 	res, err := Run(context.Background(), Config{
-		Provider: provider, Tools: exec.tools2(), SystemMessages: sys, UserMessages: user,
+		Provider: provider, Tools: exec.registry(), SystemMessages: sys, UserMessages: user,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.ErrorIs(t, err, boom)
 	require.NotNil(t, res)
