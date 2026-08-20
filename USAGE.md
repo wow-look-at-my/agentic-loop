@@ -995,6 +995,13 @@ the `Mode` that answered (`text`, `semantic`, `hybrid`, or the `substring`
 fallback). Depth, including what the vector scan measures at and where it stops
 being interactive: [`docs/search.md`](docs/search.md).
 
+Everything in the file is derived, so `Open` never refuses one it cannot read.
+It checks each half's tables against the shape this version writes and rebuilds
+the half that does not match — a recorded version can come from another
+implementation of the same index and describe different columns. Rebuilding the
+text half re-reads what the host already holds; the vectors are a separate half
+and are kept whenever they are still readable.
+
 ## Concurrency
 
 Providers built by the dialect constructors are read-only during `Complete`
