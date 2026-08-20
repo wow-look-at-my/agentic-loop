@@ -37,7 +37,16 @@ func anWireMessages(msgs []Message) ([]map[string]any, error) {
 			i-- // the outer loop increments past the run's last message
 			out = append(out, map[string]any{"role": "user", "content": blocks})
 		case m.Role == RoleAssistant:
-			out = append(out, map[string]any{"role": "assistant", "content": anAssistantContent(m)})
+			content := anAssistantContent(m)
+			if content == nil {
+				// The turn says nothing this dialect can carry. An empty text
+				// block fails the whole request ("text content blocks must
+				// contain non-whitespace text"), and the API combines
+				// consecutive same-role turns, so the drop changes nothing
+				// else. The Responses dialect omits the same turn already.
+				continue
+			}
+			out = append(out, map[string]any{"role": "assistant", "content": content})
 		default:
 			content, err := anUserContent(m)
 			if err != nil {
@@ -93,8 +102,9 @@ func anImageSource(i ImagePart) (map[string]any, error) {
 }
 
 // anAssistantContent builds an assistant message's content blocks in replay
-// order: thinking first, then text, then tool_use. A message with no blocks
-// at all degrades to string content.
+// order: thinking first, then text, then tool_use. It returns nil for a turn
+// that produces no block at all -- no text, no tool call, and no replayable
+// thinking. The caller drops such a turn.
 func anAssistantContent(m Message) any {
 	blocks := make([]map[string]any, 0, len(m.Thinking)+1+len(m.ToolCalls))
 	for _, tb := range m.Thinking {
@@ -125,7 +135,7 @@ func anAssistantContent(m Message) any {
 		})
 	}
 	if len(blocks) == 0 {
-		return m.Content
+		return nil
 	}
 	return blocks
 }
@@ -156,10 +166,9 @@ func parseToolInput(args string) map[string]any {
 // array gets the marker on its last block; empty strings, empty arrays, and
 // unrecognized shapes pass through unmarked — caching is an optimization,
 // never a correctness requirement. The empty-string case matters: the API
-// rejects empty text blocks, and a transcript CAN legitimately end on an
-// empty message (Run finalizes a turn cancelled after only tool-call deltas
-// as an assistant message with no content), so converting "" into an empty
-// marked text block would turn a valid request into a 400.
+// rejects an empty text block, and a user turn can carry empty content, so
+// converting "" into an empty marked text block would turn a valid request
+// into a 400.
 func markTranscriptTail(msgs []map[string]any) {
 	if len(msgs) == 0 {
 		return

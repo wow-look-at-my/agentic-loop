@@ -394,16 +394,14 @@ func TestAnthropicNonOKOverflow(t *testing.T) {
 
 func TestAnthropicEmptyTailUnmarked(t *testing.T) {
 	// An empty-string tail must NOT be converted into a marked (empty) text
-	// block — the API rejects empty text blocks, and Run can legitimately
-	// produce an empty trailing assistant message (a turn cancelled after
-	// only tool-call deltas streamed, replayed by the caller).
+	// block — the API rejects an empty text block.
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	p := anProvider(t, srv.URL)
 	req := Request{
 		Model:     "m",
-		Messages:  []Message{{Role: RoleUser, Content: "hi"}, {Role: RoleAssistant, Content: ""}},
+		Messages:  []Message{{Role: RoleAssistant, Content: "a"}, {Role: RoleUser, Content: ""}},
 		MaxTokens: 64,
 	}
 	_, err := p.Complete(context.Background(), req, nil)
@@ -415,6 +413,72 @@ func TestAnthropicEmptyTailUnmarked(t *testing.T) {
 	assert.Equal(t, "", lastMsg["content"], "an empty tail stays a plain string, never an empty text block")
 	assert.NotContains(t, string(h.body), "cache_control",
 		"no marker anywhere: the tail is unmarkable and there is no system prompt")
+}
+
+func TestAnthropicSaysNothingForATurnThatSaidNothing(t *testing.T) {
+	// A stored transcript holds assistant turns that carry nothing: a run
+	// cancelled before any text, or a model that answered with an empty
+	// message. Sending one as an empty text block fails the WHOLE request,
+	// which makes every later turn in that conversation fail too. The turn
+	// is dropped instead, and the surviving turns keep their order.
+	h := &anSSEHandler{events: minimalAnEvents("ok")}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	p := anProvider(t, srv.URL)
+	req := Request{
+		Model: "m",
+		Messages: []Message{
+			{Role: RoleUser, Content: "first"},
+			{Role: RoleAssistant, Content: ""},
+			// Thinking with no signature is not replayable, so this turn is
+			// as empty as the one above it.
+			{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "hm"}}},
+			{Role: RoleUser, Content: "second"},
+		},
+		MaxTokens: 64,
+	}
+	_, err := p.Complete(context.Background(), req, nil)
+	require.NoError(t, err)
+
+	body := bodyMap(t, h.body)
+	msgs := body["messages"].([]any)
+	require.Len(t, msgs, 2, "both content-less assistant turns are gone")
+	assert.Equal(t, "user", msgs[0].(map[string]any)["role"])
+	assert.Equal(t, "first", msgs[0].(map[string]any)["content"])
+	assert.Equal(t, "user", msgs[1].(map[string]any)["role"])
+	blocks := msgs[1].(map[string]any)["content"].([]any)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "second", blocks[0].(map[string]any)["text"])
+}
+
+func TestAnthropicKeepsAnAssistantTurnThatOnlyCalledATool(t *testing.T) {
+	// The drop above is about a turn with NOTHING in it. A turn whose only
+	// output was a tool call has no text and must still be replayed, or the
+	// tool_result that answers it has nothing to attach to.
+	h := &anSSEHandler{events: minimalAnEvents("ok")}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	p := anProvider(t, srv.URL)
+	req := Request{
+		Model: "m",
+		Messages: []Message{
+			{Role: RoleUser, Content: "go"},
+			{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "c1", Name: "ls", Arguments: `{}`}}},
+			{Role: RoleTool, ToolCallID: "c1", Content: "out"},
+		},
+		MaxTokens: 64,
+	}
+	_, err := p.Complete(context.Background(), req, nil)
+	require.NoError(t, err)
+
+	body := bodyMap(t, h.body)
+	msgs := body["messages"].([]any)
+	require.Len(t, msgs, 3)
+	asst := msgs[1].(map[string]any)
+	assert.Equal(t, "assistant", asst["role"])
+	blocks := asst["content"].([]any)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "tool_use", blocks[0].(map[string]any)["type"])
 }
 
 func TestAnthropicAssistantOnlyTextNoToolContinuation(t *testing.T) {
