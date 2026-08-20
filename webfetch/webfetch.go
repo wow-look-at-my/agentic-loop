@@ -123,6 +123,10 @@ func (e *webFetchTool) Decl() agentic.ToolDecl {
 		Description: webFetchToolDescription,
 		InputSchema: webFetchSchema,
 		Readonly:    true,
+		// Read-only and OPEN-world: fetching a URL changes nothing here and
+		// reaches an arbitrary host, which are two different facts and only the
+		// first one makes it safe for a sub-agent.
+		OpenWorld: agentic.Bool(true),
 	}
 }
 

@@ -122,4 +122,6 @@ var (
 	DecodeModelList      = commonai.DecodeModelList
 	Anomalous            = commonai.Anomalous
 	NewRateLimiter       = extras.NewRateLimiter
+	// Bool addresses a boolean for ToolDecl's tri-state behaviour fields.
+	Bool = commonai.Bool
 )
