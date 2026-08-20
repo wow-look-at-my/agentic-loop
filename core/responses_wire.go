@@ -34,6 +34,9 @@ type respItem struct {
 	Content []respContent `json:"content,omitempty"`
 	// CallID, Name and Arguments describe a function_call; CallID and Output a
 	// function_call_output. The call_id (not the item id) is what pairs them.
+	// Arguments keeps omitempty because one struct serves every item type, and
+	// only a function_call may carry the field at all; a function_call gets a
+	// non-empty value from toolArgs, so its own field never disappears.
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
@@ -105,7 +108,7 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 			}
 			for _, tc := range m.ToolCalls {
 				out = append(out, respItem{
-					Type: respItemFuncCall, CallID: tc.ID, Name: tc.Name, Arguments: tc.Arguments,
+					Type: respItemFuncCall, CallID: tc.ID, Name: tc.Name, Arguments: toolArgs(tc.Arguments),
 				})
 			}
 		default:

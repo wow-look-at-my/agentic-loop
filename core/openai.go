@@ -386,7 +386,7 @@ func (a *toolCallAccumulator) finish() []ToolCall {
 	out := make([]ToolCall, 0, len(a.order))
 	for _, idx := range a.order {
 		tc := a.byIndex[idx]
-		out = append(out, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments})
+		out = append(out, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: toolArgs(tc.Function.Arguments)})
 	}
 	return out
 }
@@ -598,7 +598,7 @@ func (o *openaiProvider) parseNonStream(data []byte) (*Completion, error) {
 	var calls []ToolCall
 	for _, tc := range first.Message.ToolCalls {
 		calls = append(calls, ToolCall{
-			ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments,
+			ID: tc.ID, Name: tc.Function.Name, Arguments: toolArgs(tc.Function.Arguments),
 		})
 	}
 	comp := &Completion{

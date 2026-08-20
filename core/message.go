@@ -54,6 +54,21 @@ type ToolCall struct {
 	Arguments string
 }
 
+// toolArgs is a tool call's arguments as the object every dialect needs. A
+// model that calls a zero-argument tool sends no argument bytes at all, which
+// arrives as an empty string, and an empty string is not JSON: a decoder
+// rejects it, and Z.AI answers a function object without an arguments field
+// with 400 "Invalid API parameter". So empty reads as the empty object, which
+// is what the call meant. Every place that reads a tool call off the wire and
+// every place that writes one back applies this, because a transcript comes
+// from the host's storage as often as from the call that just happened.
+func toolArgs(args string) string {
+	if strings.TrimSpace(args) == "" {
+		return "{}"
+	}
+	return args
+}
+
 // Message is one entry in a conversation transcript. Thinking and ToolCalls
 // are meaningful only on assistant messages; ToolCallID and ToolIsError only
 // on tool messages.
