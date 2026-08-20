@@ -198,6 +198,14 @@ whose sink failed. On any other mid-stream failure or cancellation **after
 data arrived**, `Complete` likewise returns the partial `*Completion`
 alongside the error. Both dialects are safe for concurrent use.
 
+A stored transcript can hold an assistant turn that carries nothing — a run
+cancelled before the first token, a model that answered with an empty
+message. The Anthropic and Responses dialects drop such a turn. An empty
+text block fails the whole request on both, so one turn like this in the
+history would fail every later turn in that conversation, permanently. Both
+APIs combine consecutive same-role turns, so the drop loses nothing. A turn
+whose only output was a tool call is not empty, and is always replayed.
+
 `Request.Extra` is a verbatim top-level passthrough (`temperature`,
 `reasoning_effort`, `num_ctx`, `thinking`, ...). It is merged first, so the
 typed core fields always win; the library never interprets, gates, or filters
