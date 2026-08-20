@@ -894,6 +894,38 @@ completion, why `CompactResult` carries one, why `SubagentActivity` has a
 `turn_end` kind, why `WebFetchConfig` has `OnCompletion`, and why
 `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
+## Searching stored conversations
+
+`search` indexes conversations so they can be found by word (FTS5) and, when an
+embedding model is available, by meaning. The conversations stay wherever the
+host keeps them — the index reads them through a `Source`, and `SessionSource`
+adapts a `session.Store`:
+
+```go
+idx, err := search.Open(ctx, filepath.Join(dir, "search.db"))
+defer idx.Close()
+
+src := &search.SessionSource{Store: store}
+if _, err := idx.Ingest(ctx, src); err != nil { /* ... */ }
+
+// Optional: the semantic half. Without an Embedder the search is text-only.
+emb := search.HTTPEmbedder{BaseURL: "https://api.openai.com", Model: "text-embedding-3-small", APIKey: key}
+if _, err := idx.EmbedPending(ctx, "", "text-embedding-3-small", emb, 200); err != nil { /* ... */ }
+
+hits, mode, err := idx.Search(ctx, search.Query{
+    Text: "how did we rotate the signing key", Limit: 20,
+    Model: "text-embedding-3-small", Embedder: emb,
+})
+```
+
+Call `Ingest` and `EmbedPending` on whatever cadence suits the host; both are
+resumable and neither re-does finished work. The index is deliberately behind
+the store — embedding is a network call — so `Status` reports the stale
+conversations, the pending embeddings and the last error, and `Search` returns
+the `Mode` that answered (`text`, `semantic`, `hybrid`, or the `substring`
+fallback). Depth, including what the vector scan measures at and where it stops
+being interactive: [`docs/search.md`](docs/search.md).
+
 ## Concurrency
 
 Providers built by the dialect constructors are read-only during `Complete`

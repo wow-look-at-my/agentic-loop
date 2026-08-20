@@ -95,6 +95,14 @@ side of that line it falls on — do not put it on both.
   packages that import it and a binary links only what it imports, so weight
   is an argument about `go.sum` -- `docs/module-layout.md` weighs it and says
   what that is worth.
+- **A search index that is behind SAYS SO.** `search` is asynchronous by
+  construction -- embedding is a network call -- so `Status` reports the stale
+  conversations, the pending embeddings, the truncated messages and the last
+  error verbatim, and `Search` reports which half answered. Nothing is ever
+  marked permanently failed: a message that cannot be embedded today is picked
+  up by the next pass. Its other invariants -- the two schema versions, why the
+  vectors are scanned in Go and what that measures at, and why a message id
+  must be stable -- are in `docs/search.md`.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
@@ -284,6 +292,8 @@ side of that line it falls on — do not put it on both.
   event vocabulary.
 - `docs/module-layout.md` — why this is one module, and what the seven-module
   split cost before it was collapsed.
+- `docs/search.md` — the conversation index: the Source seam, why the vectors
+  are scanned in Go, what that costs measured, and how lag is reported.
 - `docs/nul-char.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
 
 ## Fix the bug. Never build around it.
