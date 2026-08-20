@@ -10,6 +10,9 @@ core         the format, its schema, the three dialects. Depends on
 extras       retry, rate limiting                    <- core
 client       the Go API                              <- core, extras
 session      conversation storage                    <- core
+search       the conversation index: FTS5 + vectors over stored
+             conversations. Depends on modernc.org/sqlite.
+                                                     <- core, session
 http         stateless + stateful HTTP               <- core, session
 socket       unix socket + websocket                 <- core, session
 cli          the cai commands                        <- everything
@@ -64,6 +67,11 @@ That was not worth a broken bootstrap and a two-merge dance.
 **Do not split it back up.**
 
 ## Dependencies
+
+`search` adds `modernc.org/sqlite`, which is SQLite transpiled to Go: the index
+is a real database and needs no cgo, so a consumer still cross-compiles a static
+binary. It reaches `search/` alone, exactly as cobra reaches `cli/` alone, and a
+binary that imports neither links neither.
 
 Two org modules, both resolved from the proxy, both branch-tracked:
 

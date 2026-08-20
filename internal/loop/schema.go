@@ -20,9 +20,8 @@ import (
 // Field prose lives in `jsonschema:"..."` tags. Optionality is `omitempty` on
 // the json tag: a field without it is required.
 //
-// It is hand-rolled reflection rather than a schema library because the
-// library's runtime is standard library only, and the subset a tool argument
-// needs is small: scalars, slices of scalars, and prose.
+// It is hand-rolled reflection rather than a schema library because the subset
+// a tool argument needs is small: scalars, slices of scalars, and prose.
 
 // InferSchema builds the schema for a tool's argument struct.
 //
