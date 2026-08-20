@@ -113,6 +113,42 @@ func (f *File) List() ([]string, error) {
 	return ids, nil
 }
 
+// Revisions returns a change marker per stored conversation, without reading
+// or validating any of them.
+//
+// It exists for an indexer, which has to answer "which of these moved since I
+// last looked" on every pass. Reading each document to find out is the whole
+// store per pass; a stat is not. The marker is the document's size and
+// modification time, which is what changes when write() replaces one.
+//
+// It is a marker, not a version: it says a document is not the one seen
+// before, and nothing about what changed. That is all an indexer needs, and it
+// is why coarse mtime resolution is not a problem here -- a write that keeps
+// both the size and the timestamp is a write that produced identical bytes.
+func (f *File) Revisions() (map[string]string, error) {
+	ids, err := f.List()
+	if err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string]string, len(ids))
+	for _, id := range ids {
+		info, err := os.Stat(f.path(id))
+		if err != nil {
+			// The document was deleted between the listing and the stat. It is
+			// simply not there any more, which the caller learns from its
+			// absence here.
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("session: stat %s: %w", f.path(id), err)
+		}
+		out[id] = fmt.Sprintf("%d-%d", info.Size(), info.ModTime().UnixNano())
+	}
+	return out, nil
+}
+
 // read loads and validates one conversation document.
 func (f *File) read(id string) (commonai.Request, error) {
 	if err := validID(id); err != nil {
