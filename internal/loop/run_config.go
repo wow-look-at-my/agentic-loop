@@ -97,15 +97,20 @@ type Config struct {
 	// passed to Subscribe — store the struct holding those function fields here.
 	KeepAlive any
 
-	// SystemMessages is the loop's queue for automated notices (stop-hook
-	// nudges, resource notices, etc.). Any event listener can call Queue to
-	// inject one. System messages are always drained before user messages so
-	// an automated nudge precedes anything the user queued. nil disables
-	// queueing.
+	// SystemMessages is the queue for automated notices -- a CI status
+	// change, a stop-hook nudge, a sub-agent report. UserMessages is the same
+	// channel for what the user sent while the model was working. Any
+	// goroutine calls Queue to deliver a message INTO this run.
+	//
+	// Both are drained at the top of every turn, system first, and a queued
+	// message starts another turn when the model would otherwise finish -- so
+	// a message either queue ACCEPTS always reaches the model. Run closes both
+	// as it returns, which is how a producer racing the end of a run learns to
+	// start a new run instead (Queue reports false); anything queued and never
+	// delivered comes back in Result.Undelivered. A nil queue accepts nothing,
+	// for the same reason: there is no run to deliver it.
 	SystemMessages *MessageQueue
-	// UserMessages is the loop's queue for user-injected messages (e.g. a
-	// mid-run "stop researching" instruction). Drained after system messages.
-	UserMessages *MessageQueue
+	UserMessages   *MessageQueue
 
 	// Subagents is the registry an asynchronous run_subagent reports into (the
 	// same value given to SubagentConfig.Runs). When set, a turn that would
@@ -138,9 +143,18 @@ type Config struct {
 // summed, because successive prompts overlap (each turn re-sends the growing
 // transcript) and summing would double-count the shared prefix many times
 // over. Turns is the number of model calls made.
+//
+// Undelivered holds messages that were queued (SystemMessages or
+// UserMessages) but never reached the model, system first. It is empty on a
+// run that ended normally -- a queued message starts another turn -- and
+// non-empty only when the run ended for another reason first: a cancelled
+// ctx, a model-call error, an aborted tool batch. Whoever produced those
+// messages believes the model saw them, so they come back here to be
+// re-delivered rather than disappearing with the run.
 type Result struct {
-	Messages []Message
-	Final    Message
-	Usages   []Usage
-	Turns    int
+	Messages    []Message
+	Final       Message
+	Usages      []Usage
+	Turns       int
+	Undelivered []Message
 }

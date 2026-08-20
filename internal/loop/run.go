@@ -57,6 +57,15 @@ import (
 // Run returns an error together with a non-nil Result, the Result carries the
 // transcript accumulated so far.
 //
+// Config.SystemMessages and Config.UserMessages deliver messages INTO the
+// run. Both are drained at the top of every turn, system first, and a message
+// queued when the model would otherwise finish starts another turn instead --
+// however many times it happens, because a notice a watcher raised or a line
+// the user typed is not the loop's to discard. Run closes both queues as it
+// returns, so a producer that races the end of a run gets false from Queue
+// and knows to start a new run; whatever the run never delivered comes back
+// in Result.Undelivered.
+//
 // If the loop ends with the model having produced no content (a
 // thinking-only turn, or a run its ctx cut short), one extra tool-less
 // wrap-up turn asks it to synthesize an answer from what it gathered; failing
@@ -83,6 +92,15 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	copy(transcript, req.Messages)
 
 	res := &Result{}
+	// Both queues belong to this run. Closing them on the way out tells a
+	// producer racing the end of the run that its message did not land (Queue
+	// reports false), and hands back anything the run never delivered instead
+	// of dropping it silently.
+	defer func() {
+		if left := closeQueues(cfg.SystemMessages, cfg.UserMessages); len(left) > 0 && res != nil {
+			res.Undelivered = left
+		}
+	}()
 	// stopHookFired prevents a host hook from trapping the run in an infinite
 	// continuation cycle.
 	stopHookFired := false
@@ -106,6 +124,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			panic(r) // re-panic so the caller's recover sees it
 		}
 	}()
+	// moreTurnsAllowed reports whether a host cap still permits a turn after
+	// this one. A capped run that cannot deliver a queued message returns it
+	// in Result.Undelivered instead, so the host can start a new run with it.
+	moreTurnsAllowed := func(turn int) bool {
+		return cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1
+	}
 	finish := func(final Message) (*Result, error) {
 		transcript = append(transcript, final)
 		res.Messages = transcript
@@ -500,14 +524,34 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			if !stopHookFired {
 				stopHookFired = true
 				cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
-				if Pending(cfg.SystemMessages, cfg.UserMessages) {
-					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
-					transcript = append(transcript, final)
-					continue
-				}
+			}
+			// Something is queued: it arrived while the model was working, so
+			// it is an instruction the answer above could not have accounted
+			// for. Keep the answer and take another turn, which drains the
+			// queue at the top. The check is deliberately NOT behind
+			// stopHookFired -- that flag bounds the loop's OWN hook, and
+			// nothing else. A message a user sent or a watcher raised is
+			// external, and there is no count of them the loop may drop.
+			if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
+				transcript = append(transcript, final)
+				continue
 			}
 			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 			return finish(final)
+		}
+
+		// The model stopped without writing an answer, and something is
+		// queued. Deliver that instead of spending a wrap-up call on a turn
+		// with nothing to wrap up: the queued message is newer than anything
+		// the model could synthesize here, and the next turn drains it.
+		if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
+			stalled := assistant
+			stalled.ToolCalls = nil
+			stalled.Content = fallbackOutput(assistant)
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: stalled, Status: "complete"})
+			transcript = append(transcript, stalled)
+			continue
 		}
 
 		// The model stopped without writing an answer -- it produced only
