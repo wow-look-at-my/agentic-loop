@@ -258,6 +258,11 @@ side of that line it falls on — do not put it on both.
 - **A dialect that cannot express something FAILS.** Never drop it: a request
   quietly stripped of what the caller asked about is a wrong answer that looks
   like a right one.
+- **A zero-argument tool call is `{}`, never a missing field** (`toolArgs`).
+  A model calling such a tool sends no argument bytes, so every read path
+  normalizes the empty string, and both wire writers apply it again for a
+  transcript that came from the host's storage. `omitempty` on `arguments`
+  is what made Z.AI 400 the turn — forever, since the call is persisted.
 - **The Responses dialect exists for exactly one thing** (`core/responses.go` +
   `core/responses_wire.go`): a reasoning model's chain of thought surviving a
   tool call, which chat-completions has no field for. So the reasoning ITEM

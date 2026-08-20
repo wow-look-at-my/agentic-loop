@@ -33,9 +33,13 @@ type oaToolCall struct {
 }
 
 // oaFunctionCall is the function name and JSON-encoded arguments of a call.
+// Arguments carries no omitempty: a zero-argument call has empty arguments,
+// and a function object with no arguments field at all is what Z.AI rejects
+// with 400 "Invalid API parameter, please check the documentation". The call
+// is in the stored transcript, so that 400 repeats on every later turn.
 type oaFunctionCall struct {
 	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
+	Arguments string `json:"arguments"`
 }
 
 // oaMessage is one chat message on the OpenAI wire. Its encoding is owned by
@@ -115,7 +119,7 @@ func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMe
 			wm.ToolCalls = append(wm.ToolCalls, oaToolCall{
 				ID:       tc.ID,
 				Type:     "function",
-				Function: oaFunctionCall{Name: tc.Name, Arguments: tc.Arguments},
+				Function: oaFunctionCall{Name: tc.Name, Arguments: toolArgs(tc.Arguments)},
 			})
 		}
 		out = append(out, wm)
