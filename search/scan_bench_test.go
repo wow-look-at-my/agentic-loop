@@ -84,9 +84,8 @@ func BenchmarkVectorScan(b *testing.B) {
 				Model: "bench", Embedder: fixedEmbedder{dim: tc.dim}}
 			b.ResetTimer()
 			for b.Loop() {
-				if _, err := idx.searchSemantic(context.Background(), q, "anything", 20); err != nil {
-					b.Fatal(err)
-				}
+				_, err := idx.searchSemantic(context.Background(), q, "anything", 20)
+				require.NoError(b, err)
 			}
 		})
 	}

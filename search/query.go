@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -276,9 +277,14 @@ func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit 
 	// chances to be slightly relevant.
 	best := map[string]float64{}
 	var mismatched int
+	// sql.RawBytes borrows the driver's own buffer instead of copying every
+	// vector into a fresh slice. It is only valid until the next Next(), which
+	// is exactly how it is used here: dotBlob reads it and keeps nothing. On a
+	// scan this is not a micro-optimization -- the copy is the whole corpus,
+	// allocated again on every query.
+	var blob sql.RawBytes
 	for rows.Next() {
 		var id string
-		var blob []byte
 		if err := rows.Scan(&id, &blob); err != nil {
 			return nil, fmt.Errorf("search: scan vector: %w", err)
 		}
