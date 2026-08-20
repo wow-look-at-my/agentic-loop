@@ -2,6 +2,9 @@ package search
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,9 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSource is a corpus in memory. A conversation's revision is its message
-// count plus a counter the test bumps by hand, so a test can say "this changed"
-// without the source having to model how.
+// fakeSource is a corpus in memory. A conversation's revision is derived from
+// its transcript, so the fixture behaves like a real store: a revision that
+// failed to move when the content did would let a test pass while the index
+// silently went stale.
 type fakeSource struct {
 	convs map[string]*fakeConv
 	order []string
@@ -35,7 +39,11 @@ func (f *fakeSource) put(id, owner string, msgs ...Message) {
 	}
 	c.owner = owner
 	c.msgs = msgs
-	c.rev = strings.Repeat("r", len(msgs)+1)
+	h := sha256.New()
+	for _, m := range msgs {
+		fmt.Fprintf(h, "%s\x00%s\x00%s\x00", m.ID, m.Role, m.Content)
+	}
+	c.rev = hex.EncodeToString(h.Sum(nil))
 }
 
 func (f *fakeSource) delete(id string) {

@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -146,18 +147,20 @@ func TestAMessagesChunksNeverSpanTwoRequests(t *testing.T) {
 	src := newFakeSource()
 	// Each message needs several chunks; together they exceed one batch.
 	long := strings.Repeat("word ", chunkRunes*6/5)
+	perMessage, _ := chunkContent(long)
+	count := embedBatchSize/len(perMessage) + 2
 	var msgs []Message
-	for _, id := range []string{"m1", "m2", "m3", "m4", "m5", "m6"} {
-		msgs = append(msgs, msg(id, "user", long))
+	for i := range count {
+		msgs = append(msgs, msg("m"+strconv.Itoa(i), "user", long))
 	}
 	src.put("c1", "u1", msgs...)
 	_, err := idx.Ingest(ctx, src)
 	require.NoError(t, err)
 
 	rec := &batchRecorder{inner: &bagEmbedder{dim: 8}}
-	n, err := idx.EmbedPending(ctx, "u1", "up/model", rec, 10)
+	n, err := idx.EmbedPending(ctx, "u1", "up/model", rec, 100)
 	require.NoError(t, err)
-	assert.Equal(t, 6, n)
+	assert.Equal(t, count, n)
 	require.Greater(t, len(rec.sizes), 1, "this corpus must take more than one batch to be a test")
 	for _, size := range rec.sizes {
 		assert.LessOrEqual(t, size, embedBatchSize)

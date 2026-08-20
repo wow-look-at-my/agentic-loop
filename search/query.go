@@ -209,11 +209,12 @@ func (i *Index) searchText(ctx context.Context, owner, query string, limit int) 
 // Every term is wrapped in double quotes, which is what makes this safe for
 // input nobody wrote for a query parser: quoted, FTS5's own operators (AND,
 // OR, NOT, NEAR, -, ^, :, parentheses) are literal text rather than syntax, so
-// a search for "NOT" or "c++" is a search and not a parse error. An embedded
-// quote is escaped by doubling, per FTS5's string rules.
+// a search for "NOT" or "c++" is a search and not a parse error.
 //
 // Terms are split on the same boundary the unicode61 tokenizer uses, so a
-// query can never contain a term the index had no chance to store.
+// query can never contain a term the index had no chance to store. That split
+// is also why no term needs escaping inside its quotes: a double quote is not
+// a letter or a digit, so it ends a term rather than appearing in one.
 //
 // The last term gets a prefix match ONLY when the query ends mid-word. This
 // backs an as-you-type search box, where the final word is usually half-typed
@@ -229,7 +230,7 @@ func ftsQuery(query string) string {
 	}
 	quoted := make([]string, len(terms))
 	for i, t := range terms {
-		quoted[i] = `"` + strings.ReplaceAll(t, `"`, `""`) + `"`
+		quoted[i] = `"` + t + `"`
 	}
 	if r := []rune(query); !isSeparator(r[len(r)-1]) {
 		quoted[len(quoted)-1] += "*"

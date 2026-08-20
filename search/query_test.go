@@ -95,7 +95,9 @@ func TestFTSQueryQuotesEveryTermAndPrefixesOnlyMidWord(t *testing.T) {
 	// FTS5's operators are text, not syntax.
 	assert.Equal(t, `"NEAR" "miss"*`, ftsQuery("NEAR miss"))
 	assert.Equal(t, `"c"`, ftsQuery("c++"))
-	assert.Equal(t, `"say" """quoted"""*`, ftsQuery(`say "quoted"x`))
+	// A double quote is a separator, so it ends a term rather than landing
+	// inside one -- which is why no term needs escaping in the wrapper.
+	assert.Equal(t, `"say" "quoted" "x"*`, ftsQuery(`say "quoted"x`))
 	// Nothing to tokenize at all.
 	assert.Equal(t, "", ftsQuery("???"))
 	assert.Equal(t, "", ftsQuery(""))
