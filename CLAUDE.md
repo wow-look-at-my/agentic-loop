@@ -150,16 +150,17 @@ side of that line it falls on — do not put it on both.
   fail-closed default expressed once. A denial carries `Approval.Reason`, and
   only an empty one falls back to `DeniedMessage` — an optional reason is one
   that goes missing exactly when a rule was written in a hurry.
-- **There is NO turn cap, and adding one back is a regression.** No
-  `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
-  tools-withheld final turn. A counted cap cannot tell a model looping
-  uselessly from one deep in a hard task, so it fires at the worst possible
+- **Nothing caps a run by default, and adding a default back is a
+  regression.** `Config.MaxTurns` is the HOST's cap and is off at zero; there
+  is no `DefaultMaxTurns`. A counted cap cannot tell a model looping uselessly
+  from one deep in a hard task, so a default fires at the worst possible
   moment: after the run has spent every call gathering context and right
   before the model writes any of it down — the most expensive failure mode
-  available, since the whole investigation is paid for and then discarded.
-  What bounds a run is `ErrStuck` (repetition is the only mechanically
-  detectable form of not-progressing) and the caller's `ctx`.
-  `TestRunHasNoTurnCap` guards this.
+  available, since the whole investigation is paid for and then discarded. An
+  uncapped run is bounded by `ErrStuck` (repetition is the only mechanically
+  detectable form of not-progressing) and the caller's `ctx`. A capped run
+  makes its last call tool-less, so the model answers instead of asking for a
+  tool nothing will run. `TestRunHasNoTurnCap` guards the default.
 - **A message a queue ACCEPTS reaches the model.** `SystemMessages` and
   `UserMessages` are drained at the top of every turn, system first, and a
   message queued when the model would otherwise finish starts another turn —

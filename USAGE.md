@@ -581,13 +581,17 @@ that, pass a `NewParamStripper`-wrapped provider in
 `Run(ctx, cfg, req)` drives the turn loop: call the model, execute the
 requested tools, feed the results back, repeat. Key behaviors:
 
-- **There is no turn cap.** The loop runs until the model stops asking for
-  tools. A counted cap cannot tell a model looping uselessly from one deep in
-  a hard task, so it fires at the worst possible moment: after the run has
-  spent every call gathering context and just before the model writes any of
-  it down. Bound a run with the two mechanisms that judge the right thing —
-  `ErrStuck` below (evidence the model stopped progressing) and your own
-  `ctx` (wall-clock and spend, without discarding work in flight).
+- **Nothing caps the run unless you ask for it.** The loop runs until the
+  model stops asking for tools. A counted cap cannot tell a model looping
+  uselessly from one deep in a hard task, so a default one fires at the worst
+  possible moment: after the run has spent every call gathering context and
+  just before the model writes any of it down. Bound a run with the two
+  mechanisms that judge the right thing — `ErrStuck` below (evidence the model
+  stopped progressing) and your own `ctx` (wall-clock and spend, without
+  discarding work in flight). `Config.MaxTurns` is there for a host that must
+  bound a turn anyway (an interactive UI answering one request); it counts
+  model calls, and the last permitted call is made WITHOUT tools so the model
+  answers instead of asking for a tool nothing will run.
 - **A stuck model is caught, not waited out.** A turn whose tool calls are
   byte-identical to the previous turn's cannot learn anything new — the same
   calls return the same results, which produce the same turn again. The
