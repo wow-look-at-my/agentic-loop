@@ -41,9 +41,13 @@ type TurnEndEvent struct {
 // answer and the completion the loop would finish with. The event is purely
 // observational — a listener that wants the loop to continue calls
 // cfg.SystemMessages.Queue(msg) rather than returning anything, and the loop
-// takes another turn because the queue is non-empty. Invoked at most once per
-// run (guarded by stopHookFired in the loop), which bounds THIS hook only: a
-// message queued from anywhere else continues the loop every time.
+// takes another turn because the queue is non-empty.
+//
+// It fires at EVERY stop boundary, not once per run. A counted cap on it could
+// not tell a host re-arming with a reason from one spinning, and it fired at
+// the worst moment: a policy that must judge each answer got one look and then
+// watched the run end unjudged. What bounds a run is ErrStuck, the caller's
+// ctx, and the host's own policy.
 type StopEvent struct {
 	event.Args
 	Turn int
