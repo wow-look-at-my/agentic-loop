@@ -110,6 +110,10 @@ var Anomalous = loop.Anomalous
 var Compact = loop.Compact
 var CountLineChanges = loop.CountLineChanges
 var CountLines = loop.CountLines
+
+// Bool addresses a boolean, for ToolDecl's tri-state behaviour fields:
+// Destructive and OpenWorld distinguish "false" from "not stated".
+var Bool = loop.Bool
 var DecodeModelList = loop.DecodeModelList
 var Dialects = loop.Dialects
 var DrainBoth = loop.DrainBoth

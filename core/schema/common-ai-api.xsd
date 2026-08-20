@@ -206,6 +206,26 @@
         is here so a host can tell which calls change something.
       -->
       <xs:attribute name="readonly" type="xs:boolean"/>
+      <!--
+        What the tool DOES to state, as MCP declares it (readOnlyHint,
+        destructiveHint, idempotentHint, openWorldHint). None of these is sent
+        to an upstream; they exist so a host can decide about a call.
+
+        ABSENCE IS NOT FALSE for destructive and open-world: MCP defaults both
+        to true, so a document that omits them means "unknown", and a reader
+        must resolve unknown to the cautious value. destructive and idempotent
+        are meaningful only when readonly is false.
+      -->
+      <xs:attribute name="destructive" type="xs:boolean"/>
+      <xs:attribute name="idempotent" type="xs:boolean"/>
+      <xs:attribute name="open-world" type="xs:boolean"/>
+      <!--
+        Set when the facts above are the TOOL SOURCE's own claim rather than
+        something the host vouches for - an MCP server describing its own
+        tools. A reader must not treat an unvouched claim as it treats a
+        vouched one.
+      -->
+      <xs:attribute name="unvouched" type="xs:boolean"/>
     </xs:complexType>
   </xs:element>
 

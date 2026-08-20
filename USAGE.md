@@ -404,6 +404,51 @@ now the single declaration of what a tool does to state, and a nil `Approver`
 reads it: a `Readonly` call runs, anything else is denied. That is the old
 fail-closed default, expressed once instead of maintained by hand in a wrapper.
 
+**A tool states facts, and only facts.** What a tool declares about itself is
+what running it would MEAN, never whether it is allowed. `ToolDecl` carries the
+four MCP tool annotations, so a host discovering tools on an MCP server keeps
+what the server said instead of throwing it away:
+
+```go
+type ToolDecl struct {
+	Name, Description string
+	InputSchema       json.RawMessage
+	Readonly          bool  // does not modify its environment
+	Destructive       *bool // may destroy state rather than only add to it
+	Idempotent        bool  // repeating the call with the same arguments adds nothing
+	OpenWorld         *bool // reaches entities outside a closed, known domain
+	Unvouched         bool  // the SOURCE's claim, not something the host vouches for
+}
+```
+
+Three things about them are easy to get wrong, so the library resolves all
+three in one place -- read them through `IsDestructive()`, `IsIdempotent()`,
+`IsOpenWorld()` and `Vouched()`, never off the struct:
+
+- **Two of the four default to TRUE.** MCP's `destructiveHint` and
+  `openWorldHint` are true when absent, so a bare `bool` would read an
+  unstated fact as the dangerous answer. They are pointers, and nil means
+  "not stated": an unannotated tool resolves to destructive and open-world.
+  Use `agentic.Bool(false)` to state otherwise. On the wire this is an ABSENT
+  attribute, never `="false"` -- the two are different documents.
+- **Two of the four are conditional.** `destructiveHint` and `idempotentHint`
+  are "meaningful only when `readOnlyHint == false`", so a read-only tool
+  resolves to non-destructive and idempotent whatever the fields say.
+- **They can be somebody else's claim.** The MCP specification says a client
+  "should never make tool use decisions based on ToolAnnotations received from
+  untrusted servers", which is impossible if a server's claim arrives
+  indistinguishable from a fact the host compiled in. `Unvouched` marks the
+  difference. It matters because two things key off `Readonly` by default: a
+  nil `Approver` allows a read-only call, and `Tools.Readonly()` is a
+  sub-agent's default toolset -- so a server lying about `readOnlyHint` would
+  otherwise get its tool auto-run and handed to sub-agents. A host that has
+  not decided whether it trusts a server should set `Unvouched` and have its
+  `Approver` treat those calls as it treats any other.
+
+`Idempotent` is the one that answers a question nothing else can: after a crash,
+a dropped connection, or a call whose result never came back, is re-running it
+safe? A host with durable turns needs that answer and cannot derive it.
+
 **A denial says why.** `Approval.Reason`, when a refusal carries one, is
 recorded as the tool result in place of `DeniedMessage`. A model refused
 because the write was outside the workspace should retry inside it; a model

@@ -249,6 +249,17 @@ func writeTool(x *writer, t ToolDecl) {
 	if t.Readonly {
 		attrs = append(attrs, attr{name: "readonly", value: "true"})
 	}
+	// A nil pointer is written as an ABSENT attribute, never as "false": the
+	// two mean different things here, and destructive/open-world default to
+	// true when absent.
+	attrs = append(attrs, optBoolAttr("destructive", t.Destructive)...)
+	if t.Idempotent {
+		attrs = append(attrs, attr{name: "idempotent", value: "true"})
+	}
+	attrs = append(attrs, optBoolAttr("open-world", t.OpenWorld)...)
+	if t.Unvouched {
+		attrs = append(attrs, attr{name: "unvouched", value: "true"})
+	}
 	x.start(elTool, attrs...)
 	params, err := ParamsFromJSONObject(t.schema())
 	if err != nil {

@@ -161,6 +161,17 @@ side of that line it falls on — do not put it on both.
   fail-closed default expressed once. A denial carries `Approval.Reason`, and
   only an empty one falls back to `DeniedMessage` — an optional reason is one
   that goes missing exactly when a rule was written in a hurry.
+- **A tool states FACTS, and two of them default to true.** `ToolDecl` carries
+  MCP's four annotations (`Readonly`, `Destructive`, `Idempotent`,
+  `OpenWorld`) plus `Unvouched`. `Destructive` and `OpenWorld` are POINTERS
+  because their MCP defaults are true: a bare bool reads an unstated fact as
+  the dangerous answer, and absent must stay distinguishable from `false` on
+  the wire too. Read them only through `IsDestructive`/`IsIdempotent`/
+  `IsOpenWorld`/`Vouched`, which also apply the spec's rule that the first two
+  are meaningless when `Readonly`. `Unvouched` marks an MCP server's claim
+  about its own tool: the spec forbids deciding from an untrusted server's
+  annotations, and a nil `Approver` plus `Tools.Readonly()` would otherwise
+  auto-run a lying server's tool and hand it to sub-agents. Depth: `USAGE.md`.
 - **Nothing caps a run by default, and adding a default back is a
   regression.** `Config.MaxTurns` is the HOST's cap and is off at zero; there
   is no `DefaultMaxTurns`. A counted cap cannot tell a model looping uselessly
