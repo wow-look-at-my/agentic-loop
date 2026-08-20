@@ -47,7 +47,8 @@ type ThinkingBlock struct {
 // ToolCall is one tool invocation requested by the model. Arguments is the raw
 // JSON object text: for OpenAI-compatible upstreams it is the concatenation of
 // the streamed argument fragments; for Anthropic it is the accumulated
-// input_json_delta partial_json.
+// input_json_delta partial_json. A call this package produces always holds a
+// JSON object there, "{}" for a tool that takes no arguments.
 type ToolCall struct {
 	ID        string
 	Name      string
