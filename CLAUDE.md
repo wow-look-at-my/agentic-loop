@@ -163,9 +163,10 @@ side of that line it falls on — do not put it on both.
 - **A message a queue ACCEPTS reaches the model.** `SystemMessages` and
   `UserMessages` are drained at the top of every turn, system first, and a
   message queued when the model would otherwise finish starts another turn —
-  every time. The one-shot `stopHookFired` flag bounds the loop's OWN stop
-  hook and nothing else; gating the queue check behind it dropped every
-  later notice on the floor. `Queue` returns whether the queue took it, `Run`
+  every time. `Events.OnStop` is asked at every stop boundary for the same
+  reason a turn cap is a regression: a count cannot tell a host re-arming
+  with a reason from one spinning, and the cap fired at the worst moment.
+  `Queue` returns whether the queue took it, `Run`
   closes both queues as it returns (so a racing producer starts a new run
   instead), and whatever a failed, cancelled or capped run never delivered
   comes back in `Result.Undelivered`. Depth: `USAGE.md`.
