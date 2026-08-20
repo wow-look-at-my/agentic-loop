@@ -89,13 +89,12 @@ side of that line it falls on — do not put it on both.
 
 ## Hard rules
 
-- **Runtime is standard library only**, plus `xml-validator/validator`,
-  `go-containers/set`, and cobra in `cli/`. testify is test-only. No new
-  third-party runtime dependencies (the websocket is hand-rolled RFC 6455, and
-  so are the web-fetch HTML cleanup and the subagent machinery, like the
-  source). `go-containers/set` is first-party and NOT optional: go-toolchain's
-  `mapset` analyzer hard-fails an org module that uses a `map[K]bool` as a set,
-  so a set is `set.Set[K]` here.
+- **`go-containers/set` is not optional.** go-toolchain's `mapset` analyzer
+  hard-fails an org module that uses a `map[K]bool` as a set, so a set is
+  `set.Set[K]` here. testify is test-only. A dependency reaches only the
+  packages that import it and a binary links only what it imports, so weight
+  is an argument about `go.sum` -- `docs/module-layout.md` weighs it and says
+  what that is worth.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
@@ -195,8 +194,8 @@ side of that line it falls on — do not put it on both.
   and grep's real-negative sentence) are pinned by tests.
   Do not "improve" them.
 - **A tool's schema is INFERRED from the struct its handler decodes**
-  (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go` because
-  the runtime is stdlib-only). Never hand-write one: that is a second
+  (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go`, since
+  what a tool argument needs is small). Never hand-write one: that is a second
   declaration of the argument list, and nothing keeps it true. Field prose is
   the `jsonschema` tag; `omitempty` is what makes an argument optional; a
   field with no json tag panics at construction.

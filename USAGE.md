@@ -8,10 +8,12 @@ the call, tool execution with a per-call approval seam, transient-failure retry,
 rejected-parameter recovery, prompt caching on both dialects, conversation
 compaction, and two optional built-in tools (a sub-agent and a web fetcher).
 
-The runtime is **standard library only** (plus `xml-validator/validator`,
-`go-containers/set`, and cobra in `cli/`). All I/O goes through an injectable
-`*http.Client`, and the package reads **no environment variables** — every
-endpoint, key, and knob is explicit configuration.
+The loop's own dependencies are `xml-validator/validator` and
+`go-containers/set`; cobra reaches `cli/` and the SQLite driver reaches
+`search/`, and Go links neither into a binary that does not import them. All
+I/O goes through an injectable `*http.Client`, and the package reads **no
+environment variables** — every endpoint, key, and knob is explicit
+configuration.
 
 The three dialects themselves live in [`core/`](core/), which speaks one XML
 format and translates it to and from each provider, behind the Go API in
