@@ -71,14 +71,23 @@ func NewRepoTools(cfg RepoToolsConfig) agentic.Tools {
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoReadToolName, Description: repoReadDescription,
 			InputSchema: repoReadSchema, Readonly: true,
+			// GitHub is somebody else's machine, so every one of these reaches
+			// outside any domain this process controls.
+			OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.repoRead)),
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoFileWriteToolName, Description: repoFileWriteDescription,
 			InputSchema: repoFileWriteSchema,
+			// Writing a path replaces what was there, and each write is its own
+			// commit, so repeating one is not free.
+			Destructive: agentic.Bool(true), OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.fileWrite)),
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoPRCreateToolName, Description: repoPRCreateDescription,
 			InputSchema: repoPRCreateSchema,
+			// Opening a pull request adds one; it destroys nothing. Calling it
+			// again opens another.
+			Destructive: agentic.Bool(false), OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.prCreate)),
 	}
 }

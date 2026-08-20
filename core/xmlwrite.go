@@ -76,6 +76,15 @@ func optAttr(name, value string) []attr {
 	return []attr{{name: name, value: value}}
 }
 
+// optBoolAttr renders a tri-state boolean. A nil pointer writes NO attribute,
+// which is how the document says "unknown" — distinct from an explicit "false".
+func optBoolAttr(name string, v *bool) []attr {
+	if v == nil {
+		return nil
+	}
+	return []attr{{name: name, value: strconv.FormatBool(*v)}}
+}
+
 // intAttr renders an int attribute.
 func intAttr(name string, v int) attr { return attr{name: name, value: strconv.Itoa(v)} }
 

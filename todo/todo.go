@@ -183,6 +183,13 @@ func (e *todoTool) Decl() agentic.ToolDecl {
 		Name:        e.toolName(),
 		Description: e.description(),
 		InputSchema: e.schema(),
+		// The task list is this run's own memory: nothing here leaves the
+		// process, and none of the four tools throws work away — add appends,
+		// and the other three move ONE task to a state it stays in, so
+		// repeating any of them lands where the first call did.
+		Destructive: agentic.Bool(false),
+		Idempotent:  e.kind != todoKindAdd,
+		OpenWorld:   agentic.Bool(false),
 	}
 }
 
