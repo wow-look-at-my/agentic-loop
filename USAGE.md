@@ -8,10 +8,12 @@ the call, tool execution with a per-call approval seam, transient-failure retry,
 rejected-parameter recovery, prompt caching on both dialects, conversation
 compaction, and two optional built-in tools (a sub-agent and a web fetcher).
 
-The runtime is **standard library only** (plus `xml-validator/validator`,
-`go-containers/set`, and cobra in `cli/`). All I/O goes through an injectable
-`*http.Client`, and the package reads **no environment variables** — every
-endpoint, key, and knob is explicit configuration.
+The loop's own dependencies are `xml-validator/validator` and
+`go-containers/set`; cobra reaches `cli/` and the SQLite driver reaches
+`search/`, and Go links neither into a binary that does not import them. All
+I/O goes through an injectable `*http.Client`, and the package reads **no
+environment variables** — every endpoint, key, and knob is explicit
+configuration.
 
 The three dialects themselves live in [`core/`](core/), which speaks one XML
 format and translates it to and from each provider, behind the Go API in
@@ -899,6 +901,50 @@ numbers were never emitted. That principle is why `OneShot` returns a
 completion, why `CompactResult` carries one, why `SubagentActivity` has a
 `turn_end` kind, why `WebFetchConfig` has `OnCompletion`, and why
 `SubagentReport`/`SubagentUpdate` carry `Usages`.
+
+## Searching stored conversations
+
+`search` indexes conversations so they can be found by word (FTS5) and, when an
+embedding model is available, by meaning. The conversations stay wherever the
+host keeps them — the index reads them through a `Source`, and `SessionSource`
+adapts a `session.Store`:
+
+```go
+idx, err := search.Open(ctx, filepath.Join(dir, "search.db"))
+defer idx.Close()
+
+src := &search.SessionSource{Store: store}
+if _, err := idx.Ingest(ctx, src); err != nil { /* ... */ }
+
+// Optional: the semantic half. Without an Embedder the search is text-only.
+emb := search.HTTPEmbedder{
+    BaseURL: "http://localhost:8080", Model: "nomic-embed-text-v1.5",
+    // Set these for a model trained with task prefixes; empty is correct for
+    // a symmetric model such as OpenAI's.
+    DocumentPrefix: search.NomicDocumentPrefix,
+    QueryPrefix:    search.NomicQueryPrefix,
+}
+if _, err := idx.EmbedPending(ctx, "", "nomic-embed-text-v1.5", emb, 200); err != nil { /* ... */ }
+
+hits, mode, err := idx.Search(ctx, search.Query{
+    Text: "how did we rotate the signing key", Limit: 20,
+    Model: "nomic-embed-text-v1.5", Embedder: emb,
+})
+```
+
+`Embedder` has two methods, `EmbedDocuments` and `EmbedQuery`, because
+retrieval is asymmetric in most modern embedding models: a stored passage and
+the question that should find it are embedded differently. Getting that wrong
+is invisible — every call succeeds and the results are merely worse — so the
+seam names the two sides rather than leaving one `Embed` to be used for both.
+
+Call `Ingest` and `EmbedPending` on whatever cadence suits the host; both are
+resumable and neither re-does finished work. The index is deliberately behind
+the store — embedding is a network call — so `Status` reports the stale
+conversations, the pending embeddings and the last error, and `Search` returns
+the `Mode` that answered (`text`, `semantic`, `hybrid`, or the `substring`
+fallback). Depth, including what the vector scan measures at and where it stops
+being interactive: [`docs/search.md`](docs/search.md).
 
 ## Concurrency
 
