@@ -269,6 +269,11 @@ side of that line it falls on — do not put it on both.
 - **A dialect that cannot express something FAILS.** Never drop it: a request
   quietly stripped of what the caller asked about is a wrong answer that looks
   like a right one.
+- **A turn that says NOTHING is dropped**, which strips no content and so is
+  not the rule above. Anthropic and Responses omit an assistant turn with no
+  text, no tool call and no replayable thinking: an empty text block fails the
+  WHOLE request, and one stored in a transcript then kills every later turn in
+  that conversation. A tool-call-only turn is not empty.
 - **A zero-argument tool call is `{}`, never a missing field** (`toolArgs`).
   A model calling such a tool sends no argument bytes, so every read path
   normalizes the empty string, and both wire writers apply it again for a
