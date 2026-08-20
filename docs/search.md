@@ -183,6 +183,54 @@ Nothing is ever marked permanently failed. A message that cannot be embedded
 today is picked up by the next pass, however many passes that takes, and the
 reason is in `Status.LastError` rather than buried in a counter that ran out.
 
+## The embedder seam is asymmetric
+
+```go
+type Embedder interface {
+    EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)
+    EmbedQuery(ctx context.Context, text string) ([]float32, error)
+}
+```
+
+Two methods, not one, because retrieval is asymmetric in most modern embedding
+models: a stored passage and the question that should find it are embedded
+differently, and the model is told which it is being given.
+
+Nomic's text models are the plain example — the card for
+`nomic-embed-text-v1.5` says the prompt *"must include a task instruction
+prefix"*, and the two that matter are `search_document: ` and `search_query: `.
+The E5 and BGE families have their own conventions. Nothing about this shows up
+at runtime: with the wrong prefix every call succeeds, every vector is
+well-formed, and the results are quietly worse. A single symmetric `Embed`
+method makes that mistake both the default and invisible, which is why there
+isn't one. For a symmetric model, `EmbedQuery` is a one-line call through to
+`EmbedDocuments`.
+
+`HTTPEmbedder` takes the prefixes as configuration:
+
+```go
+search.HTTPEmbedder{
+    BaseURL: "http://localhost:8080", Model: "nomic-embed-text-v1.5",
+    DocumentPrefix: search.NomicDocumentPrefix, // "search_document: "
+    QueryPrefix:    search.NomicQueryPrefix,    // "search_query: "
+    MaxBatch:       32,
+}
+```
+
+They are empty by default, which is correct for a symmetric model, and are
+never inferred from a model's name: applying a prefix to a model that was not
+trained on it is the same silent damage in the other direction. The two Nomic
+constants exist so nobody has to guess the exact literal, not as a default.
+
+Changing a prefix changes the vectors it produces, so it is a re-index:
+`DropModel` that model and let the backfill run again.
+
+`MaxBatch` splits one call into several requests. The cap belongs to the
+endpoint and endpoints disagree — a self-hosted inference server commonly caps
+a batch far below what a hosted API accepts — and without it an index batching
+more than the endpoint allows fails every pass forever, which reads as a broken
+index rather than a setting.
+
 ## Chunking
 
 A message longer than `chunkRunes` (1200) is split into overlapping windows,

@@ -47,7 +47,7 @@ func TestHTTPEmbedderSendsTheModelAndReturnsAVectorPerInput(t *testing.T) {
 	srv, got := embeddingsServer(t, http.StatusOK, nil)
 	e := HTTPEmbedder{BaseURL: srv.URL, Model: "text-embed", APIKey: "k", HTTP: srv.Client()}
 
-	vecs, err := e.EmbedDocuments(context.Background(),[]string{"one", "two"})
+	vecs, err := e.EmbedDocuments(context.Background(), []string{"one", "two"})
 	require.NoError(t, err)
 	require.Len(t, vecs, 2)
 	assert.Equal(t, []float32{1, 1}, vecs[0])
@@ -73,7 +73,7 @@ func TestHTTPEmbedderRestoresTheProvidersStatedOrder(t *testing.T) {
 	})
 	e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
 
-	vecs, err := e.EmbedDocuments(context.Background(),[]string{"first", "second"})
+	vecs, err := e.EmbedDocuments(context.Background(), []string{"first", "second"})
 	require.NoError(t, err)
 	assert.Equal(t, []float32{1, 1}, vecs[0], "index 0's vector must land on the first input")
 	assert.Equal(t, []float32{9, 9}, vecs[1])
@@ -83,7 +83,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 	t.Run("http status", func(t *testing.T) {
 		srv, _ := embeddingsServer(t, http.StatusTooManyRequests, map[string]any{"error": "slow down"})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.EmbedDocuments(context.Background(),[]string{"x"})
+		_, err := e.EmbedDocuments(context.Background(), []string{"x"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "429")
 		assert.Contains(t, err.Error(), "slow down")
@@ -96,7 +96,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 			"error": map[string]any{"message": "model not found"},
 		})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.EmbedDocuments(context.Background(),[]string{"x"})
+		_, err := e.EmbedDocuments(context.Background(), []string{"x"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "model not found")
 	})
@@ -107,7 +107,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 			"data":   []map[string]any{{"index": 0, "embedding": []float32{1}}},
 		})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.EmbedDocuments(context.Background(),[]string{"one", "two"})
+		_, err := e.EmbedDocuments(context.Background(), []string{"one", "two"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "1 vectors for 2 inputs")
 	})
@@ -118,7 +118,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 			"data":   []map[string]any{{"index": 0, "embedding": []float32{}}},
 		})
 		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-		_, err := e.EmbedDocuments(context.Background(),[]string{"x"})
+		_, err := e.EmbedDocuments(context.Background(), []string{"x"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty vector")
 	})
@@ -178,7 +178,7 @@ func TestHTTPEmbedderSplitsABatchTheEndpointCannotTake(t *testing.T) {
 func TestHTTPEmbedderSendsNoRequestForNoInput(t *testing.T) {
 	srv, got := embeddingsServer(t, http.StatusOK, nil)
 	e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
-	vecs, err := e.EmbedDocuments(context.Background(),nil)
+	vecs, err := e.EmbedDocuments(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, vecs)
 	assert.Empty(t, *got)

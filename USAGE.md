@@ -909,14 +909,26 @@ src := &search.SessionSource{Store: store}
 if _, err := idx.Ingest(ctx, src); err != nil { /* ... */ }
 
 // Optional: the semantic half. Without an Embedder the search is text-only.
-emb := search.HTTPEmbedder{BaseURL: "https://api.openai.com", Model: "text-embedding-3-small", APIKey: key}
-if _, err := idx.EmbedPending(ctx, "", "text-embedding-3-small", emb, 200); err != nil { /* ... */ }
+emb := search.HTTPEmbedder{
+    BaseURL: "http://localhost:8080", Model: "nomic-embed-text-v1.5",
+    // Set these for a model trained with task prefixes; empty is correct for
+    // a symmetric model such as OpenAI's.
+    DocumentPrefix: search.NomicDocumentPrefix,
+    QueryPrefix:    search.NomicQueryPrefix,
+}
+if _, err := idx.EmbedPending(ctx, "", "nomic-embed-text-v1.5", emb, 200); err != nil { /* ... */ }
 
 hits, mode, err := idx.Search(ctx, search.Query{
     Text: "how did we rotate the signing key", Limit: 20,
-    Model: "text-embedding-3-small", Embedder: emb,
+    Model: "nomic-embed-text-v1.5", Embedder: emb,
 })
 ```
+
+`Embedder` has two methods, `EmbedDocuments` and `EmbedQuery`, because
+retrieval is asymmetric in most modern embedding models: a stored passage and
+the question that should find it are embedded differently. Getting that wrong
+is invisible — every call succeeds and the results are merely worse — so the
+seam names the two sides rather than leaving one `Embed` to be used for both.
 
 Call `Ingest` and `EmbedPending` on whatever cadence suits the host; both are
 resumable and neither re-does finished work. The index is deliberately behind

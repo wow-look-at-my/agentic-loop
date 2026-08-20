@@ -100,9 +100,13 @@ side of that line it falls on — do not put it on both.
   conversations, the pending embeddings, the truncated messages and the last
   error verbatim, and `Search` reports which half answered. Nothing is ever
   marked permanently failed: a message that cannot be embedded today is picked
-  up by the next pass. Its other invariants -- the two schema versions, why the
-  vectors are scanned in Go and what that measures at, and why a message id
-  must be stable -- are in `docs/search.md`.
+  up by the next pass. **`Embedder` is asymmetric on purpose**
+  (`EmbedDocuments`/`EmbedQuery`): most embedding models want a task prefix and
+  a different one per side, and a wrong prefix is invisible -- every call
+  succeeds and the results are merely worse. Do not collapse it back to one
+  `Embed`. Its other invariants -- the two schema versions, why the vectors are
+  scanned in Go and what that measures at, and why a message id must be stable
+  -- are in `docs/search.md`.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
