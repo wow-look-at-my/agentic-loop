@@ -89,6 +89,23 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 		assert.Contains(t, err.Error(), "slow down")
 	})
 
+	// The status is what separates "this model does not embed" from "the
+	// attempt did not get through", so a caller must be able to read it back
+	// without parsing the sentence apart. The sentence itself is pinned too:
+	// it reaches users through the index's last-error report.
+	t.Run("the status is readable as a field", func(t *testing.T) {
+		srv, _ := embeddingsServer(t, http.StatusBadRequest, map[string]any{"error": "not an embedding model"})
+		e := HTTPEmbedder{BaseURL: srv.URL, Model: "m", HTTP: srv.Client()}
+		_, err := e.EmbedQuery(context.Background(), "x")
+		require.Error(t, err)
+
+		var httpErr *HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.Status)
+		assert.Contains(t, httpErr.Body, "not an embedding model")
+		assert.Equal(t, "search: embeddings: status 400: "+httpErr.Body, httpErr.Error())
+	})
+
 	// Some gateways answer 200 with an error object. Reading that as an empty
 	// data list would report "0 vectors" and lose the reason given.
 	t.Run("error object under a 200", func(t *testing.T) {

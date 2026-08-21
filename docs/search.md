@@ -236,6 +236,31 @@ constants exist so nobody has to guess the exact literal, not as a default.
 Changing a prefix changes the vectors it produces, so it is a re-index:
 `DropModel` that model and let the backfill run again.
 
+### A failed call says what the status was
+
+A non-2xx answer is a `*HTTPError`, which keeps the status in a field:
+
+```go
+var httpErr *search.HTTPError
+if errors.As(err, &httpErr) && httpErr.Status == http.StatusBadRequest {
+    // this model does not embed
+}
+```
+
+The status is the only thing that separates two very different failures. A
+provider 400s a chat model sent to `/v1/embeddings` — a permanent verdict about
+that model. It 429s or 502s a model it would happily serve — a fact about the
+attempt, not the model. A host that offers a picker of "models that actually
+embed" has to tell those apart, and probing is the only way to know at all:
+nothing an OpenAI-compatible `/v1/models` reports says which of its entries
+embed, and a model's name is a guess that is wrong for every endpoint whose
+operator named things differently.
+
+Without the status as a field, that caller is left parsing a sentence back
+apart. So `Error()` still renders exactly `search: embeddings: status %d: %s`,
+unchanged from when this was a `fmt.Errorf` — that text reaches users through
+the index's own last-error report — and the status is readable beside it.
+
 `MaxBatch` splits one call into several requests. The cap belongs to the
 endpoint and endpoints disagree — a self-hosted inference server commonly caps
 a batch far below what a hosted API accepts — and without it an index batching
