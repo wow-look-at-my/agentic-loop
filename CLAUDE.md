@@ -104,7 +104,8 @@ side of that line it falls on — do not put it on both.
   (`EmbedDocuments`/`EmbedQuery`): most embedding models want a task prefix and
   a different one per side, and a wrong prefix is invisible -- every call
   succeeds and the results are merely worse. Do not collapse it back to one
-  `Embed`. Its other invariants -- the two schema versions, why the vectors are
+  `Embed`. Its other invariants -- the two schema versions and the shape check
+  that catches a version describing another index's tables, why the vectors are
   scanned in Go and what that measures at, and why a message id must be stable
   -- are in `docs/search.md`.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O

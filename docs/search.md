@@ -112,6 +112,17 @@ So a tokenizer or column change bumps the text version, the text tables are
 dropped and rebuilt, and every vector survives — `Ingest` re-indexes the same
 message ids and the embeddings are re-adopted with nothing re-sent.
 
+A version is what the file CLAIMS, so `applySchema` also reads what the file
+actually has: it compares each half's tables against `ftsTables`/`embedTables`
+and rebuilds the half that does not match. The number alone is not enough,
+because it is not this package's alone. `simple-llm-ui` shipped its own index
+first, and that one also recorded `fts_schema_version = 1` — over `user_id`
+where this one has `owner`, with no `position` and no `indexed_conversations`.
+Its files then read as current, no rebuild ran, and the first `CREATE INDEX`
+over a missing column failed every `Open`. Nothing in here is a source of
+truth, so a shape this package cannot read is a re-index, never a reason to
+stop the host from starting.
+
 An edit, rather than an append, retires a message id whose vector no conversation
 delete reaches. `dropOrphanedVectors` sweeps those at the end of every `Ingest`;
 without it they accumulate for the life of the index as paid-for storage no

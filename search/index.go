@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/wow-look-at-my/go-containers/set"
+
 	_ "modernc.org/sqlite" // pure-Go SQLite driver, registered as "sqlite"
 )
 
@@ -87,9 +89,10 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 func (i *Index) Close() error { return i.sql.Close() }
 
 // applySchema creates both halves and rebuilds either one whose recorded
-// version is not the current one. The halves are handled independently, which
-// is the whole point of versioning them separately: a change to the text index
-// must not cost every caller their embeddings.
+// version is not the current one, or whose tables on disk are not the shape
+// that version describes. The halves are handled independently, which is the
+// whole point of versioning them separately: a change to the text index must
+// not cost every caller their embeddings.
 func (i *Index) applySchema(ctx context.Context) error {
 	if _, err := i.sql.ExecContext(ctx, metaSchema); err != nil {
 		return fmt.Errorf("search: create meta: %w", err)
@@ -99,7 +102,11 @@ func (i *Index) applySchema(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if ftsAt != 0 && ftsAt != ftsSchemaVersion {
+	ftsShaped, err := i.shapeMatches(ctx, ftsTables)
+	if err != nil {
+		return err
+	}
+	if !ftsShaped || (ftsAt != 0 && ftsAt != ftsSchemaVersion) {
 		if _, err := i.sql.ExecContext(ctx, dropFTSSchema); err != nil {
 			return fmt.Errorf("search: drop text index for rebuild: %w", err)
 		}
@@ -115,7 +122,11 @@ func (i *Index) applySchema(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if embedAt != 0 && embedAt != embedSchemaVersion {
+	embedShaped, err := i.shapeMatches(ctx, embedTables)
+	if err != nil {
+		return err
+	}
+	if !embedShaped || (embedAt != 0 && embedAt != embedSchemaVersion) {
 		if _, err := i.sql.ExecContext(ctx, dropEmbedSchema); err != nil {
 			return fmt.Errorf("search: drop vectors for rebuild: %w", err)
 		}
@@ -124,6 +135,49 @@ func (i *Index) applySchema(ctx context.Context) error {
 		return fmt.Errorf("search: create vectors: %w", err)
 	}
 	return i.setMeta(ctx, metaEmbedVersion, strconv.Itoa(embedSchemaVersion))
+}
+
+// shapeMatches reports whether every table in want that is PRESENT in the file
+// has the columns this version of the schema gives it. A table that is absent
+// matches: the CREATE below makes it.
+//
+// The recorded version says which shape the file is MEANT to have. It cannot
+// say which shape the file actually has, because the number is not the
+// library's alone: another implementation of this index writes its own
+// versions into the same meta table, and one of them met version 1 with a
+// different column set. The version then reads as up to date, no rebuild runs,
+// and the first CREATE INDEX over a column that is not there fails -- on every
+// open, forever, for a file that is derived data and free to rebuild.
+func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (bool, error) {
+	for table, columns := range want {
+		rows, err := i.sql.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
+		if err != nil {
+			return false, fmt.Errorf("search: read the shape of %q: %w", table, err)
+		}
+		have := set.New[string]()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				_ = rows.Close()
+				return false, fmt.Errorf("search: scan the shape of %q: %w", table, err)
+			}
+			have.Add(name)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return false, fmt.Errorf("search: read the shape of %q: %w", table, err)
+		}
+		if have.Len() == 0 {
+			continue // the table is not there yet
+		}
+		for _, c := range columns {
+			if !have.Contains(c) {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
 
 // meta reads one meta value, returning "" when the key is unset.

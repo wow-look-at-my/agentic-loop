@@ -91,6 +91,22 @@ CREATE TRIGGER IF NOT EXISTS indexed_messages_au AFTER UPDATE ON indexed_message
 END;
 `
 
+// ftsTables and embedTables are the columns each half's tables have at the
+// versions above. applySchema reads the file's real shape against them and
+// rebuilds a half that does not match, so a recorded version that describes
+// some OTHER implementation's tables costs a re-index instead of failing every
+// open. Keep each list in step with the CREATE statements beside it.
+var (
+	ftsTables = map[string][]string{
+		"indexed_conversations": {"conversation_id", "owner", "revision"},
+		"indexed_messages":      {"message_id", "conversation_id", "owner", "role", "content", "position", "created_at"},
+	}
+	embedTables = map[string][]string{
+		"embeddings":   {"message_id", "chunk_index", "model", "dim", "vector", "created_at"},
+		"embed_status": {"message_id", "model", "chunks", "chunks_total", "created_at"},
+	}
+)
+
 // dropFTSSchema tears the text half down for a version bump. The triggers go
 // first: dropping indexed_messages while its delete trigger still exists would
 // fire that trigger for every row into an FTS table that is about to be

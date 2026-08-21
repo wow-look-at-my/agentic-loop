@@ -251,3 +251,99 @@ func TestACorruptSchemaVersionIsReportedNotReadAsZero(t *testing.T) {
 	_, err = OpenEphemeral(ctx, path)
 	require.Error(t, err, "reading a corrupt version as 0 would skip a rebuild the index needs")
 }
+
+// oldForeignFTSSchema is the text half as ANOTHER implementation of this index
+// wrote it, recording the same fts_schema_version this package is on. It is
+// simple-llm-ui's internal/search, which this package was extracted from: the
+// owner column was user_id, there was no position and no indexed_conversations.
+const oldForeignFTSSchema = `
+DROP TRIGGER IF EXISTS indexed_messages_ai;
+DROP TRIGGER IF EXISTS indexed_messages_ad;
+DROP TRIGGER IF EXISTS indexed_messages_au;
+DROP TABLE IF EXISTS messages_fts;
+DROP TABLE IF EXISTS indexed_messages;
+DROP TABLE IF EXISTS indexed_conversations;
+
+CREATE TABLE indexed_messages (
+	message_id      TEXT PRIMARY KEY,
+	conversation_id TEXT NOT NULL,
+	user_id         TEXT NOT NULL,
+	role            TEXT NOT NULL,
+	content         TEXT NOT NULL,
+	created_at      TEXT NOT NULL
+);
+CREATE INDEX idx_indexed_user ON indexed_messages(user_id);
+CREATE VIRTUAL TABLE messages_fts USING fts5(
+	content,
+	content='indexed_messages',
+	content_rowid='rowid',
+	tokenize='unicode61 remove_diacritics 2'
+);
+INSERT INTO indexed_messages VALUES ('m1','c1','u1','user','durable content','2026-01-01T00:00:00Z');
+`
+
+func TestAForeignIndexAtTheSameVersionIsRebuiltNotRefused(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "search.db")
+
+	idx, err := OpenEphemeral(ctx, path)
+	require.NoError(t, err)
+	src := newFakeSource()
+	src.put("c1", "u1", msg("m1", "user", "durable content"))
+	_, err = idx.Ingest(ctx, src)
+	require.NoError(t, err)
+	emb := &bagEmbedder{dim: 8}
+	_, err = idx.EmbedPending(ctx, "u1", "up/model", emb, 10)
+	require.NoError(t, err)
+
+	// The file now looks like one an earlier, differently-shaped index left
+	// behind, still claiming this package's current version.
+	_, err = idx.sql.ExecContext(ctx, oldForeignFTSSchema)
+	require.NoError(t, err)
+	require.NoError(t, idx.Close())
+
+	// Opening it must rebuild the text half rather than fail. The vectors are
+	// in the shape this package writes, so they are kept: they cost money.
+	idx, err = OpenEphemeral(ctx, path)
+	require.NoError(t, err, "a rebuildable index must never make the host fail to start")
+	t.Cleanup(func() { _ = idx.Close() })
+
+	status, err := idx.Status(ctx, src, "u1", "up/model")
+	require.NoError(t, err)
+	assert.Zero(t, status.IndexedMessages, "the foreign rows are gone")
+	assert.Equal(t, int64(1), status.StaleConversations, "and the conversation is read again")
+
+	n, err := idx.Ingest(ctx, src)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	before := emb.calls
+	got, err := idx.EmbedPending(ctx, "u1", "up/model", emb, 10)
+	require.NoError(t, err)
+	assert.Zero(t, got, "the vectors survived the rebuild")
+	assert.Equal(t, before, emb.calls)
+}
+
+func TestAForeignVectorShapeIsRebuiltNotRefused(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "search.db")
+
+	idx, err := OpenEphemeral(ctx, path)
+	require.NoError(t, err)
+	_, err = idx.sql.ExecContext(ctx, `
+		DROP TABLE embeddings;
+		CREATE TABLE embeddings (message_id TEXT PRIMARY KEY, blob BLOB NOT NULL);`)
+	require.NoError(t, err)
+	require.NoError(t, idx.Close())
+
+	idx, err = OpenEphemeral(ctx, path)
+	require.NoError(t, err, "vectors this package cannot read are rebuilt, not fatal")
+	t.Cleanup(func() { _ = idx.Close() })
+
+	src := newFakeSource()
+	src.put("c1", "u1", msg("m1", "user", "durable content"))
+	_, err = idx.Ingest(ctx, src)
+	require.NoError(t, err)
+	_, err = idx.EmbedPending(ctx, "u1", "up/model", &bagEmbedder{dim: 8}, 10)
+	require.NoError(t, err)
+}
