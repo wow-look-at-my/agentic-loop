@@ -987,6 +987,13 @@ the question that should find it are embedded differently. Getting that wrong
 is invisible — every call succeeds and the results are merely worse — so the
 seam names the two sides rather than leaving one `Embed` to be used for both.
 
+A non-2xx answer from the endpoint comes back as `*search.HTTPError`, which
+carries the `Status` beside the body. The status is the only thing separating
+"this model does not embed" from "the attempt did not get through": a provider
+400s a chat model sent to `/v1/embeddings`, and 429s or 5xxs a model it would
+otherwise serve. A host offering a picker of models that actually embed decides
+between those two on `errors.As`, never on the sentence.
+
 Call `Ingest` and `EmbedPending` on whatever cadence suits the host; both are
 resumable and neither re-does finished work. The index is deliberately behind
 the store — embedding is a network call — so `Status` reports the stale

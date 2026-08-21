@@ -169,7 +169,7 @@ func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, er
 		if msg == "" {
 			msg = resp.Status
 		}
-		return nil, fmt.Errorf("search: embeddings: status %d: %s", resp.StatusCode, msg)
+		return nil, &HTTPError{Status: resp.StatusCode, Body: msg}
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, embeddingsMaxBytes))
 	if err != nil {
@@ -206,4 +206,28 @@ func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, er
 		out[i] = d.Embedding
 	}
 	return out, nil
+}
+
+// HTTPError is a non-2xx answer from the embeddings endpoint, carrying the
+// status separately from the body.
+//
+// The status is the only thing that separates "this model does not embed" from
+// "the attempt did not get through": a provider 400s a chat model sent to
+// /v1/embeddings, and 429s or 5xxs a model it would otherwise serve. A caller
+// deciding between those two -- offering a picker of models that actually
+// embed, say -- cannot do it on a formatted string without parsing prose back
+// apart, so the status stays a field.
+//
+// Its Error() text is unchanged from when this was a fmt.Errorf, because that
+// text reaches users through the index's own last-error report.
+type HTTPError struct {
+	// Status is the HTTP status code the endpoint answered with.
+	Status int
+	// Body is the response body, trimmed and capped, or the status line when
+	// the body was empty.
+	Body string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("search: embeddings: status %d: %s", e.Status, e.Body)
 }
