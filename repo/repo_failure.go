@@ -94,19 +94,53 @@ func (rl rateLimit) waitAdvice() string {
 // authentication") only restates that no credential was sent: preferring it
 // over a token's own 403 turned a 42-second code-search rate limit into what
 // looked like a permanent authentication failure.
-func failureRank(res GHResponse) int {
+func failureRank(res GHResponse) failureRankLevel {
 	if _, limited := classifyRateLimit(res, time.Now()); limited {
-		return 50
+		if res.authed {
+			return rankTokenRateLimited
+		}
+		return rankAnonRateLimited
 	}
 	switch {
 	case res.authed:
-		return 30
+		return rankTokenFailure
 	case res.status == http.StatusUnauthorized:
-		return 5 // "you sent no credential" — true and useless
+		return rankAnon401 // "you sent no credential" — true and useless
 	default:
-		return 10
+		return rankAnonFailure
 	}
 }
+
+// failureRankLevel is an ORDERED ranking of how informative a failed attempt
+// is: the higher the value, the more the response explains, so FetchURLOpts's
+// keep-the-best selection falls out of a simple > comparison. It is a typed
+// enum, not magic numbers, because the ordering is the entire contract — two
+// attempts can tie only when they are the SAME kind, and the one that matters
+// (a rate-limited PAT) must never tie with the anonymous fallback that runs
+// last.
+type failureRankLevel int
+
+const (
+	// rankNone is the "no failure yet" floor, below every real ranking.
+	rankNone failureRankLevel = iota
+	// rankAnon401 is the anonymous 401: it says only that no credential was
+	// sent, which restates nothing about a configured token that was refused.
+	rankAnon401
+	// rankAnonFailure is any other anonymous failure (e.g. a 404 on a public
+	// resource).
+	rankAnonFailure
+	// rankTokenFailure is a token's non-rate-limit failure (403 permission
+	// denied, 404 not found, ...).
+	rankTokenFailure
+	// rankAnonRateLimited is the anonymous rate limit: the 403 only says the
+	// unauthenticated quota was spent.
+	rankAnonRateLimited
+	// rankTokenRateLimited is a TOKEN's rate limit: it proves a credential was
+	// tried and hit the wall, which is exactly what a host with healthy PATs
+	// needs to hear instead of "anonymous did it". It outranks the anonymous
+	// rate limit so the last-running anonymous attempt can never win the tie.
+	rankTokenRateLimited
+)
 
 // githubTokenExpirationLayout matches the value GitHub actually sends in the
 // GitHub-Authentication-Token-Expiration response header, e.g.

@@ -94,7 +94,7 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 // authentication", so a transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, opt.NoAnonymous) {
 		res, err := e.doGetOpts(ctx, target, att.token, accept, opt)
@@ -207,7 +207,7 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, GHResponse, error) {
 	cacheKey := strings.ToLower(owner)
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, false) {
 		for _, isUser := range []bool{false, true} {
