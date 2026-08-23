@@ -38,10 +38,14 @@ func RateLimit(ctx context.Context, apiBase, token string, httpClient *http.Clie
 		return RateLimitStatus{Error: "could not reach GitHub: " + err.Error()}
 	}
 	if res.status < 200 || res.status >= 300 {
-		if msg := GitHubErrorMessage(res.body); msg != "" {
-			return RateLimitStatus{Error: fmt.Sprintf("GitHub returned %d: %s", res.status, msg)}
+		where := ""
+		if res.target != "" {
+			where = " from " + res.target
 		}
-		return RateLimitStatus{Error: fmt.Sprintf("GitHub returned status %d", res.status)}
+		if msg := GitHubErrorMessage(res.body); msg != "" {
+			return RateLimitStatus{Error: fmt.Sprintf("GitHub returned %d%s: %s", res.status, where, msg)}
+		}
+		return RateLimitStatus{Error: fmt.Sprintf("GitHub returned status %d%s", res.status, where)}
 	}
 	var body struct {
 		Resources struct {

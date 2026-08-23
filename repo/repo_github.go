@@ -27,6 +27,13 @@ type GHResponse struct {
 	ctype     string
 	header    http.Header
 	truncated bool
+	// target is the FULL URL this response was fetched from — scheme, host,
+	// path, query. Without it a failure cannot say which server answered:
+	// api.github.com and github-state-mirror.pazer.io look identical once the
+	// response is reduced to status and headers, which is exactly the detail
+	// that shows whether a request reached the configured mirror or leaked to
+	// the public API.
+	target string
 	// authed records whether the credential that produced this response was a
 	// token. A failure from a token explains far more than the anonymous
 	// attempt's, which is what failureRank uses it for.
@@ -51,6 +58,11 @@ func (r GHResponse) ContentType() string { return r.ctype }
 // Truncated reports that the body hit the read cap, so what is here is a
 // PREFIX -- never treat it as the whole document.
 func (r GHResponse) Truncated() bool { return r.truncated }
+
+// Target is the full URL this response was fetched from, e.g.
+// https://api.github.com/repos/octo/hello/contents/README.md. Empty only for
+// hand-built GHResponse test values.
+func (r GHResponse) Target() string { return r.target }
 
 // FetchOptions tunes one repo fetch.
 type FetchOptions struct {
@@ -370,6 +382,7 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 		ctype:     resp.Header.Get("Content-Type"),
 		header:    resp.Header,
 		truncated: truncated,
+		target:    target,
 	}, nil
 }
 
