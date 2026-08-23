@@ -168,9 +168,13 @@ type FileToolsConfig struct {
 	// Folders are the mounts, keyed by their leading path segment WITHOUT the
 	// slash ("repos", "workspace"). Matching folds case -- a mount vocabulary
 	// is a handful of fixed words, and telling a model that wrote /Repos that
-	// no such mount exists teaches it something false. An empty map yields no
-	// tools at all.
+	// no such mount exists teaches it something false.
 	Folders map[string]Folder
+	// Virtual mounts are generic registered filesystems. They are adapted to
+	// Folder automatically, so any host can expose diagnostics, queues, or
+	// other state through the normal list_dir/read_file/find_files/grep tools
+	// without implementing the full tool protocol itself.
+	Virtual map[string]VFS
 	// MountsBlurb is appended to every tool description: the host's own
 	// sentence naming what its mounts are, since the library cannot know.
 	MountsBlurb string

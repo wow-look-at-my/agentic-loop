@@ -194,6 +194,14 @@ type Config struct {
 	// output must always reach the model.
 	DisableOutputDedup bool
 
+	// Inbox, when non-nil, is drained at the top of every turn. Each message
+	// Receive returns is appended to the transcript as a user turn and
+	// answered before the loop can end, so a message that lands while the run
+	// is in flight is NEVER dropped -- the run only finishes once the inbox
+	// reports empty. The host owns buffering, blocking policy, and any
+	// persistence across runs; the loop only guarantees drain-and-answer.
+	Inbox Inbox
+
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered
 	// turn). It is unexported: package-internal machinery -- the subagent
@@ -285,16 +293,35 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	// fingerprint and how many turns in a row have repeated it.
 	lastBatch := ""
 	repeats := 0
-	finish := func(final Message) (*Result, error) {
+	// finish returns the run's result. Before it does, it drains the inbox:
+	// a message that arrived during the final turn must be answered, not
+	// dropped. When the drain found messages, it appends the assistant's
+	// final answer to the transcript and returns loop=true so the caller
+	// loops once more to answer them.
+	finish := func(final Message) (*Result, bool) {
 		transcript = append(transcript, final)
-		res.Messages = transcript
-		res.Final = final
-		return res, nil
+		if cfg.Inbox != nil {
+			var drained bool
+			transcript, drained = drainInbox(ctx, cfg.Inbox, transcript)
+			if drained {
+				return nil, true
+			}
+		}
+		r := &Result{}
+		r.Messages = transcript
+		r.Final = final
+		return r, false
 	}
 
 	for turn := 0; ; turn++ {
 		if cfg.turnHook != nil {
 			cfg.turnHook(turn + 1)
+		}
+		// Drain the inbox before every model call. Messages that landed while
+		// the previous turn was running are appended as user turns so the
+		// model answers them in THIS call -- not deferred to a phantom turn.
+		if cfg.Inbox != nil {
+			transcript, _ = drainInbox(ctx, cfg.Inbox, transcript)
 		}
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, advertised, res)
 		if err != nil {
@@ -428,11 +455,17 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 		// The loop is ending: the model asked for no tools. ToolCalls is
 		// cleared defensively so a replayable transcript can never carry an
-		// orphan.
+		// orphan. finish drains the inbox one more time and, when a message
+		// arrived during this final turn, reports loop=true so we answer it
+		// before returning.
 		if strings.TrimSpace(assistant.Content) != "" {
 			final := assistant
 			final.ToolCalls = nil
-			return finish(final)
+			if r, loop := finish(final); loop {
+				continue
+			} else {
+				return r, nil
+			}
 		}
 
 		// The model stopped without writing an answer -- it produced only
@@ -454,7 +487,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					final := comp2.Message
 					final.ToolCalls = nil
 					transcript = append(transcript, wrapMsg)
-					return finish(final)
+					if r, loop := finish(final); loop {
+						continue
+					} else {
+						return r, nil
+					}
 				}
 			}
 			// The wrap-up failed or still produced nothing: fall through to
@@ -470,7 +507,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if strings.TrimSpace(final.Content) == "" {
 			final.Content = fallbackOutput(assistant)
 		}
-		return finish(final)
+		if r, loop := finish(final); loop {
+			continue
+		} else {
+			return r, nil
+		}
 	}
 }
 

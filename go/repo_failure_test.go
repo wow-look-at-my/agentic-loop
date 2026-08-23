@@ -75,6 +75,27 @@ func TestFailureRankPrefersTokenFailureOverAnonymous401(t *testing.T) {
 	assert.Greater(t, failureRank(anon404), failureRank(anon401), "anonymous 401 is the least informative failure there is")
 }
 
+// When BOTH the token and the anonymous attempt are rate-limited, the token's
+// 403 must be the one reported. Before the fix both ranked 50, so the last
+// attempt (anonymous) won by virtue of running last, and the model was told
+// "this was the unauthenticated request" when a PAT had actually been tried
+// and hit the same wall. A caller with valid PATs must never be told it ran
+// without one.
+func TestFailureRankTokenRateLimitOutranksAnonymousRateLimit(t *testing.T) {
+	limited := GHResponse{
+		status: http.StatusForbidden,
+		header: rateLimitHeaders("0", time.Now().Add(time.Minute), "core"),
+		authed: true,
+	}
+	anonLimited := GHResponse{
+		status: http.StatusForbidden,
+		header: rateLimitHeaders("0", time.Now().Add(time.Minute), "core"),
+		authed: false,
+	}
+	assert.Greater(t, failureRank(limited), failureRank(anonLimited),
+		"a rate-limited PAT must outrank a rate-limited anonymous attempt")
+}
+
 func TestExplainFailureRateLimitIsMarkedTransientWithItsWait(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	res := GHResponse{
