@@ -136,12 +136,9 @@ type tokenAttempt struct {
 // tokenOrder is the credential order every repo read tries: the cached winner
 // for cacheKey first (if any; an empty cacheKey skips the cache), then every
 // configured token, then an unauthenticated attempt (so public resources work
-// without a PAT) unless NoAnonymous drops it OR the client was configured with
-// NoAnonymous -- the host's policy that a server holding at least one PAT must
-// never let a read fall through to an anonymous request. Duplicates are
-// dropped so each distinct credential is tried once. Writes use
-// writeTokenOrder (repo_write.go) instead, which never falls through to
-// unauthenticated.
+// without a PAT) unless NoAnonymous drops it. Duplicates are dropped so each
+// distinct credential is tried once. Writes use writeTokenOrder
+// (repo_write.go) instead, which never falls through to unauthenticated.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()
@@ -163,7 +160,7 @@ func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	for _, t := range e.tokens {
 		add(t.ID, t.Name, t.Token)
 	}
-	if !NoAnonymous && !e.noAnonymous {
+	if !NoAnonymous {
 		add("", "", "") // unauthenticated fallback (public repositories)
 	}
 	return order
