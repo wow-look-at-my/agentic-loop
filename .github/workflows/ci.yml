@@ -3,7 +3,11 @@ name: CI
 on:
   push:
 
-# go-toolchain@v1's autorelease needs actions/contents/deployments write access; without it a passing build still fails.
+# Everything past the minimal pair is required by go-toolchain@v1's autorelease
+# step (default on): actions: read is verified up front, contents: write backs
+# the dependency-graph submission, and deployments: write registers the
+# buildhost publish as a GitHub Deployment -- a step that cannot be turned off,
+# so without it a fully-passing build still fails.
 permissions:
   id-token: write
   contents: write
