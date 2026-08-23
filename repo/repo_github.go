@@ -207,7 +207,7 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, GHResponse, error) {
 	cacheKey := strings.ToLower(owner)
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, false) {
 		for _, isUser := range []bool{false, true} {
