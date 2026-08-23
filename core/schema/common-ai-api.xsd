@@ -1,0 +1,397 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The common AI API: one vocabulary for a model call and its answer, translated
+  to and from each provider dialect on demand.
+
+  Two rules explain most of what follows.
+
+  Everything common is an ordinary element or an unqualified attribute here.
+  Everything provider-specific is namespaced: a scalar rides as a qualified
+  attribute (anthropic:top-k="40"), and anything object-shaped rides as a
+  namespaced element. Each dialect declares its own in its own schema, and
+  those declarations are imported below.
+
+  Nothing is a wildcard. There is no xs:any and no xs:anyAttribute anywhere in
+  this schema, so an attribute nobody declared is a validation error rather
+  than something waved through to fail at an upstream instead.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="https://github.com/wow-look-at-my/common-ai-api/schema/v1"
+           xmlns:anthropic="https://github.com/wow-look-at-my/common-ai-api/schema/v1/anthropic"
+           xmlns:openai="https://github.com/wow-look-at-my/common-ai-api/schema/v1/openai"
+           xmlns:responses="https://github.com/wow-look-at-my/common-ai-api/schema/v1/responses"
+           targetNamespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+
+  <xs:import namespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1/anthropic"
+             schemaLocation="anthropic.xsd"/>
+  <xs:import namespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1/openai"
+             schemaLocation="openai.xsd"/>
+  <xs:import namespace="https://github.com/wow-look-at-my/common-ai-api/schema/v1/responses"
+             schemaLocation="responses.xsd"/>
+
+  <!-- ================================ values ============================ -->
+
+  <!--
+    The value tree. Tool input schemas, a provider's verbatim usage object, and
+    any parameter no dialect schema has named live here rather than as a blob
+    of JSON in a text node: JSON inside XML is a second format this schema
+    could not check. Child order carries object member order, and a scalar's
+    text is the literal the value had, so 1.50 does not come back as 1.5.
+  -->
+  <xs:simpleType name="paramType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="string"/>
+      <xs:enumeration value="number"/>
+      <xs:enumeration value="boolean"/>
+      <xs:enumeration value="null"/>
+      <xs:enumeration value="object"/>
+      <xs:enumeration value="array"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="param">
+    <xs:complexType mixed="true">
+      <xs:sequence>
+        <xs:element ref="param" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <!-- Absent on an array item: items are positional, not named. -->
+      <xs:attribute name="name" type="xs:string"/>
+      <xs:attribute name="type" type="paramType" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="paramList">
+    <xs:sequence>
+      <xs:element ref="param" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!--
+    Parameters with no namespace are addressed to whichever dialect ends up
+    running the request. A dialect's own <params> lives in its namespace.
+  -->
+  <xs:element name="params" type="paramList"/>
+
+  <!-- =============================== content ============================ -->
+
+  <!--
+    Text as the provider sent it. A restricted character arrives as a character
+    reference (&#1;), and so does NUL: &#0; is four ASCII bytes, so a document
+    carrying one holds no NUL byte.
+  -->
+  <xs:element name="text" type="xs:string"/>
+
+  <!--
+    An image, held the way it was supplied: inline (media-type plus base64
+    content) or by reference (src, any URI including a data: one). It is never
+    converted between the two -- a dialect that cannot express the form it was
+    given fails loudly instead.
+  -->
+  <xs:element name="image">
+    <xs:complexType>
+      <xs:simpleContent>
+        <xs:extension base="xs:string">
+          <xs:attribute name="media-type" type="xs:string"/>
+          <xs:attribute name="src" type="xs:string"/>
+        </xs:extension>
+      </xs:simpleContent>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    One reasoning block. signature is the opaque token that must be replayed
+    verbatim for the block to still count as the model's own thinking, and id
+    is the provider's identifier for the item. The element's text is the
+    human-readable reasoning, which is PROSE ABOUT the thinking -- replaying it
+    without the signature hands the model a paraphrase of itself.
+  -->
+  <xs:element name="thinking">
+    <xs:complexType>
+      <xs:simpleContent>
+        <xs:extension base="xs:string">
+          <xs:attribute name="signature" type="xs:string"/>
+          <xs:attribute name="id" type="xs:string"/>
+        </xs:extension>
+      </xs:simpleContent>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="redacted-thinking" type="xs:string"/>
+
+  <!--
+    The model's raw argument text, kept as text because a model can and does
+    emit invalid JSON. Re-encoding it would hide that from the caller who has
+    to deal with it.
+  -->
+  <xs:element name="arguments" type="xs:string"/>
+
+  <xs:element name="tool-call">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="arguments" minOccurs="0"/>
+      </xs:sequence>
+      <xs:attribute name="id" type="xs:string"/>
+      <xs:attribute name="name" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    A message's content is an ORDERED list. A reply whose text brackets a
+    thinking block, or whose image sits between two paragraphs, means what it
+    means because of where each piece sits.
+  -->
+  <xs:group name="contentParts">
+    <xs:choice>
+      <xs:element ref="text"/>
+      <xs:element ref="image"/>
+      <xs:element ref="thinking"/>
+      <xs:element ref="redacted-thinking"/>
+      <xs:element ref="tool-call"/>
+    </xs:choice>
+  </xs:group>
+
+  <xs:complexType name="content">
+    <xs:sequence>
+      <xs:group ref="contentParts" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:simpleType name="role">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="system"/>
+      <xs:enumeration value="user"/>
+      <xs:enumeration value="assistant"/>
+      <xs:enumeration value="tool"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="message">
+    <xs:complexType>
+      <xs:complexContent>
+        <xs:extension base="content">
+          <xs:attribute name="role" type="role" use="required"/>
+          <!-- Links a tool result to the call it answers. -->
+          <xs:attribute name="tool-call-id" type="xs:string"/>
+          <xs:attribute name="tool-is-error" type="xs:boolean"/>
+        </xs:extension>
+      </xs:complexContent>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="system" type="content"/>
+
+  <xs:element name="messages">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="message" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ================================ tools ============================= -->
+
+  <xs:element name="input-schema" type="paramList"/>
+
+  <xs:element name="tool">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="input-schema" minOccurs="0"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="description" type="xs:string"/>
+      <!--
+        Whether the tool only READS state. It is never sent to an upstream: it
+        is here so a host can tell which calls change something.
+      -->
+      <xs:attribute name="readonly" type="xs:boolean"/>
+      <!--
+        What the tool DOES to state, as MCP declares it (readOnlyHint,
+        destructiveHint, idempotentHint, openWorldHint). None of these is sent
+        to an upstream; they exist so a host can decide about a call.
+
+        ABSENCE IS NOT FALSE for destructive and open-world: MCP defaults both
+        to true, so a document that omits them means "unknown", and a reader
+        must resolve unknown to the cautious value. destructive and idempotent
+        are meaningful only when readonly is false.
+      -->
+      <xs:attribute name="destructive" type="xs:boolean"/>
+      <xs:attribute name="idempotent" type="xs:boolean"/>
+      <xs:attribute name="open-world" type="xs:boolean"/>
+      <!--
+        Set when the facts above are the TOOL SOURCE's own claim rather than
+        something the host vouches for - an MCP server describing its own
+        tools. A reader must not treat an unvouched claim as it treats a
+        vouched one.
+      -->
+      <xs:attribute name="unvouched" type="xs:boolean"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="tools">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="tool" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- =============================== request ============================ -->
+
+  <xs:complexType name="requestBody">
+    <xs:sequence>
+      <xs:element ref="system" minOccurs="0"/>
+      <xs:element ref="messages" minOccurs="0"/>
+      <xs:element ref="tools" minOccurs="0"/>
+      <xs:element ref="params" minOccurs="0"/>
+      <xs:element ref="anthropic:params" minOccurs="0"/>
+      <xs:element ref="openai:params" minOccurs="0"/>
+      <xs:element ref="responses:params" minOccurs="0"/>
+      <xs:element ref="anthropic:thinking" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="model" type="xs:string"/>
+    <xs:attribute name="max-tokens" type="xs:int"/>
+    <!-- A prompt-cache routing hint, not a cache key the caller can read back. -->
+    <xs:attribute name="cache-key" type="xs:string"/>
+    <xs:attribute ref="anthropic:top-k"/>
+    <xs:attribute ref="anthropic:top-p"/>
+    <xs:attribute ref="anthropic:temperature"/>
+    <xs:attribute ref="openai:reasoning-effort"/>
+    <xs:attribute ref="openai:seed"/>
+    <xs:attribute ref="openai:temperature"/>
+    <xs:attribute ref="openai:top-p"/>
+    <xs:attribute ref="openai:frequency-penalty"/>
+    <xs:attribute ref="openai:presence-penalty"/>
+    <xs:attribute ref="openai:parallel-tool-calls"/>
+    <xs:attribute ref="responses:reasoning-effort"/>
+    <xs:attribute ref="responses:temperature"/>
+    <xs:attribute ref="responses:top-p"/>
+    <xs:attribute ref="responses:truncation"/>
+  </xs:complexType>
+
+  <xs:element name="request" type="requestBody"/>
+
+  <!--
+    A stored conversation is a request that has not been sent yet: the same
+    defaults and the same transcript, plus the id a session is addressed by.
+  -->
+  <xs:element name="conversation">
+    <xs:complexType>
+      <xs:complexContent>
+        <xs:extension base="requestBody">
+          <xs:attribute name="id" type="xs:string" use="required"/>
+        </xs:extension>
+      </xs:complexContent>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    What a store holds, as ids rather than whole transcripts: a listing that
+    inlined every conversation would make asking "what is there" cost the same
+    as reading everything there is.
+  -->
+  <xs:element name="conversation-id">
+    <xs:complexType>
+      <xs:attribute name="id" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="conversations">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="conversation-id" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- =============================== response =========================== -->
+
+  <!--
+    ONE usage report, exactly as the provider sent it. A call can produce
+    several: OpenAI emits one final snapshot, xAI attaches a cumulative one to
+    every chunk, Anthropic sends fragments. Reconciling them is a policy, and
+    this format does not have policies -- it says what the provider said.
+
+    An absent cache-read-tokens means the provider reported no cache
+    information, which is not the same as reporting zero.
+  -->
+  <xs:element name="raw" type="paramList"/>
+
+  <xs:element name="usage">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="raw" minOccurs="0"/>
+      </xs:sequence>
+      <xs:attribute name="prompt-tokens" type="xs:int"/>
+      <xs:attribute name="completion-tokens" type="xs:int"/>
+      <xs:attribute name="total-tokens" type="xs:int"/>
+      <xs:attribute name="cache-read-tokens" type="xs:int"/>
+      <xs:attribute name="cache-write-tokens" type="xs:int"/>
+      <xs:attribute ref="openai:reasoning-tokens"/>
+      <xs:attribute ref="openai:cost-usd"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    What a call only learns at the END. It is an element rather than an
+    attribute on <response> because a streamed document's root is written
+    first, when neither of these is known yet.
+  -->
+  <xs:element name="result">
+    <xs:complexType>
+      <xs:attribute name="stop-reason" type="xs:string"/>
+      <xs:attribute name="streamed" type="xs:boolean"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:simpleType name="errorKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="api"/>
+      <xs:enumeration value="context-overflow"/>
+      <xs:enumeration value="request"/>
+      <xs:enumeration value="canceled"/>
+      <xs:enumeration value="unsupported"/>
+      <xs:enumeration value="transport"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--
+    A call that produced output and then failed is ONE readable document that
+    says both, rather than a truncated stream the reader has to guess about.
+  -->
+  <xs:element name="error">
+    <xs:complexType>
+      <xs:simpleContent>
+        <xs:extension base="xs:string">
+          <xs:attribute name="kind" type="errorKind" use="required"/>
+          <xs:attribute name="status" type="xs:int"/>
+          <xs:attribute name="transient" type="xs:boolean"/>
+          <xs:attribute name="context-overflow" type="xs:boolean"/>
+        </xs:extension>
+      </xs:simpleContent>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    The response IS the message: one call produces one assistant turn, so a
+    <message> wrapper would only be a level to skip. Usage reports and timings
+    appear where they arrived, which is what lets the document be written
+    progressively as the answer streams.
+  -->
+  <xs:element name="response">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:choice minOccurs="0" maxOccurs="unbounded">
+          <xs:group ref="contentParts"/>
+          <xs:element ref="usage"/>
+          <xs:element ref="openai:timings"/>
+        </xs:choice>
+        <xs:element ref="error" minOccurs="0"/>
+        <xs:element ref="result" minOccurs="0"/>
+      </xs:sequence>
+      <xs:attribute name="role" type="role"/>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

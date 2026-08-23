@@ -1,28 +1,33 @@
 # One module
 
-Everything is `github.com/wow-look-at-my/agentic-loop/go`. The packages under
+Everything is `github.com/wow-look-at-my/agentic-loop`. The packages under
 it are ordinary packages, and the dependency arrows are the layering:
 
 ```
-go/          the agentic loop (package agentic)      <- client, extras
-go/core      the format, its schema, the three dialects. Depends on
+./           the agentic loop (package agentic)      <- client, extras
+core         the format, its schema, the three dialects. Depends on
              xml-validator/validator.
-go/extras    retry, rate limiting                    <- core
-go/client    the Go API                              <- core, extras
-go/session   conversation storage                    <- core
-go/http      stateless + stateful HTTP               <- core, session
-go/socket    unix socket + websocket                 <- core, session
-go/cli       the cai commands                        <- everything
-go/cmd/cai   main for cai
-go/cmd/todo_driver
-             main for the task-list launch check
+extras       retry, rate limiting                    <- core
+client       the Go API                              <- core, extras
+session      conversation storage                    <- core
+search       the conversation index: FTS5 + vectors over stored
+             conversations. Depends on modernc.org/sqlite.
+                                                     <- core, session
+http         stateless + stateful HTTP               <- core, session
+socket       unix socket + websocket                 <- core, session
+cli          the cai commands                        <- everything
+cmd/cai      main for cai
+todo/driver  main for the task-list launch check
 ```
 
-Every `main` sits under `go/cmd/<binary>/`, two levels below the module root.
-That is not taste: go-toolchain names a binary after the MODULE when the main
-package is one level down, so `go/cli` and `go/todo_driver` both resolved to
-`go`, collided, and only one of them was built. Two levels down, the leaf
-directory is the name.
+Optional tool families are sibling packages that return `agentic.Tools`
+values a host appends itself: `vfs`, `repo`, `subagent`, `webfetch`, `todo`,
+`resources`.
+
+Every `main` sits under `<area>/<binary>/` or `cmd/<binary>/`. That is not
+taste: go-toolchain names a binary after the MODULE when the main package is
+one level down, so `cli` and `todo/driver` would both resolve to the module
+root and collide. Two levels down, the leaf directory is the name.
 
 The compiler still enforces the layering: `core` cannot reach for a policy that
 lives in `client`, because the import would be a cycle. That property never
@@ -63,6 +68,11 @@ That was not worth a broken bootstrap and a two-merge dance.
 
 ## Dependencies
 
+`search` adds `modernc.org/sqlite`, which is SQLite transpiled to Go: the index
+is a real database and needs no cgo, so a consumer still cross-compiles a static
+binary. It reaches `search/` alone, exactly as cobra reaches `cli/` alone, and a
+binary that imports neither links neither.
+
 Two org modules, both resolved from the proxy, both branch-tracked:
 
 ```
@@ -85,7 +95,7 @@ than the repository root, which is no longer a module.
 ## Building
 
 ```sh
-cd go && go-toolchain
+go-toolchain
 ```
 
 No `go.work`, and nothing to check out alongside.

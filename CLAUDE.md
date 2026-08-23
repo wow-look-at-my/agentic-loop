@@ -4,33 +4,12 @@ Notes for Claude working in this repository.
 
 ## What this is
 
-`agentic-loop` — an agentic tool loop and the wire half it runs on, in ONE Go
-module (`github.com/wow-look-at-my/agentic-loop/go`). `ts/` is a planned
-TypeScript port, and the Go source plus `go/README.md` are its specification.
-There is no PARITY.md: it was deleted deliberately, so do not recreate one — a
-second declaration of the Go package's behavior is a copy nothing keeps true.
-
-**One module, several packages.** `go/` itself is package `agentic` (the loop).
-The wire half sits beside it: `go/core` (the XML format, its schema and the
-three dialects), `go/client` (the Go API), `go/extras` (retry, rate limit),
-`go/session`, `go/http`, `go/socket`, `go/cli` (the `cai` commands).
-
-**Every `main` lives under `go/cmd/<binary>/`.** go-toolchain names a binary
-after the MODULE when its main package sits one level below the module root, so
-`go/cli` and `go/todo_driver` both wanted to be called `go` and only one of
-them got built. Two levels down, the leaf directory is the name: `cai` and
-`todo_driver`, both built.
-
-**It is ONE module on purpose.** These packages were briefly seven modules in a
-separate repository, and every one of them had to pin its siblings at a
-pseudo-version — which a commit cannot honestly state about itself, so the
-first publish pinned a commit with no modules in it and consumers got
-`missing go.mod at revision`. One `go.mod` has no sibling pins to rot, no
-cross-repo release ordering, and one CI job. Do not split it back up.
-
-`aliases.go` re-exports what the loop uses, as ALIASES: `agentic.Message` IS
-`client.Message`, so a value crosses between the loop and the wire half
-without conversion.
+`agentic-loop` — a reusable agentic-loop library for OpenAI-compatible and
+Anthropic chat APIs. Package `agentic` is the module root
+(`github.com/wow-look-at-my/agentic-loop`). Sibling packages are `vfs`,
+`repo`, `subagent`, `webfetch`, `todo`, and `resources`. The loop package
+does not import the optional packages. There is no TypeScript port and none
+is planned.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
@@ -50,18 +29,26 @@ redesign — check these when a behavior question comes up):
   grants, Gate, activity telemetry) and `web_fetch`
   (`internal/tools/webfetch.go`: caps, URL validation, HTML cleanup, Tika,
   the model-backed summary).
-- `ai-shadertoy` `src/ai` `compact.ts`: compaction.
-- `model-benchmark` `src` (`env.ts`, `agent.ts`): context-overflow detection
-  and the transcript-tail cache marker discipline.
+- `ai-shadertoy` `src/ai` (`providers.ts`, `compact.ts`): the Anthropic
+  dialect reference (message/thinking/tool_result mapping, cache
+  breakpoints, stream events) and compaction.
+- `model-benchmark` `src` (`env.ts`, `agent.ts`): retry constants and
+  classification, context-overflow detection, the transcript-tail cache
+  marker discipline.
+
+The Responses dialect has NO source repo — it was written here, against the
+API's own shapes. Do not go looking for the semantics somewhere else; the
+answers are `USAGE.md` and `responses_test.go`.
 
 ## Build & test
 
-ALWAYS build and test with `go-toolchain` (no args) from `go/`. NEVER run
-bare `go build` / `go test` / `go mod tidy` — the toolchain does mod tidy,
-vet, lint, tests with an **80% coverage gate**, and the build.
+ALWAYS build and test with `go-toolchain` (no args) from the repo root.
+NEVER run bare `go build` / `go test` / `go mod tidy` — the toolchain does
+mod tidy, vet, lint, tests with an **80% coverage gate**, and the build.
+Build output goes in `/build` at the repo root.
 
 ```sh
-cd go && go-toolchain
+go-toolchain
 ```
 
 - go-toolchain refuses a dirty tree: commit first, run it, then commit its
@@ -71,7 +58,7 @@ cd go && go-toolchain
 - Test against `httptest` fake servers (`upstream_test.go`) and the in-process
   `scriptProvider` stub (`run_test.go`) — no network, no credentials. A test
   whose subject is a DIALECT lives beside that dialect in `core/`; a test of
-  the loop's behavior when a call streams, retries, or breaks lives at `go/`.
+  the loop.s behavior when a call streams, retries, or breaks lives at the repo root.
 - No `go.work` and nothing to check out alongside: the only org dependencies
   are `xml-validator/validator` and `go-containers`, both resolved from the
   proxy.
@@ -79,7 +66,7 @@ cd go && go-toolchain
 ## Layering — read this before moving anything between layers
 
 Two layers, and most design arguments in this repo are really this question
-asked sideways. `go/README.md` has the full statement; the short form:
+asked sideways. `USAGE.md` has the full statement; the short form:
 
 - **The loop (`Run`) is high-level.** It asks the model, runs the tools it
   asks for, feeds results back, repeats. It knows nothing about HTTP,
@@ -102,13 +89,25 @@ side of that line it falls on — do not put it on both.
 
 ## Hard rules
 
-- **Runtime is standard library only**, plus `xml-validator/validator`,
-  `go-containers/set`, and cobra in `cli/`. testify is test-only. No new
-  third-party runtime dependencies (the websocket is hand-rolled RFC 6455, and
-  so are the web-fetch HTML cleanup and the subagent machinery, like the
-  source). `go-containers/set` is first-party and NOT optional: go-toolchain's
-  `mapset` analyzer hard-fails an org module that uses a `map[K]bool` as a set,
-  so a set is `set.Set[K]` here.
+- **`go-containers/set` is not optional.** go-toolchain's `mapset` analyzer
+  hard-fails an org module that uses a `map[K]bool` as a set, so a set is
+  `set.Set[K]` here. testify is test-only. A dependency reaches only the
+  packages that import it and a binary links only what it imports, so weight
+  is an argument about `go.sum` -- `docs/module-layout.md` weighs it and says
+  what that is worth.
+- **A search index that is behind SAYS SO.** `search` is asynchronous by
+  construction -- embedding is a network call -- so `Status` reports the stale
+  conversations, the pending embeddings, the truncated messages and the last
+  error verbatim, and `Search` reports which half answered. Nothing is ever
+  marked permanently failed: a message that cannot be embedded today is picked
+  up by the next pass. **`Embedder` is asymmetric on purpose**
+  (`EmbedDocuments`/`EmbedQuery`): most embedding models want a task prefix and
+  a different one per side, and a wrong prefix is invisible -- every call
+  succeeds and the results are merely worse. Do not collapse it back to one
+  `Embed`. Its other invariants -- the two schema versions and the shape check
+  that catches a version describing another index's tables, why the vectors are
+  scanned in Go and what that measures at, and why a message id must be stable
+  -- are in `docs/search.md`.
 - **No environment reads.** The library never calls `os.Getenv`; all I/O
   goes through the injectable `*http.Client`; endpoints/keys are explicit
   fields.
@@ -123,13 +122,25 @@ side of that line it falls on — do not put it on both.
 - **Providers are built ONLY via the per-dialect constructors**
   (`NewOpenAIProvider` / `NewResponsesProvider` / `NewAnthropicProvider`, each
   embedding the shared `ProviderConfig` connection base). The dialect
-  implementations live in `core/` and stay unexported there; do not add
-  construction side doors. `Dialect` NAMES a protocol for a host's settings —
-  it never constructs one.
-- **Retry belongs to the Provider and is ON by default.**
-  `ProviderConfig.Retry` (nil = `DefaultRetry` = 10 attempts; a one-attempt
-  policy turns it off) is the ONE retry knob — do NOT add another to `Config`
-  or `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
+  implementations (`openaiProvider`, `responsesProvider`, `anthropicProvider`)
+  stay unexported; do not re-export them or add construction side doors.
+  `Dialect` (dialect.go) NAMES a protocol for a host's settings — it never
+  constructs one.
+- **The Responses dialect exists for exactly one thing** (`responses.go` +
+  `responses_wire.go`): a reasoning model's chain of thought surviving a tool
+  call, which chat-completions has no field for. So the reasoning ITEM with its
+  `encrypted_content` is what gets replayed, never a summary alone — a summary
+  is prose about the reasoning. `Store` is FALSE by default against the API's
+  own default (third-party retention is the caller's decision to make out
+  loud), `previous_response_id` is never sent (the transcript is the caller's),
+  and detection can never name this dialect, since the model list looks
+  identical. Depth: `USAGE.md`.
+- **Retry belongs to the Provider and is ON by default.** Both constructors
+  end at `newProvider`, which wraps what they build (`ProviderConfig.Retry`,
+  nil = `DefaultRetry` = 10 attempts; a one-attempt policy disables it and
+  returns the dialect provider unwrapped). `ProviderConfig.Retry` is the
+  library's ONE retry knob — do NOT add another to `Config` or
+  `SubagentConfig`: two layers multiply (10 x 10), and an opt-in retry is
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
   safe. That is why it is a knob the loop passes along and never reads.
@@ -151,16 +162,38 @@ side of that line it falls on — do not put it on both.
   fail-closed default expressed once. A denial carries `Approval.Reason`, and
   only an empty one falls back to `DeniedMessage` — an optional reason is one
   that goes missing exactly when a rule was written in a hurry.
-- **There is NO turn cap, and adding one back is a regression.** No
-  `MaxTurns` on `Config` or `SubagentConfig`, no `DefaultMaxTurns`, no
-  tools-withheld final turn. A counted cap cannot tell a model looping
-  uselessly from one deep in a hard task, so it fires at the worst possible
+- **A tool states FACTS, and two of them default to true.** `ToolDecl` carries
+  MCP's four annotations (`Readonly`, `Destructive`, `Idempotent`,
+  `OpenWorld`) plus `Unvouched`. `Destructive` and `OpenWorld` are POINTERS
+  because their MCP defaults are true: a bare bool reads an unstated fact as
+  the dangerous answer, and absent must stay distinguishable from `false` on
+  the wire too. Read them only through `IsDestructive`/`IsIdempotent`/
+  `IsOpenWorld`/`Vouched`, which also apply the spec's rule that the first two
+  are meaningless when `Readonly`. `Unvouched` marks an MCP server's claim
+  about its own tool: the spec forbids deciding from an untrusted server's
+  annotations, and a nil `Approver` plus `Tools.Readonly()` would otherwise
+  auto-run a lying server's tool and hand it to sub-agents. Depth: `USAGE.md`.
+- **Nothing caps a run by default, and adding a default back is a
+  regression.** `Config.MaxTurns` is the HOST's cap and is off at zero; there
+  is no `DefaultMaxTurns`. A counted cap cannot tell a model looping uselessly
+  from one deep in a hard task, so a default fires at the worst possible
   moment: after the run has spent every call gathering context and right
   before the model writes any of it down — the most expensive failure mode
-  available, since the whole investigation is paid for and then discarded.
-  What bounds a run is `ErrStuck` (repetition is the only mechanically
-  detectable form of not-progressing) and the caller's `ctx`.
-  `TestRunHasNoTurnCap` guards this.
+  available, since the whole investigation is paid for and then discarded. An
+  uncapped run is bounded by `ErrStuck` (repetition is the only mechanically
+  detectable form of not-progressing) and the caller's `ctx`. A capped run
+  makes its last call tool-less, so the model answers instead of asking for a
+  tool nothing will run. `TestRunHasNoTurnCap` guards the default.
+- **A message a queue ACCEPTS reaches the model.** `SystemMessages` and
+  `UserMessages` are drained at the top of every turn, system first, and a
+  message queued when the model would otherwise finish starts another turn —
+  every time. `Events.OnStop` is asked at every stop boundary for the same
+  reason a turn cap is a regression: a count cannot tell a host re-arming
+  with a reason from one spinning, and the cap fired at the worst moment.
+  `Queue` returns whether the queue took it, `Run`
+  closes both queues as it returns (so a racing producer starts a new run
+  instead), and whatever a failed, cancelled or capped run never delivered
+  comes back in `Result.Undelivered`. Depth: `USAGE.md`.
 - **Every entry point that makes a model call surfaces its `*Completion`.**
   Never a `Usage`, never a bare string: only `Completion.UsageReported`
   separates "reported zeros" from "reported nothing", and a projection drops
@@ -187,8 +220,8 @@ side of that line it falls on — do not put it on both.
   and grep's real-negative sentence) are pinned by tests.
   Do not "improve" them.
 - **A tool's schema is INFERRED from the struct its handler decodes**
-  (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go` because
-  the runtime is stdlib-only). Never hand-write one: that is a second
+  (`InferSchema`/`EnumSchema`, hand-rolled reflection in `schema.go`, since
+  what a tool argument needs is small). Never hand-write one: that is a second
   declaration of the argument list, and nothing keeps it true. Field prose is
   the `jsonschema` tag; `omitempty` is what makes an argument optional; a
   field with no json tag panics at construction.
@@ -250,6 +283,16 @@ side of that line it falls on — do not put it on both.
 - **A dialect that cannot express something FAILS.** Never drop it: a request
   quietly stripped of what the caller asked about is a wrong answer that looks
   like a right one.
+- **A turn that says NOTHING is dropped**, which strips no content and so is
+  not the rule above. Anthropic and Responses omit an assistant turn with no
+  text, no tool call and no replayable thinking: an empty text block fails the
+  WHOLE request, and one stored in a transcript then kills every later turn in
+  that conversation. A tool-call-only turn is not empty.
+- **A zero-argument tool call is `{}`, never a missing field** (`toolArgs`).
+  A model calling such a tool sends no argument bytes, so every read path
+  normalizes the empty string, and both wire writers apply it again for a
+  transcript that came from the host's storage. `omitempty` on `arguments`
+  is what made Z.AI 400 the turn — forever, since the call is persisted.
 - **The Responses dialect exists for exactly one thing** (`core/responses.go` +
   `core/responses_wire.go`): a reasoning model's chain of thought surviving a
   tool call, which chat-completions has no field for. So the reasoning ITEM
@@ -260,7 +303,7 @@ side of that line it falls on — do not put it on both.
   caller's), and detection can never name this dialect, since the model list
   looks identical.
 - **`&#0;` is how NUL travels.** Our writer emits it and our validator accepts
-  it — see `docs/nul.md`.
+  it — see `docs/nul-char.md`.
 - **No environment reads outside `cli/`.** Endpoints and keys are explicit
   fields; all I/O goes through an injectable `*http.Client`.
 
@@ -272,7 +315,9 @@ side of that line it falls on — do not put it on both.
   event vocabulary.
 - `docs/module-layout.md` — why this is one module, and what the seven-module
   split cost before it was collapsed.
-- `docs/nul.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
+- `docs/search.md` — the conversation index: the Source seam, why the vectors
+  are scanned in Go, what that costs measured, and how lag is reported.
+- `docs/nul-char.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
 
 ## Fix the bug. Never build around it.
 
@@ -343,8 +388,8 @@ Concretely:
 
 ## CI
 
-`.github/workflows/ci.yml` runs the org go-toolchain action with
-`working-directory: go`. Org constraints:
+`.github/workflows/ci.yml` runs the org go-toolchain action at the
+repository root. Org constraints:
 
 - The workflow trigger stays `on: push:` only.
 - The required status check is named exactly **`all-builds`**, but it is
@@ -372,5 +417,5 @@ Concretely:
 
 ## Documentation upkeep
 
-When changing the API surface or any behavior: update `go/README.md` and this
-file in the same commit.
+When changing the API surface or any behavior: update `USAGE.md` and
+this file in the same commit.
