@@ -103,7 +103,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 		}
 	}
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	// bestAuthed is the most informative failure produced by a TOKEN attempt.
 	// It is kept separate from best so an anonymous failure can never
 	// supersede it: when a configured PAT was tried and produced a failure,
@@ -112,7 +112,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 	// less informative) 401/403 would overwrite the token's answer on the
 	// last-write-wins tiebreak.
 	var bestAuthed GHResponse
-	bestAuthedRank := -1
+	bestAuthedRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, opt.NoAnonymous) {
 		res, err := e.doGetOpts(ctx, target, att.token, accept, opt)
@@ -148,7 +148,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 	}
 	// If any token produced a failure, that is the answer: never report an
 	// anonymous outcome when a configured PAT was tried and failed.
-	if bestAuthedRank >= 0 {
+	if bestAuthedRank != rankNone {
 		return bestAuthed, nil
 	}
 	if best.status == 0 && lastErr != nil {
@@ -240,7 +240,7 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, GHResponse, error) {
 	cacheKey := strings.ToLower(owner)
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, false) {
 		for _, isUser := range []bool{false, true} {
