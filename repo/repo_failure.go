@@ -94,8 +94,19 @@ func (rl rateLimit) waitAdvice() string {
 // authentication") only restates that no credential was sent: preferring it
 // over a token's own 403 turned a 42-second code-search rate limit into what
 // looked like a permanent authentication failure.
+//
+// A rate-limited TOKEN attempt outranks a rate-limited ANONYMOUS attempt even
+// though both are "a 403 saying the quota is spent": the token's 403 proves a
+// credential WAS tried and also hit the wall, whereas the anonymous 403 only
+// says no credential was sent. Reporting the token's version tells the caller
+// "your PAT is rate-limited" instead of the misleading "this was anonymous."
+// Without this, the anonymous attempt — which always runs LAST — wins the
+// tie in FetchURLOpts's keep-the-best selection whenever both are rate-limited.
 func failureRank(res GHResponse) int {
 	if _, limited := classifyRateLimit(res, time.Now()); limited {
+		if res.authed {
+			return 51
+		}
 		return 50
 	}
 	switch {
