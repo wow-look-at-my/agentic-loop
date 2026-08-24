@@ -9,6 +9,13 @@ import (
 // call, and a final capped call is made without tools so it can answer rather
 // than produce unhandled tool calls.
 
+// DefaultAutoCompact is the fraction of the model's context window at which
+// the loop auto-compacts when the caller does not set one explicitly. It is
+// 0.8: compact when four-fifths of the window is consumed, leaving headroom
+// for the summary call and the next turn's response. A caller that wants a
+// different threshold sets Request.AutoCompact; zero disables the feature.
+const DefaultAutoCompact = 0.8
+
 // SubagentReportKind is the Kind the loop sets on subagent delivery messages
 // it injects, so a host can persist them with the right label.
 const SubagentReportKind = "subagent_report"
@@ -123,6 +130,13 @@ type Config struct {
 	// results into [unchanged] markers. On by default; only set when the full
 	// output must always reach the model.
 	DisableOutputDedup bool
+
+	// ContextWindow is the model's context window size in tokens. It is the
+	// denominator for Request.AutoCompact: when a turn's prompt tokens reach
+	// AutoCompact * ContextWindow, the loop compacts the transcript before the
+	// next turn. Zero disables auto-compaction regardless of AutoCompact,
+	// because without a window size the fraction has nothing to multiply.
+	ContextWindow int
 
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each
 	// numbered turn begins (the stall-fallback wrap-up call is not a numbered

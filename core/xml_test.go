@@ -53,6 +53,36 @@ func TestRequestRoundTrip(t *testing.T) {
 	assert.Equal(t, "call_1", got.Messages[2].ToolCallID)
 }
 
+func TestAutoCompactRoundTrip(t *testing.T) {
+	tests := []float64{0.8, 0.5, 0.9, 0.75}
+	for _, f := range tests {
+		req := Request{Model: "m", AutoCompact: f}
+		got := roundTripRequest(t, req)
+		assert.InDelta(t, f, got.AutoCompact, 1e-9, "AutoCompact %v survived the round trip", f)
+	}
+}
+
+func TestAutoCompactZeroOmitted(t *testing.T) {
+	data, err := EncodeRequestBytes(Request{Model: "m", AutoCompact: 0})
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "auto-compact",
+		"AutoCompact=0 is omitted, not serialized as 0")
+}
+
+func TestAutoCompactConversationRoundTrip(t *testing.T) {
+	req := Request{Model: "m", System: "sys", AutoCompact: 0.8,
+		Messages: []Message{{Role: RoleUser, Content: "hi"}}}
+	var buf bytes.Buffer
+	require.NoError(t, EncodeConversation(&buf, "sess-1", req))
+	data := buf.Bytes()
+	require.NoError(t, Validate(data))
+
+	id, got, err := DecodeConversation(data)
+	require.NoError(t, err)
+	assert.Equal(t, "sess-1", id)
+	assert.InDelta(t, 0.8, got.AutoCompact, 1e-9)
+}
+
 // Order is the whole point of parts: a reply whose text brackets a thinking
 // block has to come back the same way round.
 func TestPartOrderSurvives(t *testing.T) {

@@ -124,6 +124,23 @@ type SystemMessageEvent struct {
 	ID  *MessageID
 }
 
+// CompactionEvent is the param to OnCompaction: the loop auto-compacted the
+// transcript because a turn's prompt tokens reached Request.AutoCompact of
+// Config.ContextWindow. Summary is the model's summary text, Messages is the
+// two-message replacement round (user(CompactRequestText), assistant(summary)),
+// and Completion is the summarize call's whole completion for cost accounting.
+//
+// The host reacts by replacing its stored transcript with Messages: the old
+// turns are gone from the loop's transcript, so they must be gone from the
+// host's durable tree too, and any cross-turn deduper must be reset. The
+// compaction call's cost is in Completion.Usage.
+type CompactionEvent struct {
+	event.Args
+	Summary    string
+	Messages   []Message
+	Completion *Completion
+}
+
 // Events are the loop's callbacks: the embedded StreamEvents fire during each
 // model call, OnTurnBegin fires before each numbered model call (with the
 // 1-based turn number and a pointer to the per-call Request, which the hook
@@ -158,6 +175,7 @@ type Events struct {
 	OnToolMessage       event.Event[ToolMessageEvent]
 	OnResourceNotice    event.Event[ResourceNoticeEvent]
 	OnSystemMessage     event.Event[SystemMessageEvent]
+	OnCompaction        event.Event[CompactionEvent]
 }
 
 // emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.
@@ -230,4 +248,12 @@ func (e *Events) emitSystemMessage(ev SystemMessageEvent) {
 	var id MessageID
 	ev.ID = &id
 	_ = e.OnSystemMessage.Invoke(ev)
+}
+
+// emitCompaction notifies the host that the loop auto-compacted the
+// transcript. The host replaces its stored transcript with the replacement
+// round and resets any cross-turn deduper, exactly as it would on a thread
+// mutation.
+func (e *Events) emitCompaction(ev CompactionEvent) {
+	_ = e.OnCompaction.Invoke(ev)
 }

@@ -201,6 +201,18 @@ type Request struct {
 	// entry here, and ignores every other dialect's.
 	DialectExtra map[Dialect]map[string]any
 	CacheKey     string
+
+	// AutoCompact is the fraction (0..1) of the model's context window at
+	// which the agentic loop compacts the conversation before the next turn:
+	// when the last turn's prompt tokens reach AutoCompact * ContextWindow,
+	// the transcript is replaced by a two-message summary round. Zero (the
+	// default) disables auto-compaction. A typical value is 0.8.
+	//
+	// It lives on Request because a session IS a stored request: the fraction
+	// is a property of the conversation, not of the model call. ContextWindow
+	// (the denominator) lives on Config, because it is a property of the model
+	// the host chose, not of the conversation.
+	AutoCompact float64
 }
 
 // EffectiveSystemParts is the system prompt as ordered parts: SystemParts when

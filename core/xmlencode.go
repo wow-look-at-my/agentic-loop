@@ -120,6 +120,9 @@ func requestAttrs(req Request) []attr {
 		attrs = append(attrs, intAttr("max-tokens", req.MaxTokens))
 	}
 	attrs = append(attrs, optAttr("cache-key", req.CacheKey)...)
+	if req.AutoCompact > 0 {
+		attrs = append(attrs, attr{name: "auto-compact", value: strconv.FormatFloat(req.AutoCompact, 'g', -1, 64)})
+	}
 	return append(attrs, qualifiedParamAttrs(req.DialectExtra)...)
 }
 
