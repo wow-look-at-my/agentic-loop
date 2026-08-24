@@ -257,6 +257,50 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 		calls := assistant.ToolCalls
 
+		// Auto-compaction: when the last turn's prompt tokens have reached
+		// the configured fraction of the model's context window, compact the
+		// transcript before the loop does anything else with this turn's
+		// output. The two-message summary round replaces everything, so the
+		// assistant message just produced is finalized and its tool calls
+		// dropped (they reference a transcript that no longer exists), the
+		// deduper is reset (its [unchanged] markers pointed at outputs now
+		// gone), and the host is notified to replace its durable tree.
+		//
+		// Compaction is a real model call; its cost is in the event's
+		// Completion. A compaction failure is non-fatal: the loop continues
+		// with the un-compacted transcript rather than losing the turn.
+		if shouldCompact(req, cfg, comp) {
+			cr, cerr := Compact(ctx, cfg.Provider, Request{
+				Model:    req.Model,
+				System:   req.System,
+				Messages: transcript,
+			})
+			if cerr == nil {
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
+				transcript = cr.Messages
+				res.Messages = transcript
+				if cr.Completion != nil {
+					res.Usages = append(res.Usages, cr.Completion.Usage)
+				}
+				if deduper != nil {
+					deduper.Reset()
+				}
+				cfg.Events.emitCompaction(CompactionEvent{
+					Summary:    cr.Summary,
+					Messages:   cr.Messages,
+					Completion: cr.Completion,
+				})
+				// The compacted round ends on assistant, so the next loop
+				// iteration starts clean — the model is asked again with the
+				// summary in place of the full history. Continue to the next
+				// turn rather than processing this turn's now-stale calls.
+				continue
+			}
+			// Compaction failed: fall through and proceed with the
+			// un-compacted transcript. The error is swallowed because the
+			// turn itself succeeded.
+		}
+
 		// Keep looping while the model is still requesting tools and we are
 		// allowed to run them: replay the assistant's tool-call message, then
 		// each tool result, so the next turn sees the full sub-conversation.

@@ -97,6 +97,13 @@ func requestFrom(root *validator.Element) (Request, error) {
 	var req Request
 	req.Model = attrOf(root, "model")
 	req.CacheKey = attrOf(root, "cache-key")
+	if v := attrOf(root, "auto-compact"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return Request{}, fmt.Errorf("commonai: auto-compact %q is not a number", v)
+		}
+		req.AutoCompact = f
+	}
 	if v := attrOf(root, "max-tokens"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
