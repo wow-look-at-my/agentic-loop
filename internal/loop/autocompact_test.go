@@ -25,11 +25,11 @@ func usageComp(content string, promptTokens int, calls ...ToolCall) *Completion 
 
 func TestShouldCompact(t *testing.T) {
 	tests := []struct {
-		name       string
+		name        string
 		autoCompact float64
-		window     int
-		prompt     int
-		want       bool
+		window      int
+		prompt      int
+		want        bool
 	}{
 		{"at threshold", 0.8, 10000, 8000, true},
 		{"above threshold", 0.8, 10000, 9000, true},
@@ -92,9 +92,9 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 		ContextWindow: 10000,
 	}
 	req := Request{
-		Model:        "m",
-		AutoCompact:  0.8,
-		Messages:     []Message{{Role: RoleUser, Content: "go"}},
+		Model:       "m",
+		AutoCompact: 0.8,
+		Messages:    []Message{{Role: RoleUser, Content: "go"}},
 	}
 
 	res, err := Run(context.Background(), cfg, req)
@@ -189,7 +189,7 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	req := Request{Model: "m", AutoCompact: 0.8,
 		Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	res, err := Run(context.Background(), cfg, req)
+	_, err := Run(context.Background(), cfg, req)
 	require.NoError(t, err, "compaction failure is non-fatal")
 	assert.False(t, compacted, "the compaction event did not fire")
 	// The original tool calls were executed (compaction failed, so the
