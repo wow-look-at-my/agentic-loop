@@ -35,13 +35,9 @@ import (
 
 // Config builds a Server.
 type Config struct {
-	// Provider runs the calls and is required.
-	//
-	// It is the format's own Provider, not the Go client's: what the document
-	// says the provider reported has to be what the provider reported.
+	// Provider runs the calls and is required; it is the format's own Provider, not the Go client's.
 	Provider commonai.Provider
-	// Store holds conversations. Nil serves <request> only, and answers a
-	// <conversation> with an error rather than quietly running it statelessly.
+	// Store holds conversations; nil serves <request> only and errors on <conversation>.
 	Store session.Store
 }
 
@@ -89,8 +85,7 @@ func (s *Server) Handle(ctx context.Context, conn io.ReadWriter) {
 		data, err := commonai.ReadDocument(r)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				// A stream that ended mid-document is worth saying out loud:
-				// the peer thinks it sent something.
+				// A stream that ended mid-document is worth saying out loud.
 				_ = commonai.EncodeError(conn, commonai.BadRequest(err.Error()))
 			}
 			return

@@ -230,8 +230,7 @@ func TestTestTokenListsOrganizationsDiscoveredViaUserOrgs(t *testing.T) {
 	require.Len(t, res.Orgs[0].Repos, 1)
 	assert.Equal(t, "PazerOP/UE553", res.Orgs[0].Repos[0].FullName)
 
-	// A repo the flat /user/repos listing never returned still shows up in
-	// the top-level Repos union, sourced from the org sweep.
+	// A repo the flat /user/repos listing missed still lands in the Repos union.
 	require.Len(t, res.Repos, 1)
 	assert.Equal(t, "PazerOP/UE553", res.Repos[0].FullName)
 }
@@ -274,8 +273,7 @@ func TestTestTokenFallsBackToRepoOwnersWhenUserOrgsFails(t *testing.T) {
 	assert.Empty(t, res.Orgs[0].Error)
 	require.Len(t, res.Orgs[0].Repos, 2)
 
-	// PazerOP/second-repo never appeared in /user/repos at all -- only the
-	// org sweep found it -- and it still lands in the top-level union.
+	// PazerOP/second-repo was found only by the org sweep.
 	fullNames := []string{res.Repos[0].FullName, res.Repos[1].FullName}
 	assert.ElementsMatch(t, []string{"PazerOP/UE553", "PazerOP/second-repo"}, fullNames)
 }

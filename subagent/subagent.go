@@ -110,12 +110,7 @@ const (
 	SubagentActivityToolResult = "tool_result" // a sub-agent tool returned
 	SubagentActivityText       = "text"        // the sub-agent's own answer for a turn
 	SubagentActivityThinking   = "thinking"    // its reasoning for a turn
-	// SubagentActivityTurnEnd reports one finished sub-agent turn, carrying its
-	// *Completion. It is the live route out for what a sub-agent is spending
-	// while it runs -- the report at the end carries the totals, but a host
-	// showing cost as it accrues cannot wait for that. Fires only for a turn
-	// that produced a completion; a call that failed before producing one has
-	// nothing to report.
+	// SubagentActivityTurnEnd reports one finished turn's whole *Completion.
 	SubagentActivityTurnEnd = "turn_end"
 )
 
@@ -130,81 +125,43 @@ type SubagentActivity struct {
 	Turn   int    // 1-based turn number (every kind but tool_call/tool_result)
 	Tool   string // tool name (tool_call / tool_result)
 	Detail string // arguments preview, result preview, or other short context
-	// Content is the SAME text as Detail but WHOLE: the full arguments, the
-	// full tool output, the full answer or the full reasoning, never capped or
-	// whitespace-flattened. Detail alone left a host with no way to show what a
-	// sub-agent actually read or said — a 160-rune preview of a file listing
-	// answers nothing — so hosts that can render a scrollable block use this
-	// and keep Detail for the one-line summary.
+	// Content is Detail's text but WHOLE: the full arguments or output, never capped.
 	Content string
 	IsError bool // tool_result only: the tool reported an error
-	// Completion is the finished turn's whole completion, on the
-	// SubagentActivityTurnEnd step and nowhere else. Whole, not a Usage: only
-	// UsageReported distinguishes an upstream that reported zeros from one that
-	// reported nothing, and CostUsd, Timings and the rest are what a host needs
-	// to charge the turn at all.
+	// Completion is the finished turn's whole completion, on the TurnEnd step only.
 	Completion *agentic.Completion
 }
 
 // SubagentConfig configures NewSubagentTool.
 type SubagentConfig struct {
-	// Provider and Model run the sub-agent (typically the same as the parent
-	// turn's). MaxTokens and Extra are forwarded to every sub-agent model call
-	// (MaxTokens is required when Provider speaks the Anthropic dialect).
-	// There is no Retry here for the same reason Config has none: the nested
-	// run is a loop, and loops do not retry. The sub-agent's calls inherit
-	// whatever Provider does, like every other call in the library.
+	// Provider and Model run the sub-agent; MaxTokens and Extra forward to every sub-agent call.
 	Provider  agentic.Provider
 	Model     string
 	MaxTokens int
 	Extra     map[string]any
-	// Tools is the parent's FULL toolset (every tool the parent turn has). The
-	// read-only subset of it is the default sub-agent toolset, but a
-	// non-read-only tool the orchestrator names in allowed_tools is granted
-	// explicitly. Empty runs the sub-agent tool-less.
+	// Tools is the parent's FULL toolset; its read-only subset is the default sub-agent set.
 	Tools agentic.Tools
-	// ParentSystem and ParentMessages are the parent conversation's input
-	// context — the source for the share_context modes. The system prompt is
-	// prepended as a system message before selection, so last_n/messages
-	// indices count over the same list the model context held. Empty means
-	// the sub-agent can only ever run with the prompt alone.
+	// ParentSystem and ParentMessages are the parent context, the source for share_context modes.
 	ParentSystem   string
 	ParentMessages []agentic.Message
-	// Gate bounds concurrent sub-agent execution (share one Gate across the
-	// tools that should share the limit). nil = no limit.
+	// Gate bounds concurrent sub-agent execution; nil = no limit.
 	Gate *agentic.Gate
-	// Runs makes run_subagent ASYNCHRONOUS: the call returns a receipt as soon
-	// as the sub-agent is launched, so the orchestrator can fan several out in
-	// one turn and keep working, and each report is delivered between turns
-	// through this registry (Run drains it; a host driving its own loop calls
-	// Pending/Collect itself).
-	//
-	// nil keeps the call synchronous -- it blocks until the sub-agent answers,
-	// and one call can only ever produce one running sub-agent.
+	// Runs makes run_subagent ASYNCHRONOUS, returning a receipt so several can run at once.
 	Runs *agentic.SubagentRuns
 	// SystemPrompt overrides DefaultSubagentSystemPrompt when non-empty.
 	SystemPrompt string
-	// OnActivity, when non-nil, receives live telemetry: a step per sub-agent
-	// turn and around each of the sub-agent's own tool calls. It is called
-	// synchronously from the sub-agent's loop.
+	// OnActivity, when non-nil, receives live telemetry from the sub-agent's loop.
 	OnActivity func(SubagentActivity)
 }
 
-// subagentTool implements run_subagent. It is deliberately NOT marked
-// read-only, so Tools.Readonly excludes it from a sub-agent's default toolset,
-// and grantableTools omits it from the set allowed_tools can name — so a
-// sub-agent can never spawn another (no recursion).
+// subagentTool implements run_subagent, deliberately not read-only so sub-agents can't spawn more.
 type subagentTool struct {
 	cfg      SubagentConfig
 	system   string
 	readonly agentic.Tools
 }
 
-// NewSubagentTool builds the run_subagent tool: one tool that runs a nested,
-// in-memory agentic loop (this package's Run) on cfg.Provider and reports back
-// only the sub-agent's final answer. Append it to the rest of the toolset like
-// any other tool. It is not Readonly, so a run with no Approver refuses it —
-// launching a sub-agent is the host's call, made in the host's Approver.
+// NewSubagentTool builds the run_subagent tool: a nested agentic loop on cfg.Provider.
 func NewSubagentTool(cfg SubagentConfig) agentic.Tool {
 	system := strings.TrimSpace(cfg.SystemPrompt)
 	if system == "" {
@@ -223,12 +180,7 @@ func (e *subagentTool) Decl() agentic.ToolDecl {
 	}
 }
 
-// grantableTools returns the tools allowed_tools may name, in deterministic
-// order: every tool in the full toolset EXCEPT run_subagent itself (excluding
-// it here is what stops a sub-agent being granted the power to spawn another).
-// The set includes non-read-only tools — naming one in allowed_tools is how
-// the orchestrator explicitly grants it; without that, only the read-only
-// subset is used by default.
+// grantableTools returns the tools allowed_tools may name: the full toolset except run_subagent.
 func (e *subagentTool) grantableTools() []agentic.ToolDecl {
 	var out []agentic.ToolDecl
 	for _, d := range e.cfg.Tools.Decls() {

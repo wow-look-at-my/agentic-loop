@@ -29,10 +29,7 @@ func TestCacheWritesAreNotChargedTwice(t *testing.T) {
 	assert.InDelta(t, 2000*0.000015+10000*0.00001875, r.Cost(u), 1e-9)
 }
 
-// Reasoning tokens are inside CompletionTokens on both dialects, so there is no
-// reasoning term. This test is the guard on that: Cost takes a Usage, which has
-// no reasoning field, so a future edit cannot add the term without changing the
-// signature and tripping this.
+// Reasoning tokens are inside CompletionTokens on both dialects, so Cost has no reasoning term.
 func TestCostPricesCompletionOnceWhateverTheThinkingWas(t *testing.T) {
 	r := Rates{Prompt: 0.000001, Completion: 0.00001}
 	u := Usage{PromptTokens: 100, CompletionTokens: 4100}

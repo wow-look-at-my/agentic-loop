@@ -9,11 +9,7 @@ import (
 	"unicode"
 )
 
-// Mode names which half of the index answered a query. It is reported on every
-// search: a semantic result and a literal one are different claims about why a
-// message is here, and a caller who has not finished (or has not started)
-// embedding must not be handed a text-only list as though it were the whole
-// thing.
+// Mode names which half of the index answered a query, so a text-only list isn't mistaken for the whole thing.
 type Mode string
 
 const (
@@ -23,9 +19,7 @@ const (
 	ModeSemantic Mode = "semantic"
 	// ModeHybrid is both, fused.
 	ModeHybrid Mode = "hybrid"
-	// ModeSubstring is the literal fallback. It answers the queries FTS5
-	// structurally cannot: a fragment inside a word, or a query made entirely
-	// of punctuation, neither of which produces a token to match.
+	// ModeSubstring is the literal fallback for queries FTS5 structurally cannot answer.
 	ModeSubstring Mode = "substring"
 )
 
@@ -36,14 +30,11 @@ type Hit struct {
 	Role           string
 	Content        string
 	CreatedAt      string
-	// Position is the message's index in its conversation's transcript, so a
-	// caller can jump to it without searching the transcript again.
+	// Position is the message's index in its conversation's transcript, for jumping to it.
 	Position int
-	// Score is the rank score, comparable only against other hits from the
-	// same query.
+	// Score is the rank score, comparable only against other hits from the same query.
 	Score float64
-	// Text and Semantic record which halves matched this message, so a caller
-	// can tell a literal quotation from a merely related passage.
+	// Text and Semantic record which halves matched this message.
 	Text     bool
 	Semantic bool
 }
@@ -54,31 +45,18 @@ type candidate struct {
 	score     float64
 }
 
-// rrfK is the constant in reciprocal rank fusion: score = sum over halves of
-// 1/(rrfK + rank). 60 is the value from the original formulation and the one
-// every implementation since has used.
-//
-// Fusion is by RANK rather than by score because the two halves do not produce
-// comparable numbers: bm25 is an unbounded relevance score whose scale depends
-// on the corpus, and cosine similarity is a bounded [-1,1] geometric one.
-// Normalizing them onto a common axis means inventing an exchange rate between
-// them; using positions means never claiming one exists.
+// rrfK is the constant in reciprocal rank fusion; fusion is by rank because the halves' scores aren't comparable.
 const rrfK = 60.0
 
 // Query is one search.
 type Query struct {
-	// Owner scopes the search. It must be the same value the Source reported
-	// for the conversations this search may reach: the match is exact, and
-	// there is deliberately no wildcard, so a host that gets this wrong
-	// returns nothing rather than everything.
+	// Owner scopes the search; it must match the Source's value exactly, or the search returns nothing.
 	Owner string
 	// Text is what the user typed. It is never parsed as a query language.
 	Text string
 	// Limit caps the hits returned. Zero or negative returns nothing.
 	Limit int
-	// Model and Embedder turn on the semantic half. Leave Embedder nil for a
-	// text-only search -- that is the state of any caller without an embedding
-	// endpoint, and it is not an error.
+	// Model and Embedder turn on the semantic half; leave Embedder nil for a text-only search.
 	Model    string
 	Embedder Embedder
 }
@@ -91,9 +69,7 @@ func (i *Index) Search(ctx context.Context, q Query) ([]Hit, Mode, error) {
 		return []Hit{}, ModeText, nil
 	}
 
-	// Each half is asked for more than the caller wants, because fusion
-	// reorders them: a result that is second in both lists outranks one that
-	// leads only the first, and it cannot do that if it was cut before fusing.
+	// Each half is asked for more than the caller wants, because fusion reorders them.
 	textHits, err := i.searchText(ctx, q.Owner, text, q.Limit*2)
 	if err != nil {
 		return nil, ModeText, err
@@ -107,10 +83,7 @@ func (i *Index) Search(ctx context.Context, q Query) ([]Hit, Mode, error) {
 		}
 	}
 
-	// Neither half found anything by word. Fall back to the literal substring
-	// search rather than reporting an absence the index cannot establish --
-	// "rep" does not tokenize to anything inside "grep", and a query of pure
-	// punctuation tokenizes to nothing at all.
+	// Neither half found anything by word, so fall back to the literal substring search.
 	if len(textHits) == 0 && len(semHits) == 0 {
 		hits, err := i.searchSubstring(ctx, q.Owner, text, q.Limit)
 		return hits, ModeSubstring, err
@@ -204,26 +177,7 @@ func (i *Index) searchText(ctx context.Context, owner, query string, limit int) 
 	return out, nil
 }
 
-// ftsQuery turns arbitrary user input into an FTS5 MATCH expression, or ""
-// when the input holds nothing to match on.
-//
-// Every term is wrapped in double quotes, which is what makes this safe for
-// input nobody wrote for a query parser: quoted, FTS5's own operators (AND,
-// OR, NOT, NEAR, -, ^, :, parentheses) are literal text rather than syntax, so
-// a search for "NOT" or "c++" is a search and not a parse error.
-//
-// Terms are split on the same boundary the unicode61 tokenizer uses, so a
-// query can never contain a term the index had no chance to store. That split
-// is also why no term needs escaping inside its quotes: a double quote is not
-// a letter or a digit, so it ends a term rather than appearing in one.
-//
-// The last term gets a prefix match ONLY when the query ends mid-word. This
-// backs an as-you-type search box, where the final word is usually half-typed
-// and requiring it whole empties the list exactly while the user is looking at
-// it. But a query ending in a separator has said where that word stops: "100%"
-// asks for the token "100", and prefix-matching it there would return every
-// "100x" and "1000" too, turning the character the user typed to be literal
-// into the wildcard it resembles.
+// ftsQuery turns arbitrary user input into an FTS5 MATCH expression, quoting terms so FTS5 operators stay literal.
 func ftsQuery(query string) string {
 	terms := strings.FieldsFunc(query, isSeparator)
 	if len(terms) == 0 {
@@ -239,8 +193,7 @@ func ftsQuery(query string) string {
 	return strings.Join(quoted, " ")
 }
 
-// isSeparator reports whether a rune ends a token, matching what the unicode61
-// tokenizer does to the indexed side.
+// isSeparator reports whether a rune ends a token, matching the unicode61 tokenizer.
 func isSeparator(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }
 
 // searchSemantic embeds the query and scans every vector the owner has under
@@ -269,16 +222,10 @@ func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit 
 	}
 	defer func() { _ = rows.Close() }()
 
-	// A message contributes its BEST chunk. Summing or averaging its chunks
-	// would rank a long message above a short exact match for having more
-	// chances to be slightly relevant.
+	// A message contributes its BEST chunk, so a long message can't outrank a short exact match.
 	best := map[string]float64{}
 	var mismatched int
-	// sql.RawBytes borrows the driver's own buffer instead of copying every
-	// vector into a fresh slice. It is only valid until the next Next(), which
-	// is exactly how it is used here: dotBlob reads it and keeps nothing. On a
-	// scan this is not a micro-optimization -- the copy is the whole corpus,
-	// allocated again on every query.
+	// sql.RawBytes avoids copying every vector; it is valid only until the next Next().
 	var blob sql.RawBytes
 	for rows.Next() {
 		var id string
@@ -297,9 +244,7 @@ func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("search: iterate vectors: %w", err)
 	}
-	// Vectors of another width under this model's own name mean the model
-	// changed dimensions underneath the index. Skipping them silently would
-	// shrink the searchable corpus with no sign anywhere.
+	// Vectors of another width mean the model changed dimensions; skipping them would silently shrink the corpus.
 	if mismatched > 0 {
 		return nil, fmt.Errorf("search: %d vectors stored under %q have a different dimension than it returns now; re-index that model", mismatched, q.Model)
 	}
@@ -352,10 +297,7 @@ func (i *Index) searchSubstring(ctx context.Context, owner, query string, limit 
 	return hits, nil
 }
 
-// escapeLike escapes the LIKE metacharacters (%, _) and the escape character
-// itself so the needle matches literally under the ESCAPE '\' clause.
-// Backslash is replaced first or it would re-escape the escapes it just
-// introduced.
+// escapeLike escapes LIKE's metacharacters so the needle matches literally; backslash is replaced first.
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `%`, `\%`)
@@ -405,8 +347,7 @@ func (i *Index) hydrate(ctx context.Context, owner string, ranked []Hit) ([]Hit,
 	for _, r := range ranked {
 		full, ok := byID[r.MessageID]
 		if !ok {
-			// The message left the index between the ranking and this read. It
-			// is gone, so it is dropped rather than rendered as a blank row.
+			// The message left the index between ranking and read, so it is dropped rather than rendered blank.
 			continue
 		}
 		full.Score, full.Text, full.Semantic = r.Score, r.Text, r.Semantic

@@ -35,21 +35,10 @@ type Index struct {
 	sql *sql.DB
 }
 
-// Open opens (creating if necessary) the index at path and brings its schema
-// up to date, rebuilding either half whose version has moved.
-//
-// The driver is modernc.org/sqlite, which is pure Go: the index needs no cgo,
-// so a host that cross-compiles a static binary keeps doing that. It is also
-// why the vectors are scanned in Go rather than by an extension -- sqlite-vec
-// and its siblings are C loadable extensions, and a Go-transpiled SQLite
-// cannot load one. see docs/search.md.
+// Open opens (creating if necessary) the index at path, bringing its schema up to date.
 func Open(ctx context.Context, path string) (*Index, error) { return open(ctx, path, "full") }
 
-// OpenEphemeral is Open with synchronous=OFF, for a database that is deleted
-// moments later. A torn write is recoverable here in a way one in the host's
-// own store is not -- nothing in this file is a source of truth -- but a
-// corrupt index still has to be noticed rather than silently answered from, so
-// Open does not weaken it.
+// OpenEphemeral is Open with synchronous=OFF, for a database that is deleted moments later.
 func OpenEphemeral(ctx context.Context, path string) (*Index, error) { return open(ctx, path, "off") }
 
 func open(ctx context.Context, path, synchronous string) (*Index, error) {
@@ -65,12 +54,10 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("search: open %q: %w", path, err)
 	}
-	// One connection: this is a single-writer index, and the cap removes lock
-	// contention rather than managing it.
+	// One connection: this is a single-writer index, and the cap removes lock contention.
 	sqlDB.SetMaxOpenConns(1)
 
-	// Schema work runs detached from the caller's context: a cancellation
-	// arriving mid-rebuild would leave one half dropped and not recreated.
+	// Schema work runs detached from the caller's context so a mid-rebuild cancellation can't drop a half.
 	startup := context.WithoutCancel(ctx)
 	if err := sqlDB.PingContext(startup); err != nil {
 		_ = sqlDB.Close()

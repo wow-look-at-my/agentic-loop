@@ -234,8 +234,7 @@ func TestConversationLifecycle(t *testing.T) {
 	require.Len(t, p.reqs[0].Messages, 1)
 	assert.Equal(t, "first question", p.reqs[0].Messages[0].Content)
 
-	// Both sides of the turn are in the stored transcript, so the next one
-	// sees what was said.
+	// Both sides of the turn are in the stored transcript, so the next one sees what was said.
 	resp2, err := http.Get(srv.URL + "/v1/conversations/" + id)
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp2.Body)

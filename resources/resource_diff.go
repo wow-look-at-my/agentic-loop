@@ -9,8 +9,7 @@ import (
 	"strings"
 )
 
-// ResourceDiffToolName is the advertised name of the tool that resolves a
-// change id announced in a resource notice.
+// ResourceDiffToolName is the advertised name of the resource-change tool.
 const ResourceDiffToolName = "mcp_resource_diff"
 
 const (
@@ -21,9 +20,7 @@ const (
 		"resource has changed since, so there is no need to fetch a diff before you need it. " +
 		"For a resource that was just added, this returns its contents."
 
-	// resourceDiffRecentLimit is how many recent change ids an unknown-id error
-	// lists back, so a mistyped or hallucinated id is answered with the real
-	// ones rather than a dead end.
+	// resourceDiffRecentLimit is how many recent change ids an unknown-id error lists back.
 	resourceDiffRecentLimit = 20
 )
 
@@ -50,9 +47,7 @@ type resourceDiffArgs struct {
 	Full     bool   `json:"full,omitempty"`
 }
 
-// ErrNoResourceChange is what a ResourceChanges reader returns for an id it
-// does not hold, so the tool can answer with the real ids rather than the
-// host's storage error text.
+// ErrNoResourceChange is what a ResourceChanges reader returns for an id it does not hold.
 var ErrNoResourceChange = errors.New("agentic: no such resource change")
 
 // StoredResourceChange is one recorded change as the reader hands it back: the
@@ -72,20 +67,12 @@ type ResourceChanges interface {
 	RecentChanges(ctx context.Context, limit int) ([]StoredResourceChange, error)
 }
 
-// resourceDiffTool implements mcp_resource_diff: it resolves a change id
-// announced in a resource notice to the before/after the watcher captured at
-// that moment.
-//
-// It reads the change record's OWN copy of the content, never the current
-// snapshot. That is what makes the id honest: a resource that has moved three
-// times since still answers the first notice with the first change.
+// resourceDiffTool implements mcp_resource_diff, reading the change record's own captured content.
 type resourceDiffTool struct {
 	changes ResourceChanges
 }
 
-// NewResourceDiffTool builds mcp_resource_diff, or returns nil when there is no
-// change reader to answer from -- a run with no watched resources is never
-// offered a tool that could only ever fail.
+// NewResourceDiffTool builds mcp_resource_diff, or nil when there is no change reader.
 func NewResourceDiffTool(changes ResourceChanges) agentic.Tool {
 	if changes == nil {
 		return nil
@@ -149,9 +136,7 @@ func RenderResourceChange(c StoredResourceChange, full bool) string {
 	}
 
 	if c.Binary {
-		// Never a diff: base64 bytes are useless as model context, so a binary
-		// resource is watched by hash and size and reported as exactly that
-		// rather than as a diff that would look empty.
+		// Binary resources are never diffed; they are watched by hash and size.
 		b.WriteString("\n\nThis resource is binary, so its content is watched by hash and size only.")
 		b.WriteString("\nsize: " + agentic.HumanSize(c.BeforeBytes) + " -> " + agentic.HumanSize(c.AfterBytes))
 		b.WriteString("\nsha256: " + shortHash(c.BeforeHash) + " -> " + shortHash(c.AfterHash))
@@ -170,8 +155,7 @@ func RenderResourceChange(c StoredResourceChange, full bool) string {
 		b.WriteString("\n\nFull captured content (" + agentic.HumanSize(c.AfterBytes) + "):\n\n")
 		b.WriteString(contentOrEmpty(c.AfterContent))
 	case c.Kind == agentic.ResourceAdded:
-		// A unified diff against /dev/null is just the whole file with a '+' on
-		// every line — strictly worse to read than the content itself.
+		// A diff against /dev/null would just show the whole file, worse than the content itself.
 		b.WriteString("\n\nThis resource is newly available. Its contents (" + agentic.HumanSize(c.AfterBytes) + "):\n\n")
 		b.WriteString(contentOrEmpty(c.AfterContent))
 	case c.Kind == agentic.ResourceRemoved:

@@ -33,8 +33,7 @@ func TestUnifiedDiffTable(t *testing.T) {
 			name: "trailing newline only difference",
 			from: "a/f.txt", to: "b/f.txt",
 			old: "x\n", new: "x",
-			// Naive-but-consistent newline handling: a trailing-newline-only
-			// change produces no visible line diff.
+			// Naive-but-consistent newline handling: a trailing-newline-only change shows no line diff.
 			want: "",
 		},
 		{

@@ -9,14 +9,10 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// maxSharedContextRunes caps a rendered parent-context transcript so an enormous
-// history can't defeat the very purpose of a sub-agent (a *clean* context). When
-// over the cap the oldest part is dropped, keeping the most recent (most
-// task-relevant) tail.
+// maxSharedContextRunes caps a rendered parent-context transcript, dropping the oldest part over the cap.
 const maxSharedContextRunes = 200_000
 
-// subagentSummaryTimeout bounds the one extra model call made when
-// share_context=summary, so a slow summary can't wedge the (gate-held) turn.
+// subagentSummaryTimeout bounds the extra model call made when share_context=summary.
 const subagentSummaryTimeout = 2 * time.Minute
 
 // RenderTranscript renders parent-conversation messages into a readable,
@@ -165,10 +161,7 @@ func composeSubagentTask(block, prompt string) string {
 
 const subagentPreviewMaxRunes = 160
 
-// subagentPreview flattens whitespace and truncates s to a single short line for
-// the activity strip, so a giant argument blob or a long tool result (a whole
-// file body) never floods the progress view -- only the model's distilled final
-// report is ever shown in full.
+// subagentPreview flattens whitespace and truncates s, so a giant blob never floods the progress view.
 func subagentPreview(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	r := []rune(s)

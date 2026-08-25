@@ -5,12 +5,7 @@ import (
 	"strings"
 )
 
-// runModelCall executes one model call and counts it as one turn -- including
-// when the provider re-attempted it internally, which Run neither sees nor
-// needs to. Every call that produced a completion -- success or partial --
-// appends its usage to the result. turn is the 1-based turn number (the stall
-// wrap-up call is one past the turn that stalled): OnTurnBegin fires with the
-// per-call Request (mutations apply to this call only), OnTurnEnd after it.
+// runModelCall executes one model call, counting it as one turn (internal retries included).
 func runModelCall(
 	ctx context.Context, cfg *Config,
 	req Request, turn int, msgs []Message, tools []ToolDecl, res *Result,
@@ -29,16 +24,13 @@ func runModelCall(
 		res.Usages = append(res.Usages, comp.Usage)
 	}
 	if cberr := cfg.Events.emitTurnEnd(TurnEndEvent{Turn: turn, Comp: comp, Err: err}); cberr != nil {
-		// The call happened; its data is kept, the run aborts on the sink
-		// failure (Run finalizes the completion like a mid-stream break).
+		// The call happened; its data is kept, the run aborts on the sink failure.
 		return comp, cberr
 	}
 	return comp, err
 }
 
-// fallbackOutput picks the text to surface when the loop ends without a
-// written answer: the content, then the accumulated reasoning (a thinking
-// model's only output), then a clear placeholder.
+// fallbackOutput picks the text to surface when the loop ends without a written answer.
 func fallbackOutput(m Message) string {
 	if s := strings.TrimSpace(m.Content); s != "" {
 		return s

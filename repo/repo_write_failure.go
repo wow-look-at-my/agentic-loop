@@ -8,24 +8,8 @@ import (
 )
 
 // Why an exhausted credential rotation failed.
-//
-// GitHub answers 404 for a repository a token cannot see, for one it cannot
-// write to, and for an object that is not in it. The rotation itself cannot
-// tell those apart -- it only knows every credential was refused -- so it used
-// to announce the first as fact. That told a user holding admin on the
-// repository that none of their PATs could write to it, and sent them to fix a
-// setting that was already correct. See docs/tools/repo-tools.md.
 
-// MoreInformativeAuthFailure folds one credential's failure into the best failure so
-// far, so an exhausted rotation reports what it established rather than
-// whichever credential happens to be configured last. The read side already
-// works this way (failureRank); a write rotation kept the LAST attempt, which
-// made the reported cause depend on the order of Settings -> github.
-//
-// That is not cosmetic: explainExhaustedPush recognizes a vanished branch
-// point only by a 404 that names an object, so one later token rejecting its
-// own credentials erased the finding and put the push back on the
-// write-access guess this file exists to retire.
+// MoreInformativeAuthFailure folds one credential's failure into the best so far.
 func MoreInformativeAuthFailure(best, next GitHubAuthError) GitHubAuthError {
 	if best.status == 0 {
 		return next

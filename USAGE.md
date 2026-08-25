@@ -951,6 +951,42 @@ completion, why `CompactResult` carries one, why `SubagentActivity` has a
 `turn_end` kind, why `WebFetchConfig` has `OnCompletion`, and why
 `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
+### Auto-compaction
+
+`Run` can compact the transcript automatically when the context window is
+nearly full, so a long conversation continues without the host measuring
+token counts or calling `Compact` itself. The trigger is a fraction of the
+model's context window, set on the session:
+
+```go
+res, err := agentic.Run(ctx, agentic.Config{
+	Provider:      provider,
+	ContextWindow: 200_000, // the model's context window, in tokens
+}, agentic.Request{
+	Model:       "your-model-id",
+	AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
+	Messages:    history,
+})
+```
+
+`Request.AutoCompact` is the fraction (0..1) of `Config.ContextWindow` at
+which the loop compacts. Zero (the default) disables the feature. After each
+turn whose `Usage.PromptTokens` reaches `AutoCompact * ContextWindow`, the
+loop calls `Compact` internally, replaces the transcript with the two-message
+summary round, resets the output deduper (its `[unchanged]` markers
+referenced outputs now gone from context), and notifies the host through
+`Events.OnCompaction` so it can replace its durable tree. The compaction
+call's cost is in the event's `Completion`.
+
+`AutoCompact` lives on `Request` because a session IS a stored request — the
+fraction is a property of the conversation, not of the model call, and it
+persists with the session document. `ContextWindow` lives on `Config` because
+it is a property of the model the host chose, not of the conversation. A
+server that reports no usage never triggers compaction: without a token count
+the loop cannot know the context is full. A compaction failure (the model
+returned an empty summary) is non-fatal — the loop continues with the
+un-compacted transcript.
+
 ## Searching stored conversations
 
 `search` indexes conversations so they can be found by word (FTS5) and, when an

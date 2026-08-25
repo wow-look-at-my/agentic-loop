@@ -80,8 +80,7 @@ func TestRateLimiterSpacesStartsAtLeastOneInterval(t *testing.T) {
 		require.NoError(t, l.Wait(context.Background()))
 		started = append(started, clock.current())
 	}
-	// The first starts immediately; every following start is >= one interval
-	// after the previous one, so the observed rate can never exceed the limit.
+	// The first starts immediately; every following start is >= one interval after the previous one.
 	assert.Equal(t, time.Unix(0, 0), started[0])
 	for i := 1; i < len(started); i++ {
 		assert.GreaterOrEqual(t, started[i].Sub(started[i-1]), 10*time.Millisecond)
@@ -97,9 +96,7 @@ func TestRateLimiterCatchUpAfterSlowCall(t *testing.T) {
 	require.NoError(t, l.Wait(context.Background())) // start at t=0
 	require.NoError(t, l.Wait(context.Background())) // waits 10ms, start at t=10ms
 
-	// The first call is slow: it finishes at t=100ms, long after the gate
-	// opened. The next start is admitted immediately rather than held to a
-	// missed schedule -- the average rate still holds.
+	// The first call is slow; the next start is admitted immediately rather than held to a missed schedule.
 	clock.advance(90 * time.Millisecond)
 	require.NoError(t, l.Wait(context.Background()))
 	assert.Equal(t, time.Unix(0, 0).Add(100*time.Millisecond), clock.current())
@@ -163,8 +160,7 @@ func TestRateLimitedTransportGatesEveryRequest(t *testing.T) {
 	base.mu.Lock()
 	assert.Equal(t, 3, base.calls)
 	base.mu.Unlock()
-	// ...but the second and third waited one interval each before being let
-	// through (request starts are spaced).
+	// ...but the second and third waited one interval each before being let through.
 	require.Len(t, clock.waits, 2)
 	for _, d := range clock.waits {
 		assert.Equal(t, 5*time.Millisecond, d)
@@ -185,8 +181,7 @@ func TestRateLimitedClientWrapsTheBaseTransport(t *testing.T) {
 	assert.Same(t, l, rt.limiter)
 	assert.NotNil(t, rt.base)
 
-	// A nil client wraps the default client's transport; a client with a nil
-	// transport wraps the default transport.
+	// A nil client wraps the default client's transport; a nil transport wraps the default transport.
 	def := RateLimitedClient(nil, l)
 	rt, ok = def.Transport.(*rateLimitedTransport)
 	require.True(t, ok)
@@ -197,8 +192,7 @@ func TestRateLimitedClientWrapsTheBaseTransport(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, rt.base)
 
-	// A nil limiter leaves the base client untouched (the common case: the
-	// caller that wants no limiter passes none).
+	// A nil limiter leaves the base client untouched (the caller that wants no limiter passes none).
 	require.Same(t, base, RateLimitedClient(base, nil))
 	require.Nil(t, RateLimitedClient(nil, nil))
 }

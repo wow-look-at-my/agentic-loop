@@ -12,14 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// errSink is the sentinel a consumer's failing callback returns in these
-// tests; every abort path must keep it reachable via errors.Is.
+// errSink is the sentinel a failing callback returns; abort paths keep it reachable via errors.Is.
 var errSink = errors.New("sink closed")
 
 func TestRunCallbackErrorSingleRequestAndPartialResult(t *testing.T) {
-	// Delivery is marked BEFORE the callback runs, so a callback failing on
-	// the very FIRST delta still counts as "streamed something": exactly one
-	// upstream request, no re-attempt, and the partial transcript survives.
+	// Delivery is marked before the callback runs, so a first-delta failure still blocks a re-attempt.
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -80,9 +77,7 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 	require.NotNil(t, res)
 	assert.Equal(t, 1, fails)
 
-	// alpha ran before the abort, but the whole batch is cleared: the
-	// assistant keeps content/thinking, loses its tool calls, and alpha's
-	// appended result is dropped — no orphan tool calls remain.
+	// alpha ran before the abort, but the batch is cleared: no orphan tool calls remain.
 	assert.Len(t, exec.executed, 1)
 	require.Len(t, res.Messages, 2)
 	final := res.Messages[1]

@@ -62,8 +62,7 @@ func TestAnthropicRequestBody(t *testing.T) {
 			Content: "on it",
 			Thinking: []ThinkingBlock{
 				{Text: "pondering", Signature: "sig-1"},
-				// Unreplayable: no signature, no redacted payload. Sending it
-				// as a signature-less thinking block 400s the whole turn.
+				// Unreplayable: no signature, so sending it as a thinking block would 400 the whole turn.
 				{Text: "text-only reasoning from somewhere else"},
 				{Redacted: "opaque-blob"},
 			},
@@ -393,8 +392,7 @@ func TestAnthropicNonOKOverflow(t *testing.T) {
 }
 
 func TestAnthropicEmptyTailUnmarked(t *testing.T) {
-	// An empty-string tail must NOT be converted into a marked (empty) text
-	// block — the API rejects an empty text block.
+	// An empty-string tail must not become a marked empty text block — the API rejects those.
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -416,11 +414,7 @@ func TestAnthropicEmptyTailUnmarked(t *testing.T) {
 }
 
 func TestAnthropicSaysNothingForATurnThatSaidNothing(t *testing.T) {
-	// A stored transcript holds assistant turns that carry nothing: a run
-	// cancelled before any text, or a model that answered with an empty
-	// message. Sending one as an empty text block fails the WHOLE request,
-	// which makes every later turn in that conversation fail too. The turn
-	// is dropped instead, and the surviving turns keep their order.
+	// A content-less assistant turn is dropped: an empty text block would fail the whole request.
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -430,8 +424,7 @@ func TestAnthropicSaysNothingForATurnThatSaidNothing(t *testing.T) {
 		Messages: []Message{
 			{Role: RoleUser, Content: "first"},
 			{Role: RoleAssistant, Content: ""},
-			// Thinking with no signature is not replayable, so this turn is
-			// as empty as the one above it.
+			// Thinking with no signature is not replayable, so this turn is empty too.
 			{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "hm"}}},
 			{Role: RoleUser, Content: "second"},
 		},
@@ -452,9 +445,7 @@ func TestAnthropicSaysNothingForATurnThatSaidNothing(t *testing.T) {
 }
 
 func TestAnthropicKeepsAnAssistantTurnThatOnlyCalledATool(t *testing.T) {
-	// The drop above is about a turn with NOTHING in it. A turn whose only
-	// output was a tool call has no text and must still be replayed, or the
-	// tool_result that answers it has nothing to attach to.
+	// A tool-call-only turn has no text but must still be replayed, or its tool_result won't attach.
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -482,10 +473,7 @@ func TestAnthropicKeepsAnAssistantTurnThatOnlyCalledATool(t *testing.T) {
 }
 
 func TestAnthropicAssistantOnlyTextNoToolContinuation(t *testing.T) {
-	// A text-only assistant message still maps to a block array, and a lone
-	// user tail (string content) receives the moving marker as a one-block
-	// array — pinned by TestAnthropicCallerTranscriptUnchanged. Here: the
-	// assistant tail case.
+	// A text-only assistant tail becomes a block array and receives the moving marker.
 	h := &anSSEHandler{events: minimalAnEvents("ok")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()

@@ -7,16 +7,7 @@ import (
 	"strings"
 )
 
-// The param tree is how arbitrary JSON-shaped data lives in the format: tool
-// input schemas, a provider's verbatim usage object, and any provider
-// parameter the dialect schemas have not named. It is a declared element, not
-// a wildcard, so it validates like everything else -- and it is a TREE rather
-// than a JSON string in a text node, because a blob of JSON inside XML is a
-// second format nothing in the schema can check.
-//
-// Two properties make it lossless where a naive mapping is not. XML children
-// are ordered, so an object's member order survives; and a scalar's text is
-// the literal the JSON carried, so 1.50 does not come back as 1.5.
+// The param tree stores arbitrary JSON data in the format as a validating element: a real tree, not a JSON text node.
 
 // Param value types, matching JSON's own.
 const (
@@ -28,10 +19,7 @@ const (
 	ParamArray   = "array"
 )
 
-// Param is one node of the value tree: a named member of an object, an
-// unnamed item of an array, or the root of a value. Value holds a scalar's
-// literal text; Children holds an object's members or an array's items, in
-// order.
+// Param is one node of the value tree: a named object member, an unnamed array item, or the root.
 type Param struct {
 	Name     string
 	Type     string

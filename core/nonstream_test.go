@@ -84,8 +84,7 @@ func TestAnthropicNonStreamResponse(t *testing.T) {
 	assert.False(t, comp.Streamed)
 	assert.Equal(t, StopToolUse, comp.StopReason)
 
-	// The blocks keep the order they arrived in: a reply reads differently when
-	// its thinking sits after its text.
+	// The blocks keep the order they arrived in: a reply reads differently when its thinking sits after its text.
 	kinds := make([]PartKind, 0, len(comp.Message.Parts))
 	for _, p := range comp.Message.Parts {
 		kinds = append(kinds, p.Kind())

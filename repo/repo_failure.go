@@ -9,24 +9,15 @@ import (
 	"time"
 )
 
-// Failure classification for the repo reads. Every GitHub refusal used to
-// reach the model as one undifferentiated "something is wrong with GitHub":
-// a spent rate limit, a repository no token can see, and a missing credential
-// all rendered as a status code and a guess. They need different reactions —
-// wait, ask the user for a token, give up on that path — so they get different
-// messages, and the transient one says how long to wait.
-//
-// See docs/tools/repo-tools.md for the failure taxonomy.
+// Failure classification for the repo reads; see docs/tools/repo-tools.md.
 
 // rateLimit describes a GitHub rate-limit refusal.
 type rateLimit struct {
-	// resource names the exhausted bucket ("core", "search", "code_search"),
-	// empty when GitHub did not say.
+	// resource names the exhausted bucket, empty when GitHub did not say.
 	resource string
 	// retryIn is how long until the bucket refills, 0 when unknown.
 	retryIn time.Duration
-	// secondary marks the abuse/secondary limit, which is about request RATE
-	// rather than a quota and clears on its own.
+	// secondary marks the abuse/secondary limit, which clears on its own.
 	secondary bool
 }
 
@@ -64,12 +55,7 @@ func classifyRateLimit(res GHResponse, now time.Time) (rateLimit, bool) {
 	return rl, hit
 }
 
-// whichCredentialHit names the credential that produced a rate-limited
-// response: an unnamed anonymous fallback ran out of its own tiny
-// unauthenticated budget, or one specific configured token ran out of its
-// own -- distinct facts a bare "rate limit exceeded (403)" collapses into
-// one, and the reason a healthy-looking token can sit next to a genuinely
-// exhausted anonymous attempt with no way to tell them apart.
+// whichCredentialHit names the credential that produced a rate-limited response.
 func whichCredentialHit(res GHResponse) string {
 	if !res.authed {
 		return "the unauthenticated (anonymous) request, not one of your configured tokens"
@@ -117,47 +103,28 @@ func failureRank(res GHResponse) failureRankLevel {
 	}
 }
 
-// failureRankLevel is an ORDERED ranking of how informative a failed attempt
-// is: the higher the value, the more the response explains, so FetchURLOpts's
-// keep-the-best selection falls out of a simple > comparison. It is a typed
-// enum, not magic numbers, because the ordering is the entire contract — two
-// attempts can tie only when they are the SAME kind, and the one that matters
-// (a rate-limited PAT) must never tie with the anonymous fallback that runs
-// last.
+// failureRankLevel is an ORDERED ranking of how informative a failed attempt is.
 type failureRankLevel int
 
 const (
 	// rankNone is the "no failure yet" floor, below every real ranking.
 	rankNone failureRankLevel = iota
-	// rankAnon401 is the anonymous 401: it says only that no credential was
-	// sent, which restates nothing about a configured token that was refused.
+	// rankAnon401 is the anonymous 401: no credential was sent.
 	rankAnon401
-	// rankAnonFailure is any other anonymous failure (e.g. a 404 on a public
-	// resource).
+	// rankAnonFailure is any other anonymous failure (e.g. a 404 on a public resource).
 	rankAnonFailure
-	// rankTokenFailure is a token's non-rate-limit failure (403 permission
-	// denied, 404 not found, ...).
+	// rankTokenFailure is a token's non-rate-limit failure (403 denied, 404 not found).
 	rankTokenFailure
-	// rankAnonRateLimited is the anonymous rate limit: the 403 only says the
-	// unauthenticated quota was spent.
+	// rankAnonRateLimited is the anonymous rate limit: the unauthenticated quota was spent.
 	rankAnonRateLimited
-	// rankTokenRateLimited is a TOKEN's rate limit: it proves a credential was
-	// tried and hit the wall, which is exactly what a host with healthy PATs
-	// needs to hear instead of "anonymous did it". It outranks the anonymous
-	// rate limit so the last-running anonymous attempt can never win the tie.
+	// rankTokenRateLimited is a TOKEN's rate limit; outranks the anonymous one.
 	rankTokenRateLimited
 )
 
-// githubTokenExpirationLayout matches the value GitHub actually sends in the
-// GitHub-Authentication-Token-Expiration response header, e.g.
-// "2026-08-05 08:16:52 UTC" (confirmed against a live response; GitHub's own
-// changelog documents the header's existence but not its exact format).
+// githubTokenExpirationLayout matches GitHub's GitHub-Authentication-Token-Expiration header.
 const githubTokenExpirationLayout = "2006-01-02 15:04:05 MST"
 
-// tokenExpiryWarnWindow is how far ahead of expiry this starts warning. Long
-// enough to act on (rotate the token before it breaks something), short
-// enough that a token with months left never says anything — silence is the
-// correct answer for the common case.
+// tokenExpiryWarnWindow is how far ahead of expiry this starts warning.
 const tokenExpiryWarnWindow = 14 * 24 * time.Hour
 
 // tokenExpiryDetail renders GitHub's GitHub-Authentication-Token-Expiration
@@ -185,14 +152,7 @@ func tokenExpiryDetail(res GHResponse, now time.Time) string {
 	return ""
 }
 
-// authRejectionDetail renders GitHub's own explanation for a 401, when it
-// sent one (typically {"message":"Bad credentials"}). GitHub does not expose
-// any header or body field that tells an expired token apart from a revoked
-// or simply wrong one — all three produce this identical response — so this
-// only surfaces what GitHub actually said, never a guess at which case it is.
-// It also checks for an expiration header on the off chance GitHub still
-// identified the token before rejecting it — harmless to check, since an
-// absent header renders nothing either way.
+// authRejectionDetail surfaces GitHub's own explanation for a 401, if it sent one.
 func authRejectionDetail(res GHResponse, now time.Time) string {
 	var detail string
 	if msg := GitHubErrorMessage(res.body); msg != "" {
@@ -201,15 +161,7 @@ func authRejectionDetail(res GHResponse, now time.Time) string {
 	return detail + tokenExpiryDetail(res, now)
 }
 
-// ssoAuthorizeDetail renders GitHub's SAML SSO block: an org that enforces
-// SSO 403s a token that has never been authorized for it, and names a
-// one-hour authorization URL in X-GitHub-SSO as "required; url=...". This is
-// a policy block on an otherwise-valid credential, not a missing permission —
-// a different fix (visit the URL), so it is checked ahead of everything else.
-// GitHub's multi-org listing form ("partial-results; organizations=...")
-// carries no URL and applies to a different kind of call (a listing that
-// spans orgs) than the single-resource reads this package makes, so it is
-// deliberately not handled here.
+// ssoAuthorizeDetail renders GitHub's SAML SSO block and its one-hour authorization URL.
 func ssoAuthorizeDetail(res GHResponse) string {
 	sso := res.header.Get("X-GitHub-SSO")
 	idx := strings.Index(sso, "url=")
@@ -257,14 +209,7 @@ func splitScopeHeader(header string) []string {
 	return scopes
 }
 
-// missingPermissionDetail renders what a 403 is missing, trying the most
-// actionable signal first: an SSO authorization block names a one-click fix;
-// X-Accepted-GitHub-Permissions (fine-grained PATs, GitHub Apps) and the
-// X-OAuth-Scopes pair (classic PATs) each name the exact permission or scope
-// missing; GitHub's own message body is the last resort (a 403 for a reason
-// none of these headers cover, such as an IP allowlist). A near-expiry token
-// gets an advisory appended regardless of which of those fired — a 403 means
-// GitHub identified the credential, so its expiration header is real here.
+// missingPermissionDetail renders what a 403 is missing, most actionable signal first.
 func missingPermissionDetail(res GHResponse, now time.Time) string {
 	return primaryDenialDetail(res) + tokenExpiryDetail(res, now)
 }

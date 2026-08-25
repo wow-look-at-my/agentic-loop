@@ -45,9 +45,7 @@ type fakeGitHub struct {
 	mu      sync.Mutex
 	calls   []ghCall
 	respond func(c ghCall) (status int, body string)
-	// headers, when set, adds response headers to each answer. The rate-limit
-	// classification reads x-ratelimit-* / retry-after, so a test has to be
-	// able to send them.
+	// headers, when set, adds response headers the rate-limit classification reads.
 	headers func(c ghCall) http.Header
 }
 

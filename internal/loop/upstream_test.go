@@ -9,12 +9,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/client"
 )
 
-// Fake upstreams for the tests that drive the loop over a real provider.
-//
-// The dialects themselves are tested in core/, against these same
-// shapes. What is exercised here is the loop's behavior when a call goes over
-// HTTP and comes back streamed, retried, or broken -- which needs a server, not
-// a stub.
+// Fake upstreams: the dialects are tested in core/; here the loop's behavior over HTTP is exercised.
 
 // sseHandler serves the given data payloads as an SSE stream, terminated by
 // [DONE], capturing the request body and headers.
@@ -65,9 +60,7 @@ func (h *anSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// newProvider gives a stub Provider the retry behavior a constructed one has,
-// for the tests that drive Run over a failure the provider is supposed to
-// absorb.
+// newProvider gives a stub Provider the retry behavior a constructed one has.
 func newProvider(p Provider, policy *RetryPolicy) Provider {
 	return client.Retrying(p, policy)
 }
@@ -89,9 +82,7 @@ func mustAnthropic(t *testing.T, cfg AnthropicConfig) Provider {
 	return p
 }
 
-// oaProvider is shorthand for an OpenAI-dialect test provider. Providers retry
-// by default, so tests inject the fast no-sleep policy -- otherwise every
-// retrying test would wait out real exponential backoff.
+// oaProvider is an OpenAI-dialect test provider; tests inject the fast no-sleep retry policy.
 func oaProvider(t *testing.T, baseURL string) Provider {
 	t.Helper()
 	return oaProviderRetry(t, baseURL, retryTestPolicy(4))

@@ -184,6 +184,15 @@ side of that line it falls on — do not put it on both.
   detectable form of not-progressing) and the caller's `ctx`. A capped run
   makes its last call tool-less, so the model answers instead of asking for a
   tool nothing will run. `TestRunHasNoTurnCap` guards the default.
+- **Auto-compaction is caller-armed and loop-fired.** `Request.AutoCompact`
+  is the fraction (0..1) of `Config.ContextWindow` at which `Run` compacts
+  the transcript mid-run; `DefaultAutoCompact` is 0.8. The fraction lives on
+  `Request` (it is a session property that persists with the conversation
+  document); the window lives on `Config` (it is a model property the host
+  supplies). After a turn whose `PromptTokens` reaches the threshold, the
+  loop calls `Compact`, replaces the transcript, resets the deduper, and
+  fires `Events.OnCompaction`. Zero disables; a server reporting no usage
+  never triggers; a compaction failure is non-fatal. Depth: `USAGE.md`.
 - **A message a queue ACCEPTS reaches the model.** `SystemMessages` and
   `UserMessages` are drained at the top of every turn, system first, and a
   message queued when the model would otherwise finish starts another turn —

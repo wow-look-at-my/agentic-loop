@@ -8,13 +8,7 @@ import (
 	"time"
 )
 
-// RateLimitStatus is the result of one GET /rate_limit probe: GitHub's own
-// accounting of the "core" REST budget for the credential that made the
-// call, not a figure derived from some other response's headers. A blank
-// Token probes anonymously -- the reading for "this server's own IP,
-// unauthenticated" -- since GitHub buckets an unauthenticated request by
-// the caller's IP address the same way it buckets an authenticated one by
-// token.
+// RateLimitStatus is one GET /rate_limit probe's core-budget accounting.
 type RateLimitStatus struct {
 	OK        bool      `json:"ok"`
 	Error     string    `json:"error,omitempty"`

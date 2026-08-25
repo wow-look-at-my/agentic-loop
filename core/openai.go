@@ -13,23 +13,7 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// openaiProvider is the Provider for OpenAI-compatible chat-completions APIs,
-// built by NewOpenAIProvider. baseURL is the API root including
-// the version segment (e.g. "https://api.openai.com/v1"); requests POST to
-// baseURL + "/chat/completions". apiKey, when non-empty, is sent as a Bearer
-// token, and headers are applied after the defaults so a caller-supplied
-// header can override them. selfHosted adds cache_prompt:true to every
-// request -- the KV-cache prefix-reuse opt-in llama.cpp-style servers honor --
-// and must stay false for hosted OpenAI/Azure, which reject unknown body
-// fields with a 400. promptCache adds the two Anthropic-style ephemeral
-// cache_control breakpoints in openai shape for Anthropic-fronting gateways
-// that pass them through; replayReasoning echoes each assistant message's
-// accumulated reasoning back as message.reasoning (the gateway extension a
-// model needs to keep seeing its chain-of-thought). A nil httpClient uses
-// http.DefaultClient.
-//
-// The fields are read-only during Complete, so a value is safe for concurrent
-// use.
+// openaiProvider is an OpenAI-compatible provider; read-only fields make it concurrent-safe.
 type openaiProvider struct {
 	baseURL         string
 	apiKey          string
@@ -44,24 +28,7 @@ type openaiProvider struct {
 // oaReserved are the Extra keys the typed core always overrides.
 var oaReserved = set.Of("messages", "model", "stream", "tools")
 
-// Complete implements Provider over a streaming chat completion. When the
-// first attempt fails before anything streamed with a 400 that names NO
-// recoverable parameter at all (some servers answer "Invalid API parameter,
-// please check the documentation" -- no name whatsoever, so NewParamStripper's
-// regexes have nothing to match and a caller wrapping this Provider in it
-// gets no help), and the request carried the AUTO-added default
-// stream_options (never a caller-requested field, only a usage-in-stream
-// convenience), Complete retries once with that default left off. A 400 that
-// DOES name a parameter is left untouched here -- that is NewParamStripper's
-// job, and guessing "it must be stream_options" over a name that points
-// somewhere else would just burn an extra round trip while the real culprit
-// (e.g. a caller-supplied reasoning_effort) survives untouched into the
-// retry. Dropping stream_options is always safe when it does fire: the
-// caller never asked for it, and its absence only means no usage figures on
-// this call, the same degradation an upstream with no stream_options support
-// already produces. A context-overflow 400 is excluded too: it is permanent
-// regardless of stream_options, and IsContextOverflow's callers expect it
-// unretried.
+// Complete retries without the default stream_options when a pre-stream 400 names no parameter.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	comp, err := o.complete(ctx, req, ev, true)
 	if comp != nil || err == nil || !o.shouldRetryWithoutStreamOptions(req, err) {
@@ -70,12 +37,7 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 	return o.complete(ctx, req, ev, false)
 }
 
-// shouldRetryWithoutStreamOptions reports whether a failed first attempt is
-// worth retrying with the default stream_options left off: the failure must
-// be a pre-stream 400 whose text names no recoverable parameter (a named one
-// is NewParamStripper's job, not a guess made here), and the request must
-// actually have carried the AUTO-added default -- a caller-supplied
-// stream_options (via Extra) is never touched.
+// shouldRetryWithoutStreamOptions: true when a pre-stream 400 names no parameter and carried the default.
 func (o *openaiProvider) shouldRetryWithoutStreamOptions(req Request, err error) bool {
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.Status != 400 || ae.ContextOverflow {
@@ -126,11 +88,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return nil, readAPIError(resp)
 	}
 
-	// A 200 that is NOT an SSE stream is a plain JSON response -- the server
-	// ignored stream:true (or a proxy buffered it) and answered with the
-	// non-streaming shape. It is accepted transparently and reassembled into a
-	// Completion with Streamed false, so the caller keeps a truthful record of
-	// how the call was actually transported.
+	// A non-SSE 200 is a plain JSON response, accepted transparently as a Completion with Streamed false.
 	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
 		body, rerr := io.ReadAll(resp.Body)
 		if rerr != nil {

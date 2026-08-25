@@ -126,8 +126,7 @@ func TestSubagentRunsIgnoreUnknownAndDuplicateCalls(t *testing.T) {
 	runs.MarkRunning("ghost")
 	runs.Complete("ghost", "from nowhere", false, nil)
 
-	// One launch, one outstanding run, and nothing ready: the ghost report was
-	// not adopted (Collect would block on the real run, which is the point).
+	// One launch, one outstanding run, nothing ready: the ghost report was not adopted.
 	assert.Equal(t, 1, runs.Pending())
 	assert.Empty(t, runs.Take())
 	assert.Equal(t, 1, runs.Running())

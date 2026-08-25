@@ -12,37 +12,9 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// The OpenAI Responses API (POST /v1/responses), the third dialect behind the
-// Provider seam.
-//
-// It exists beside the chat-completions dialect rather than replacing it
-// because of ONE thing chat-completions structurally cannot do: carry a
-// reasoning model's chain of thought across a tool call. On chat-completions
-// the reasoning a model produced before calling a tool is gone by the next
-// request -- there is no field to put it back in -- so the model re-derives it
-// every turn, which costs tokens, breaks the prompt cache at the reasoning
-// boundary, and loses the thread of a long investigation. The Responses API
-// models the turn as an ordered list of ITEMS, and a reasoning item can be sent
-// back verbatim. That is why this dialect asks for
-// include: ["reasoning.encrypted_content"] and replays what it gets.
-//
-// Two deliberate positions:
-//
-//   - store defaults to FALSE. The API's own default retains every prompt and
-//     response server-side, and a library that opted its callers into that
-//     silently would be making a privacy decision on their behalf. It is
-//     ResponsesConfig.Store, off unless asked.
-//   - previous_response_id is never sent. This library's contract is a flat
-//     transcript the CALLER owns and can edit, fork, compact or persist; a
-//     server-side conversation id would make that transcript a partial lie
-//     about what the model is actually seeing. Every call sends its full input.
+// Responses dialect: chat-completions cannot carry reasoning across tool calls, so it replays it.
 
-// responsesProvider is the Provider for the OpenAI Responses API, built by
-// NewResponsesProvider. baseURL is the API root including the version segment
-// (e.g. "https://api.openai.com/v1"); requests POST to baseURL + "/responses".
-//
-// The fields are read-only during Complete, so a value is safe for concurrent
-// use.
+// responsesProvider is the OpenAI Responses API Provider; fields are read-only during Complete.
 type responsesProvider struct {
 	baseURL    string
 	apiKey     string
@@ -90,10 +62,7 @@ func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *Strea
 		return nil, readAPIError(resp)
 	}
 
-	// A 2xx that is not an SSE stream is the plain Response object: the server
-	// ignored stream:true, or a proxy buffered it. Accepted transparently and
-	// reassembled with Streamed false, exactly as the chat-completions dialect
-	// does, so the caller keeps a truthful record of the transport.
+	// A 2xx that is not an SSE stream is the plain Response object, accepted with Streamed false.
 	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
 		raw, rerr := io.ReadAll(resp.Body)
 		if rerr != nil {
@@ -119,16 +88,7 @@ func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *Strea
 	return st.completion(), nil
 }
 
-// buildBody assembles the JSON request body. Extra is merged FIRST so the typed
-// core always wins, and its reserved keys are ignored so they cannot break
-// routing. The system prompt is `instructions` (its native position on this
-// dialect, not a message), the transcript becomes `input` items, MaxTokens > 0
-// sets max_output_tokens, and CacheKey rides as prompt_cache_key.
-//
-// `include: ["reasoning.encrypted_content"]` is the point of the dialect: it is
-// what makes the reasoning items replayable on the next turn. A caller may
-// override `include` through Extra, but not by accident -- the default is set
-// only when Extra carries no `include` key.
+// buildBody assembles the JSON request body; include defaults to reasoning.encrypted_content.
 func (o *responsesProvider) buildBody(req Request) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.ParamsFor(DialectResponses) {
@@ -227,11 +187,7 @@ type respStream struct {
 	ev      *StreamEvents
 	content strings.Builder
 	reason  strings.Builder
-	// parts is the output items in the order the API emitted them, which is
-	// the order the model produced them: reasoning, the text it wrote, the
-	// calls it made. itemText is the text those items carried, so a stream cut
-	// before its message item completed can still contribute the deltas it had
-	// already delivered.
+	// parts is output items in emitted order; itemText keeps deltas for a stream cut short.
 	parts    []Part
 	itemText strings.Builder
 	haveCall bool
@@ -279,9 +235,7 @@ func (st *respStream) onData(data []byte) error {
 			st.sawData = true
 			before := len(st.parts)
 			st.addItem(*e.Item)
-			// An item is done, which on this dialect is what a finished
-			// content part IS -- reasoning included, with the encrypted
-			// payload that makes it replayable.
+			// An item is done, which on this dialect is a finished content part, reasoning included.
 			return st.ev.EmitParts(st.parts[before:])
 		}
 		return nil
@@ -360,10 +314,7 @@ func (st *respStream) completion() *Completion {
 		parts = append(parts, TextPart{Text: got[len(seen):]})
 	}
 	if reason := st.reason.String(); reason != "" && !hasThinking(parts) {
-		// Summary text with no replayable item behind it (a server that
-		// withheld the encrypted payload): keep it, because losing the
-		// reasoning from the transcript is worse than not being able to
-		// replay it.
+		// Summary text with no replayable item behind it is kept, since losing the reasoning is worse.
 		parts = append([]Part{ThinkingPart{Text: reason}}, parts...)
 	}
 	msg := Message{Role: RoleAssistant, Parts: parts}
@@ -414,9 +365,7 @@ func respStopReason(r respResponse, hasCalls bool) string {
 	return respStopFromShape(hasCalls)
 }
 
-// respStopFromShape infers the stop reason from what the turn produced. This
-// API has no finish_reason field: a turn that asked for tools ends on tool_use,
-// anything else on end_turn.
+// respStopFromShape infers the stop reason: tools end on tool_use, else end_turn.
 func respStopFromShape(hasCalls bool) string {
 	if hasCalls {
 		return StopToolUse
@@ -424,11 +373,7 @@ func respStopFromShape(hasCalls bool) string {
 	return StopEndTurn
 }
 
-// respFailure turns a response.failed event into an error carrying whatever the
-// API said. It is a 200-with-a-failure-inside, so there is no status code to
-// classify on: it surfaces as a permanent error rather than a transient one,
-// because re-sending a request the server accepted and then rejected is how a
-// bad request gets charged for ten times.
+// respFailure turns a response.failed event into a permanent error, not a transient one.
 func respFailure(r *respResponse) error {
 	if r != nil && r.Error != nil {
 		return respEventFailure(r.Error)

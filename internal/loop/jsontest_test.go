@@ -15,20 +15,9 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/internal/jsontest"
 )
 
-// Test fixtures are built from Go VALUES, never spliced into JSON text.
-//
-// Writing fmt.Sprintf(`{"sha":%q}`, sha) or `{"sha":"` + sha + `"}` makes a
-// fixture's correctness depend on what the value happens to contain: a quote,
-// a backslash or a newline in it produces a malformed body, and the test then
-// fails somewhere far from the splice -- or worse, passes for the wrong reason
-// because the code under test rejected a body the fixture never meant to send.
-// Marshaling a Go value cannot do that; the encoder escapes.
-//
-// Static JSON with nothing interpolated into it is not this problem and stays
-// as it is: no value can corrupt a constant.
+// Test fixtures are built from Go VALUES, never spliced into JSON text; the encoder escapes.
 
 // jsonMust / jsonObj / jsonArr are the names this package's tests use.
-// The implementation lives in internal/jsontest.
 var jsonMust = jsontest.Must
 
 type jsonObj = jsontest.Obj
@@ -37,10 +26,7 @@ type jsonArr = jsontest.Arr
 // sprintfJSON matches fmt.Sprintf over a template that opens as JSON.
 var sprintfJSON = regexp.MustCompile("fmt\\.Sprintf\\(`\\s*[\\[{]")
 
-// concatJSON matches a backtick string that both looks like JSON and is glued
-// to an expression: `{"a":"` + v, or v + `"}`. A trailing `+ "\n"` on a whole
-// document is not a splice, so a plain quoted string on the far side is
-// allowed.
+// concatJSON matches a backtick string glued to an expression (a JSON splice).
 var concatJSON = regexp.MustCompile("`[^`]*[\\[{][^`]*`\\s*\\+\\s*[^\"\\s]|\\+\\s*`\\s*[,:}\\]]")
 
 // The rule is a build failure rather than a convention, because this is a

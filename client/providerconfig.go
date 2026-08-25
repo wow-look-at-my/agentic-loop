@@ -12,41 +12,19 @@ import (
 // not used on its own: embed it in the per-dialect config types (OpenAIConfig,
 // AnthropicConfig) accepted by the dialect constructors.
 type ProviderConfig struct {
-	// BaseURL is the API root and is required. OpenAI and Responses: include
-	// the version segment (e.g. "https://api.openai.com/v1"); requests POST to
-	// BaseURL + "/chat/completions" and BaseURL + "/responses" respectively.
-	// Anthropic: the bare root (e.g. "https://api.anthropic.com"); requests
-	// POST to BaseURL + "/v1/messages". Trailing slashes are trimmed before
-	// joining.
+	// BaseURL is the required API root; OpenAI includes the version segment, Anthropic the bare root.
 	BaseURL string
-	// APIKey, when non-empty, authenticates requests: a Bearer token on both
-	// OpenAI dialects, the x-api-key header on Anthropic.
+	// APIKey, when non-empty, authenticates: Bearer on OpenAI dialects, x-api-key on Anthropic.
 	APIKey string
 	// HTTPClient performs the requests; nil uses http.DefaultClient.
 	HTTPClient *http.Client
 	// UserAgent, when non-empty, is sent as the User-Agent header.
 	UserAgent string
-	// Headers are applied after the dialect defaults, so a caller-supplied
-	// header can override them.
+	// Headers are applied after the dialect defaults, so a caller-supplied header can override them.
 	Headers map[string]string
-	// Retry is the transient-failure retry policy for every call this provider
-	// makes. Nil means DefaultRetry -- retry is ON by default, because a call
-	// that fails before streaming anything is always safe to re-send and an
-	// opt-in retry is one a caller forgets to enable. Set
-	// &RetryPolicy{MaxAttempts: 1} to turn it off.
-	//
-	// Retry lives here, not around the loop, because the provider is the layer
-	// that knows whether a call streamed anything -- the condition that decides
-	// whether re-sending is safe.
+	// Retry is the transient-failure policy; nil means DefaultRetry (on by default); MaxAttempts:1 turns it off.
 	Retry *RetryPolicy
-	// RateLimiter, when non-nil, throttles this provider's outgoing request
-	// starts (its transient-failure retries included, which ride the same
-	// http.Client) to the limiter's fixed rate -- a provider's per-minute
-	// request cap, spaced evenly. A single RateLimiter shared across several
-	// providers throttles them TOGETHER, so concurrent callers (e.g. the jobs
-	// of one benchmark run) stay under one per-endpoint cap. Like Retry, it
-	// lives here because HOW a call gets made -- including without tripping the
-	// upstream's rate limit -- is the provider's job.
+	// RateLimiter, when non-nil, throttles request starts; one shared across providers throttles them together.
 	RateLimiter *RateLimiter
 }
 
@@ -67,21 +45,11 @@ func (c ProviderConfig) core() commonai.ProviderConfig {
 type OpenAIConfig struct {
 	ProviderConfig
 
-	// SelfHosted adds cache_prompt:true to every request -- the KV-cache
-	// prefix-reuse opt-in llama.cpp-style servers honor. It must stay false
-	// for hosted OpenAI/Azure, which reject unknown body fields with a 400.
+	// SelfHosted adds cache_prompt:true to every request; keep false for hosted OpenAI/Azure, which reject it.
 	SelfHosted bool
-	// PromptCache emits two Anthropic-style ephemeral cache_control
-	// breakpoints in openai dialect shape -- a static one on the leading
-	// system message and a moving one on the tail content block -- for
-	// Anthropic-fronting gateways that pass cache_control through. Default
-	// false: plain OpenAI-compatible servers reject the unknown marker.
+	// PromptCache emits two ephemeral cache_control breakpoints in openai shape; default false, plain servers reject them.
 	PromptCache bool
-	// ReplayReasoning replays the accumulated reasoning text as
-	// message.reasoning on each assistant message, the gateway-extension
-	// behavior that keeps a model seeing its own chain-of-thought on the
-	// openai dialect. Default false: strict OpenAI-compatible servers reject
-	// the unknown field.
+	// ReplayReasoning replays accumulated reasoning as message.reasoning; default false, strict servers reject it.
 	ReplayReasoning bool
 }
 
@@ -90,13 +58,7 @@ type OpenAIConfig struct {
 type ResponsesConfig struct {
 	ProviderConfig
 
-	// Store opts INTO the API's server-side retention of every prompt and
-	// response. It defaults to false, unlike the API itself, because retaining
-	// a caller's conversations on a third party's servers is a decision for
-	// the caller to make out loud rather than one a library makes for them by
-	// inheriting a default. Reasoning still survives across tool calls with
-	// Store false: the provider asks for the encrypted reasoning payload and
-	// replays it.
+	// Store opts into the API's server-side retention; defaults false because retaining caller data is a caller's decision.
 	Store bool
 }
 
@@ -105,11 +67,9 @@ type ResponsesConfig struct {
 type AnthropicConfig struct {
 	ProviderConfig
 
-	// Version sets the anthropic-version header; empty defaults to
-	// "2023-06-01".
+	// Version sets the anthropic-version header; empty defaults to "2023-06-01".
 	Version string
-	// DisableCaching drops the two ephemeral cache_control breakpoints the
-	// provider otherwise places on every request.
+	// DisableCaching drops the two ephemeral cache_control breakpoints the provider otherwise places on every request.
 	DisableCaching bool
 }
 
@@ -147,12 +107,7 @@ func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 	return finish(p, cfg.Retry, err)
 }
 
-// finish turns a dialect implementation into the Provider a caller holds: it
-// gets the retry behavior, and its usage reports get folded on the way out.
-//
-// Every constructor ends here, so retry is not something a caller opts into: a
-// retry you have to remember to enable is one that silently is not there.
-// ProviderConfig.Retry is the one retry knob.
+// finish turns a dialect implementation into the Provider a caller holds: retry behavior plus folded usage.
 func finish(p commonai.Provider, policy *RetryPolicy, err error) (Provider, error) {
 	if err != nil {
 		return nil, err
@@ -160,9 +115,7 @@ func finish(p commonai.Provider, policy *RetryPolicy, err error) (Provider, erro
 	return up(extras.Retrying(p, policy)), nil
 }
 
-// FetchModelList reads an endpoint's model list: the dialect it speaks and what
-// its models charge, from one request. It is here rather than on a Provider
-// because it answers what to BUILD, before there is one.
+// FetchModelList reads an endpoint's model list: the dialect it speaks and what its models charge.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
 	return commonai.FetchModelList(ctx, cfg.core())
 }

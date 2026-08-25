@@ -189,9 +189,7 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 	assert.Equal(t, []string{"Repo__write"}, toolNames(provider.reqs[0].Tools),
 		"allowed_tools pins the sub-agent to exactly the named set")
 	require.Len(t, parent.executed, 1, "the explicitly granted non-read-only tool executes")
-	// The grant IS the authorization: the nested run's approve-everything
-	// Approver is what keeps a granted non-Readonly tool runnable, now that a
-	// nil Approver would refuse one.
+	// The grant IS the authorization: the approve-everything Approver keeps a granted tool runnable.
 	tool := provider.reqs[1].Messages[len(provider.reqs[1].Messages)-1]
 	assert.Equal(t, "ran Repo__write", tool.Content)
 	assert.NotEqual(t, agentic.DeniedMessage, tool.Content)
@@ -256,9 +254,7 @@ func TestSubagentAllowedToolsEdgeCases(t *testing.T) {
 }
 
 func TestSubagentNoRecursion(t *testing.T) {
-	// A parent toolset that (like the source composite) carries the subagent
-	// tool itself: it is excluded from the grantable set, from the schema
-	// enum, and — not being read-only — from the default sub toolset.
+	// A parent toolset that carries the subagent tool itself: it is excluded everywhere.
 	parent := &fakeExec{tools: []agentic.ToolDecl{
 		{Name: SubagentToolName},
 		{Name: "Repo__read", Readonly: true},
@@ -432,8 +428,7 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 		Provider: provider, Model: "m", Tools: parent.registry(),
 		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
 	})
-	// The parent call's id rides the context, exactly as Run puts it there --
-	// it is what lets a host attach the play-by-play to the right tool block.
+	// The parent call's id rides the context, so a host can attach the play-by-play.
 	res, err := exec.Execute(agentic.WithToolCallID(context.Background(), "call-7"), subCall(`{"prompt":"go"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "report", res.Content)

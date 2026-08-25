@@ -29,8 +29,7 @@ func TestReadOnlyOutranksTheFieldsItMakesMeaningless(t *testing.T) {
 	assert.False(t, ro.IsDestructive(), "a tool that changes nothing destroys nothing")
 	assert.True(t, ro.IsIdempotent(), "reading twice leaves the world where it was")
 
-	// Open-world is NOT one of the conditional ones: a read can still leave the
-	// machine, which is exactly what web_fetch does.
+	// Open-world is NOT one of the conditional ones: a read can still leave the machine, as web_fetch does.
 	assert.True(t, ToolDecl{Readonly: true}.IsOpenWorld())
 	assert.False(t, ToolDecl{Readonly: true, OpenWorld: Bool(false)}.IsOpenWorld())
 }

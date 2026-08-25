@@ -7,20 +7,14 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// RetryPolicy is exponential-backoff retry for transient failures. The
-// zero-value fields default at use time to 10 attempts (1 try + 9 retries)
-// and a 500ms base delay; the delay before retry n is BaseDelay × 2^(n−1)
-// with no jitter and no cap. Sleep, when nil, uses a context-aware timer;
-// inject it in tests to skip real waiting.
+// RetryPolicy is exponential-backoff retry; zero-value fields default to 10 attempts and a 500ms base delay.
 type RetryPolicy struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
 	Sleep       func(context.Context, time.Duration) error
 }
 
-// defaultAttempts is the attempt cap applied when a policy does not set one.
-// Ten, matching Claude Code: a transient upstream should be ridden out, not
-// surfaced to the user as a failed turn after three tries.
+// defaultAttempts is the attempt cap when a policy sets none: ten, matching Claude Code.
 const defaultAttempts = 10
 
 // DefaultRetry is the default policy: 10 attempts, 500ms base delay.
@@ -63,11 +57,7 @@ func (p RetryPolicy) sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Do runs fn up to MaxAttempts times, retrying only failures IsTransient
-// reports as retryable. Permanent errors (other 4xx, context cancellation,
-// context overflow) surface immediately; the final attempt's error surfaces
-// regardless. A sleep interrupted by context cancellation stops retrying and
-// returns the last fn error.
+// Do runs fn up to MaxAttempts times, retrying only transient failures; permanent errors surface immediately.
 func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 	n := p.Attempts()
 	for attempt := 1; ; attempt++ {
@@ -98,9 +88,7 @@ func retryComplete(ctx context.Context, p commonai.Provider, policy RetryPolicy,
 	var err error
 	for attempt := 1; ; attempt++ {
 		comp, err = p.Complete(ctx, req, ev)
-		// comp != nil IS "this attempt streamed something": a Provider must
-		// return the partial completion once data has arrived, so re-sending
-		// would duplicate what the caller already saw.
+		// comp != nil IS "this attempt streamed something": re-sending would duplicate what the caller already saw.
 		if err == nil || comp != nil || !commonai.IsTransient(err) || attempt >= attempts {
 			break
 		}
@@ -108,8 +96,7 @@ func retryComplete(ctx context.Context, p commonai.Provider, policy RetryPolicy,
 		if cberr := ev.EmitRetry(commonai.RetryAttempt{
 			Attempt: attempt, Of: attempts, Delay: delay, Err: err,
 		}); cberr != nil {
-			// The caller pulled the plug on retrying (a dead sink, a UI that
-			// gave up). Surface their error, not the upstream's.
+			// The caller pulled the plug on retrying; surface their error, not the upstream's.
 			return comp, cberr
 		}
 		if serr := policy.sleep(ctx, delay); serr != nil {
@@ -125,15 +112,7 @@ type retryingProvider struct {
 	policy RetryPolicy
 }
 
-// Retrying gives a provider the library's retry behavior, so a transient
-// failure (408, 429, 5xx, transport errors) is re-attempted per the policy —
-// but ONLY when the attempt streamed nothing, so a caller's sink never sees
-// the same delta twice. Permanent failures — other 4xx, context overflow,
-// cancellation, and errors the caller's own stream callbacks returned —
-// surface immediately.
-//
-// A nil policy means DefaultRetry. A policy capped at one attempt returns the
-// provider unwrapped: retry is off, and the wrapper would be pure overhead.
+// Retrying gives a provider the library's retry; nil policy means DefaultRetry, one attempt returns it unwrapped.
 func Retrying(inner commonai.Provider, policy *RetryPolicy) commonai.Provider {
 	resolved := DefaultRetry
 	if policy != nil {

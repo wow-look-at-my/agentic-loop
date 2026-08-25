@@ -140,9 +140,7 @@ func TestServeMountsTheWebSocketRoute(t *testing.T) {
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
-	// The accept token for that key, computed outside this codebase so it is
-	// not the server checking its own arithmetic:
-	//   printf '<key><GUID>' | openssl dgst -sha1 -binary | openssl base64
+	// The accept token for that key, computed outside this codebase so it is not the server checking its own arithmetic.
 	assert.Equal(t, "7NQHw21/u2y5o3iigl/YosUutlE=", resp.Header.Get("Sec-WebSocket-Accept"))
 }
 

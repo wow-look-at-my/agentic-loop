@@ -15,13 +15,7 @@ import (
 // every field for every read. That made a field the chosen read ignores
 // silently droppable — see the table below for what that cost.
 
-// repoReadFields lists the arguments each "what" actually reads. repo_read is
-// one tool with an argument union, so the schema has to accept every field for
-// every what — which meant a field the chosen read ignores was silently
-// dropped. {"what":"commits","query":"..."} returned the repository's newest
-// commits: a plausible-looking answer to a question nobody asked, and one that
-// looks identical however the query is reworded. Rejecting the call instead is
-// the only outcome that cannot be mistaken for a result.
+// repoReadFields lists the arguments each repo_read "what" actually reads.
 var repoReadFields = map[string][]string{
 	"commits":   {"org", "repo", "path", "ref", "per_page"},
 	"commit":    {"org", "repo", "sha"},
