@@ -17,10 +17,11 @@ type oaNonStream struct {
 // oaNonStreamMessage is the assistant message inside a non-streaming choice.
 // Content is a pointer because a tool-call-only response carries null.
 type oaNonStreamMessage struct {
-	Role      string       `json:"role"`
-	Content   *string      `json:"content"`
-	Reasoning string       `json:"reasoning"`
-	ToolCalls []oaToolCall `json:"tool_calls"`
+	Role             string              `json:"role"`
+	Content          *string             `json:"content"`
+	Reasoning        string              `json:"reasoning"`
+	ReasoningDetails []oaReasoningDetail `json:"reasoning_details"`
+	ToolCalls        []oaToolCall        `json:"tool_calls"`
 }
 
 // parseNonStream reassembles a plain-JSON chat-completions response into a
@@ -48,8 +49,9 @@ func (o *openaiProvider) parseNonStream(data []byte) (*Completion, error) {
 			ID: tc.ID, Name: tc.Function.Name, Arguments: toolArgs(tc.Function.Arguments),
 		})
 	}
+	details := oaReasoningDetailsJSON(first.Message.ReasoningDetails)
 	comp := &Completion{
-		Message:    oaAssistantMessage(first.Message.Reasoning, content, calls),
+		Message:    oaAssistantMessage(first.Message.Reasoning, details, content, calls),
 		StopReason: normalizeStopReason(first.FinishReason),
 		Streamed:   false,
 	}
@@ -91,11 +93,14 @@ func normalizeStopReason(reason string) string {
 // layer produces them: reasoning first, then the content it produced, then
 // the calls it asked for. Chat-completions accumulates reasoning and content
 // as two separate streams rather than as interleaved blocks, so that order is
-// all the wire actually says.
-func oaAssistantMessage(reasoning, content string, calls []ToolCall) Message {
+// all the wire actually says. reasoningDetailsJSON is the verbatim captured
+// reasoning_details array (see oaReasoningDetailsJSON), carried in the one
+// ThinkingPart's Signature for replay; it is kept even when reasoning is
+// empty, since a gateway can send structured details with no flat summary.
+func oaAssistantMessage(reasoning, reasoningDetailsJSON, content string, calls []ToolCall) Message {
 	var parts []Part
-	if reasoning != "" {
-		parts = append(parts, ThinkingPart{Text: reasoning})
+	if reasoning != "" || reasoningDetailsJSON != "" {
+		parts = append(parts, ThinkingPart{Text: reasoning, Signature: reasoningDetailsJSON})
 	}
 	if content != "" {
 		parts = append(parts, TextPart{Text: content})

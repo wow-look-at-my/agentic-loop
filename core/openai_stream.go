@@ -23,12 +23,15 @@ type oaChoice struct {
 
 // oaDelta is the incremental content of a streaming choice. Reasoning arrives
 // under two field names in the wild: reasoning_content (OpenAI/DeepSeek
-// style) and reasoning (Ollama style).
+// style) and reasoning (Ollama style). ReasoningDetails is OpenRouter's
+// structured form, streamed as fragments keyed by index the same way
+// ToolCalls is.
 type oaDelta struct {
-	Content          string       `json:"content,omitempty"`
-	ReasoningContent string       `json:"reasoning_content,omitempty"`
-	Reasoning        string       `json:"reasoning,omitempty"`
-	ToolCalls        []oaToolCall `json:"tool_calls,omitempty"`
+	Content          string              `json:"content,omitempty"`
+	ReasoningContent string              `json:"reasoning_content,omitempty"`
+	Reasoning        string              `json:"reasoning,omitempty"`
+	ReasoningDetails []oaReasoningDetail `json:"reasoning_details,omitempty"`
+	ToolCalls        []oaToolCall        `json:"tool_calls,omitempty"`
 }
 
 // reasoning returns the delta's reasoning text from whichever field the
@@ -167,16 +170,70 @@ func (a *toolCallAccumulator) finish() []ToolCall {
 // empty reports whether any tool calls were accumulated.
 func (a *toolCallAccumulator) empty() bool { return len(a.order) == 0 }
 
+// reasoningDetailAccumulator reassembles a streamed reasoning_details array
+// by index; a reasoning.text (or summary/data) item streams as fragments at
+// the same index, which must concatenate in order to match the item the
+// model actually produced.
+type reasoningDetailAccumulator struct {
+	byIndex map[int]*oaReasoningDetail
+	order   []int
+}
+
+func newReasoningDetailAccumulator() *reasoningDetailAccumulator {
+	return &reasoningDetailAccumulator{byIndex: map[int]*oaReasoningDetail{}}
+}
+
+// add merges streamed reasoning_details deltas into the accumulator:
+// type/id/format/signature overwrite when non-empty, text/summary/data fragments concatenate.
+func (a *reasoningDetailAccumulator) add(deltas []oaReasoningDetail) {
+	for _, d := range deltas {
+		rd, ok := a.byIndex[d.Index]
+		if !ok {
+			rd = &oaReasoningDetail{Index: d.Index}
+			a.byIndex[d.Index] = rd
+			a.order = append(a.order, d.Index)
+		}
+		if d.Type != "" {
+			rd.Type = d.Type
+		}
+		if d.ID != "" {
+			rd.ID = d.ID
+		}
+		if d.Format != "" {
+			rd.Format = d.Format
+		}
+		if d.Signature != nil {
+			rd.Signature = d.Signature
+		}
+		rd.Text += d.Text
+		rd.Summary += d.Summary
+		rd.Data += d.Data
+	}
+}
+
+// finish returns the assembled details in the order their indices first appeared.
+func (a *reasoningDetailAccumulator) finish() []oaReasoningDetail {
+	if len(a.order) == 0 {
+		return nil
+	}
+	out := make([]oaReasoningDetail, 0, len(a.order))
+	for _, idx := range a.order {
+		out = append(out, *a.byIndex[idx])
+	}
+	return out
+}
+
 // oaStream accumulates one streamed completion.
 type oaStream struct {
-	ev      *StreamEvents
-	content strings.Builder
-	reason  strings.Builder
-	acc     *toolCallAccumulator
-	finish  string
-	usages  []Usage
-	timings []Timings
-	sawData bool
+	ev               *StreamEvents
+	content          strings.Builder
+	reason           strings.Builder
+	acc              *toolCallAccumulator
+	reasoningDetails *reasoningDetailAccumulator
+	finish           string
+	usages           []Usage
+	timings          []Timings
+	sawData          bool
 	// sentParts counts parts already delivered via OnPart; the rest goes out once at the end.
 	sentParts int
 }
@@ -263,6 +320,10 @@ func (st *oaStream) onData(data []byte) error {
 			st.sawData = true
 			st.acc.add(ch.Delta.ToolCalls)
 		}
+		if len(ch.Delta.ReasoningDetails) > 0 {
+			st.sawData = true
+			st.reasoningDetails.add(ch.Delta.ReasoningDetails)
+		}
 		if ch.FinishReason != "" {
 			st.sawData = true
 			st.finish = ch.FinishReason
@@ -272,10 +333,11 @@ func (st *oaStream) onData(data []byte) error {
 }
 
 // completion assembles the final (or partial) result: accumulated content,
-// reasoning as a single ThinkingBlock, assembled tool calls, the merged
-// usage with the total floored at prompt+completion (a genuine surplus --
-// reasoning tokens -- is preserved), the last timings snapshot (nil when the
-// upstream reported none), and the normalized stop reason.
+// reasoning as a single ThinkingBlock (its Signature carrying the verbatim
+// reasoning_details array when the upstream sent one), assembled tool calls,
+// the merged usage with the total floored at prompt+completion (a genuine
+// surplus -- reasoning tokens -- is preserved), the last timings snapshot
+// (nil when the upstream reported none), and the normalized stop reason.
 func (st *oaStream) completion() *Completion {
 	var calls []ToolCall
 	if !st.acc.empty() {
@@ -288,8 +350,9 @@ func (st *oaStream) completion() *Completion {
 	if finish == "" {
 		finish = "stop"
 	}
+	details := oaReasoningDetailsJSON(st.reasoningDetails.finish())
 	return &Completion{
-		Message:    oaAssistantMessage(st.reason.String(), st.content.String(), calls),
+		Message:    oaAssistantMessage(st.reason.String(), details, st.content.String(), calls),
 		Usages:     st.usages,
 		Timings:    st.timings,
 		Streamed:   true,
