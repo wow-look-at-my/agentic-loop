@@ -11,9 +11,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/session"
 )
 
-// SessionSource indexes an agentic-loop session.Store, so the transports that
-// already keep conversations -- cai, and the http and socket servers -- get a
-// searchable history without changing how any of them store anything.
+// SessionSource indexes a session.Store for searchable history, storage unchanged.
 type SessionSource struct {
 	// Store is the conversations to index.
 	Store session.Store

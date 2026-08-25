@@ -61,15 +61,7 @@ type paramStripper struct {
 	stripped set.Set[string] // normalized names of params already stripped
 }
 
-// NewParamStripper wraps a Provider with rejected-parameter recovery: when a
-// call fails before anything streamed and the error text names a parameter
-// present in the request's Extra (matched by normalized form, so
-// reasoningEffort matches reasoning_effort), that key is removed and the call
-// is retried ONCE. The strip is remembered, so subsequent calls through the
-// same stripper drop the key up front — mirroring the persistent in-place
-// strip of the source loop, without mutating the caller's Extra map. A
-// context cancellation is never treated as a parameter problem, and a call
-// that already streamed (a non-nil completion) is never retried.
+// Strips a named param from Extra and retries ONCE; never on cancel or streamed calls.
 func NewParamStripper(p Provider) Provider {
 	return &paramStripper{inner: p, stripped: set.New[string]()}
 }

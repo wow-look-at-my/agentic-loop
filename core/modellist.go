@@ -8,11 +8,7 @@ import (
 	"strings"
 )
 
-// ModelList is what an endpoint's model list says. One request answers both
-// questions a host has before it can talk to an endpoint at all — which
-// protocol it speaks, and what its models charge — so there is one fetch, one
-// decode, and one value rather than a pair of functions racing to parse the
-// same bytes twice.
+// ModelList is what an endpoint's model list says: one fetch answers protocol and prices.
 type ModelList struct {
 	// Dialect is the protocol the document identifies, or DialectAuto; never DialectResponses (identical document).
 	Dialect Dialect

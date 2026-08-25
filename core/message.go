@@ -60,20 +60,7 @@ type Message struct {
 	ToolIsError bool
 }
 
-// ToolDecl is what the model is told about one tool. InputSchema is the JSON
-// schema of the tool's arguments; nil marshals as {"type":"object"}.
-//
-// The four behaviour fields state what the tool DOES to state. They are facts,
-// not policy: nothing here says whether a call is allowed, only what running it
-// would mean, so an Approver has something to decide from. They are MCP's tool
-// annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint),
-// because an MCP server is a first-class source of tools and throwing away what
-// it declares would leave every host to re-derive it.
-//
-// Two of them are pointers because their MCP defaults are TRUE, so an absent
-// fact must not read as false. Never read those fields directly — IsDestructive,
-// IsIdempotent and IsOpenWorld apply the defaults and the read-only precedence
-// in one place.
+// ToolDecl: InputSchema nil -> {"type":"object"}; TRUE-defaulted pointers read via Is*.
 type ToolDecl struct {
 	Name        string
 	Description string

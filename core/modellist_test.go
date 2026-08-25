@@ -91,9 +91,7 @@ func TestAMissingCacheRateFallsBackToThePromptRate(t *testing.T) {
 	assert.InDelta(t, 0.00000125, r.CacheWrite1h, 1e-12)
 }
 
-// Zero is a price and absence is not. A free model is priced at zero; a model
-// that published nothing is missing, so a host renders an em dash rather than
-// claiming the call was free.
+// Zero is a price and absence is not: a free model is priced at zero, a silent one is missing.
 func TestAFreeModelIsPricedAndAnUnpricedOneIsAbsent(t *testing.T) {
 	list := decoded(t, openRouterModelList)
 
@@ -126,10 +124,7 @@ func TestAnUnusableRateLeavesTheModelUnpriced(t *testing.T) {
 	assert.Empty(t, list.Prices, "a negative rate is a document nobody should bill from")
 }
 
-// crofAIModelList is the shape crof.ai's own /v1/models actually answers:
-// rates as strings, already in USD per MILLION tokens (matching its own
-// pricing page's "$/M" notation), not per token like OpenRouter. Reading
-// "0.35" as USD per token billed a real turn a millionfold high.
+// crofAIModelList: crof.ai rates are strings, already USD per MILLION tokens, not per token.
 const crofAIModelList = `{
   "object": "list",
   "data": [
@@ -173,10 +168,7 @@ func TestFetchModelListReadsTheEndpoint(t *testing.T) {
 	assert.Equal(t, defaultAnthropicVersion, gotVersion)
 }
 
-// The two chat dialects disagree about whether a base URL ends in /v1, so the
-// model list has to accept both spellings. Appending to the OpenAI one asked
-// for /v1/v1/models: a 404 that reads as an endpoint publishing neither a
-// dialect nor a price.
+// The two chat dialects disagree about a trailing /v1, so the model list accepts both spellings.
 func TestTheModelListURLAcceptsEitherBaseSpelling(t *testing.T) {
 	for _, suffix := range []string{"", "/v1", "/v1/"} {
 		var gotPath string

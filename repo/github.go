@@ -126,15 +126,10 @@ func RepoPath(org, repo, inner string) string {
 	return p
 }
 
-// TokenCount is how many tokens this client will try. A failure explanation
-// reads differently when none is configured than when three were refused, and
-// only the client knows which.
+// TokenCount is how many tokens this client will try; the failure reads differ by count.
 func (e *GitHub) TokenCount() int { return len(e.tokens) }
 
-// WriteCredentials is Credentials for a WRITE: the cached winner when it is
-// write-capable, then every write token, and NEVER an anonymous attempt. A
-// host pushing with git runs the same rotation this returns, so a push reaches
-// exactly the repositories the write tools do.
+// WriteCredentials: cached write-capable winner, then write tokens, never anonymous.
 func (e *GitHub) WriteCredentials(cacheKey string) []Credential {
 	order := e.writeTokenOrder(cacheKey)
 	out := make([]Credential, 0, len(order))

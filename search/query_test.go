@@ -74,8 +74,7 @@ func TestChunkContentOverlapsAndReportsTruncation(t *testing.T) {
 	assert.Equal(t, len(chunks), total, "nothing is truncated at this length")
 	assert.Len(t, []rune(chunks[0]), chunkRunes)
 
-	// Past the cap, what was embedded and what the content needed differ --
-	// and the difference is reported rather than dropped.
+	// Past the cap, the embedded/needed chunk counts differ and the difference is reported.
 	huge := strings.Repeat("c", chunkRunes*(maxChunksPerMessage+10))
 	chunks, total = chunkContent(huge)
 	assert.Len(t, chunks, maxChunksPerMessage)

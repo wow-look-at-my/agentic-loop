@@ -14,19 +14,7 @@ import (
 	"strings"
 )
 
-// repo_file_write and repo_pr_create are the two mutating repo tools. They
-// differ from the read tools in four deliberate ways:
-//   - they are not Readonly, so a run without an Approver refuses them and one
-//     with an Approver puts every call to it;
-//   - they never fall through to an unauthenticated attempt (writeTokenOrder);
-//   - they draw from the client's separate WRITE credential list only —
-//     for these model-initiated tools that is the allow_model_writes-flagged
-//     subset of the user's PATs, so a token the user has not opted in to model
-//     writes is structurally unreachable from here (the read list is never
-//     consulted);
-//   - a failure with the cached winner falls through to the other tokens, and
-//     only a token that completed the write is cached — so a read-only winner
-//     discovered by the read tools can never poison the cache.
+// Two mutating tools: not Readonly, never anonymous, WRITE-only, completed writes cached.
 const (
 	repoFileWriteDescription = "Creates a single NEW file in a GitHub repository as a new commit on the given branch, " +
 		"optionally creating the branch first (create_branch=true, from create_branch_from or the default branch). " +
@@ -44,10 +32,7 @@ var repoFileWriteSchema = agentic.InferSchema[repoFileWriteArgs]()
 
 var repoPRCreateSchema = agentic.InferSchema[repoPRCreateArgs]()
 
-// GitHubAuthError marks a write-flow step that failed in a way that may be
-// credential-specific — 401, 403, or 404 (GitHub reports resources a token
-// cannot access, or cannot write, as 404) — so the whole flow is retried with
-// the next token.
+// GitHubAuthError: credential-specific write failure (401/403/404); retried next token.
 type GitHubAuthError struct {
 	status int
 	what   string

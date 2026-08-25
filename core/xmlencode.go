@@ -11,8 +11,7 @@ const (
 	elRequest      = "request"
 	elResponse     = "response"
 	elConversation = "conversation"
-	// elConversations lists what a store holds, by id: inlining every
-	// transcript would make "what is there" cost as much as reading it all.
+	// elConversations lists what a store holds by id, not inlining the transcripts themselves
 	elConversations  = "conversations"
 	elConversationID = "conversation-id"
 	elError          = "error"
@@ -250,9 +249,7 @@ func writeTool(x *writer, t ToolDecl) {
 	if t.Readonly {
 		attrs = append(attrs, attr{name: "readonly", value: "true"})
 	}
-	// A nil pointer is written as an ABSENT attribute, never as "false": the
-	// two mean different things here, and destructive/open-world default to
-	// true when absent.
+	// A nil pointer is an ABSENT attribute, never "false": destructive/open-world default true.
 	attrs = append(attrs, optBoolAttr("destructive", t.Destructive)...)
 	if t.Idempotent {
 		attrs = append(attrs, attr{name: "idempotent", value: "true"})

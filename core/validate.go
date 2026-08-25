@@ -13,8 +13,7 @@ import (
 //go:embed schema/*.xsd
 var schemaFS embed.FS
 
-// SchemaFS exposes the schema files, for a caller that wants to write them out
-// or serve them.
+// SchemaFS exposes the schema files, for a caller wanting to write them out or serve.
 func SchemaFS() embed.FS { return schemaFS }
 
 // schemaMain is the entry point that imports the dialect schemas.

@@ -113,24 +113,7 @@ func (ev *StreamEvents) EmitRetry(a RetryAttempt) error {
 	return wrapCallbackErr(ev.OnRetry(a))
 }
 
-// Request is one model call. Messages is the transcript; System is the system
-// prompt, delivered in the dialect's native position (an OpenAI system
-// message, the Anthropic top-level system field).
-//
-// Extra is a verbatim top-level passthrough for provider-specific parameters
-// (reasoning_effort, temperature, num_ctx, thinking, ...). It is merged into
-// the request body FIRST, so the typed core fields always win: for OpenAI the
-// reserved keys are model/messages/stream/tools, and stream_options defaults
-// to {"include_usage":true} only when Extra does not already carry a
-// stream_options key; for Anthropic the reserved keys are
-// model/max_tokens/stream/system/messages/tools. The library never interprets
-// or gates Extra values (no model-specific tables) -- what to send is the
-// caller's decision.
-//
-// MaxTokens 0 omits the max_tokens field for OpenAI (the provider default
-// governs); Anthropic REQUIRES it and its provider fails fast when it is not
-// positive. CacheKey, when non-empty, is sent to OpenAI as prompt_cache_key (a
-// cache-routing hint); Anthropic ignores it.
+// Extra merges FIRST so core fields win; MaxTokens 0 omits for OpenAI, REQUIRES Anthropic
 type Request struct {
 	Model    string
 	System   string

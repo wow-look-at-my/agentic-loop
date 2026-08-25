@@ -73,8 +73,7 @@ func continueConversation(st session.Store, name string, turn commonai.Request) 
 	if err != nil {
 		return commonai.Request{}, err
 	}
-	// The flags govern this turn; everything they did not state stays what the
-	// conversation already was.
+	// The flags govern this turn; what they did not state stays as the conversation was.
 	out := stored
 	out.Model = turn.Model
 	if turn.System != "" {

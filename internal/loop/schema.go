@@ -15,11 +15,7 @@ import (
 // InferSchema builds the schema for a tool's argument struct.
 func InferSchema[In any]() json.RawMessage { return EnumSchema[In](nil) }
 
-// EnumSchema is InferSchema for a struct with closed-set string fields, which
-// reflection cannot see: `what` is not any string, it is one of eight. Keys are
-// json property names, and naming a property that does not exist panics --
-// that is a wiring mistake, and ignoring it would leave the field
-// unconstrained while looking constrained.
+// EnumSchema is InferSchema for a struct with closed-set string fields; unknown property names panic.
 func EnumSchema[In any](enums map[string][]string) json.RawMessage {
 	typ := reflect.TypeFor[In]()
 	if typ.Kind() != reflect.Struct {
@@ -103,9 +99,7 @@ func structProps(typ reflect.Type) []prop {
 		}
 		tag, ok := f.Tag.Lookup("json")
 		if !ok {
-			// encoding/json would fall back to the Go name, matching
-			// case-insensitively -- so the model would be advertised a field
-			// under a name the handler decodes only by accident.
+			// encoding/json would fall back to the Go name case-insensitively -- a decoy field name.
 			panic(fmt.Sprintf("agentic: %s.%s has no json tag; every argument field must name itself", typ.Name(), f.Name))
 		}
 		name, opts, _ := strings.Cut(tag, ",")

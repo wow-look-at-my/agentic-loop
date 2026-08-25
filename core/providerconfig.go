@@ -31,8 +31,7 @@ type OpenAIConfig struct {
 	ReplayReasoning bool
 }
 
-// ResponsesConfig configures NewResponsesProvider: the shared ProviderConfig
-// connection base plus the one knob specific to the OpenAI Responses dialect.
+// ResponsesConfig: shared ProviderConfig plus the knob specific to the Responses dialect.
 type ResponsesConfig struct {
 	ProviderConfig
 

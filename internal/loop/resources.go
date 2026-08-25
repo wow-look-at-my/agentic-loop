@@ -51,9 +51,7 @@ type ResourcePoll struct {
 // Empty reports whether the pass found nothing worth telling the model.
 func (p ResourcePoll) Empty() bool { return len(p.Changes) == 0 && len(p.Warnings) == 0 }
 
-// ResourceWatcher re-reads the conversation's MCP resources and reports what
-// changed since the previous pass. Implemented by tools.ResourceWatcher; the
-// interface lives here because chat may not import tools.
+// ResourceWatcher re-reads the conversation's MCP resources, reporting changes since last pass.
 type ResourceWatcher interface {
 	// Poll performs one pass; remote failures are reported as Warnings, not errors.
 	Poll(ctx context.Context) (ResourcePoll, error)

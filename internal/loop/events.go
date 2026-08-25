@@ -152,9 +152,7 @@ func (e *Events) emitToolMessage(ev ToolMessageEvent) error {
 	return e.OnToolMessage.Invoke(ev)
 }
 
-// emitResourceNotice tells the host the loop is about to deliver a resource
-// notice as a user message; the host may persist it and return its id so the
-// loop can attribute the transcript entry to the host's durable row.
+// emitResourceNotice tells the host a notice is coming; it may persist it and return its id.
 func (e *Events) emitResourceNotice(ev ResourceNoticeEvent) MessageID {
 	var id MessageID
 	ev.ID = &id
@@ -168,10 +166,7 @@ func (e *Events) emitSystemMessage(ev SystemMessageEvent) {
 	_ = e.OnSystemMessage.Invoke(ev)
 }
 
-// emitCompaction notifies the host that the loop auto-compacted the
-// transcript. The host replaces its stored transcript with the replacement
-// round and resets any cross-turn deduper, exactly as it would on a thread
-// mutation.
+// emitCompaction notifies the host the loop auto-compacted; replaces transcript, resets deduper.
 func (e *Events) emitCompaction(ev CompactionEvent) {
 	_ = e.OnCompaction.Invoke(ev)
 }

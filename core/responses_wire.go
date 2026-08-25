@@ -36,8 +36,7 @@ type respItem struct {
 type respContent struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
-	// ImageURL carries an input image, as a URI: the supplied one, or a data:
-	// URI built from supplied bytes.
+	// ImageURL carries an input image, as a URI: the supplied one, or a data: URI built from bytes.
 	ImageURL string `json:"image_url,omitempty"`
 }
 
@@ -121,11 +120,7 @@ func respInputContent(m Message) ([]respContent, error) {
 	return out, nil
 }
 
-// respUsage is the Responses usage shape. The field names are NOT the
-// chat-completions ones -- input_tokens/output_tokens rather than
-// prompt_tokens/completion_tokens -- so this dialect decodes its own and does
-// not share oaUsage. The detail fields are pointers for the tri-state contract:
-// absent is not zero.
+// respUsage is the Responses usage shape; field names differ from chat-completions and details are tri-state pointers.
 type respUsage struct {
 	InputTokens         int                `json:"input_tokens"`
 	OutputTokens        int                `json:"output_tokens"`
@@ -144,11 +139,7 @@ type respOutputDetails struct {
 	ReasoningTokens *int `json:"reasoning_tokens"`
 }
 
-// toUsage normalizes a Responses usage snapshot onto the library's shape.
-// input_tokens already INCLUDES the cached ones on this dialect, so it passes
-// through untouched. When any cache figure was reported, CacheWriteTokens is an
-// explicit 0 -- this API neither reports nor bills a separate cache-write class
-// -- and a snapshot with no cache detail at all leaves both nil (unknown).
+// toUsage normalizes a Responses usage snapshot: input_tokens already INCLUDES cached ones, so it passes through.
 func (u *respUsage) toUsage() Usage {
 	out := Usage{
 		PromptTokens:     u.InputTokens,

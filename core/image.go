@@ -24,9 +24,7 @@ func imageRef(d Dialect, i ImagePart) (string, error) {
 	return "", Unsupported(d, "an empty image", "it carries neither a source nor any bytes")
 }
 
-// hasImage reports whether a message holds one, which is what decides between
-// the plain-text and the block form of a message on the dialects that have
-// both.
+// hasImage reports whether a message holds one, deciding plain-text vs block form.
 func hasImage(m Message) bool {
 	for _, p := range m.EffectiveParts() {
 		if p.Kind() == PartKindImage {

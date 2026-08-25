@@ -22,10 +22,7 @@ func OneShot(ctx context.Context, p Provider, req Request, timeout time.Duration
 	return p.Complete(ctx, r, nil)
 }
 
-// CompactRequestText is the instruction that triggers a compaction summary.
-// It is sent as the trailing user message of the summarize call, and it is
-// also the text of the stored request message so the compacted round reads
-// naturally as prior history.
+// CompactRequestText triggers compaction; sent as the summarize call's trailing user message.
 const CompactRequestText = "Summarize this entire conversation in detail for a future instance of yourself to pick up. Output only the summary."
 
 // CompactResult is the outcome of a Compact call: summary, replacement round, and Completion.

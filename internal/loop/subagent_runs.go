@@ -20,8 +20,7 @@ const (
 	SubagentRunning SubagentState = "running"
 	// SubagentDone means the sub-agent returned its report.
 	SubagentDone SubagentState = "done"
-	// SubagentFailed means the run ended in an error (a failed model call, or
-	// the library's recoverable misuse text — both reach the orchestrator).
+	// SubagentFailed means the run ended in error (failed model call or recoverable misuse text).
 	SubagentFailed SubagentState = "error"
 	// SubagentAbandoned means the turn ended while the sub-agent was still running.
 	SubagentAbandoned SubagentState = "abandoned"
@@ -29,8 +28,7 @@ const (
 
 // SubagentReport is one finished sub-agent's result, waiting to be delivered.
 type SubagentReport struct {
-	// CallID is the parent run_subagent tool call that launched it, which is
-	// also the id the live-activity telemetry is stamped with.
+	// CallID is the parent run_subagent tool call id; also the live-activity telemetry id.
 	CallID string
 	// Label is the orchestrator's own one-line description of the task.
 	Label string
@@ -39,8 +37,7 @@ type SubagentReport struct {
 	IsError bool
 	// Usages is what this sub-agent spent: one entry per model call, in order.
 	Usages []Usage
-	// Duration is wall-clock from launch to report. Reported to the browser
-	// only — the delivered text stays deterministic.
+	// Duration is wall-clock from launch to report; browser-only, text stays deterministic.
 	Duration time.Duration
 }
 
@@ -60,20 +57,14 @@ type SubagentUpdate struct {
 	// Prompt is the task text, carried on the first (queued) update only.
 	Prompt string
 	State  SubagentState
-	// Report and IsError are set on the terminal update; Usages is what the run
-	// spent (see SubagentReport.Usages), so a host watching only lifecycle still
-	// gets the total; Duration is wall-clock from launch to report.
+	// Report/IsError set on the terminal update; Usages is the run's total; Duration is wall-clock.
 	Report   string
 	IsError  bool
 	Usages   []Usage
 	Duration time.Duration
 }
 
-// SubagentRuns tracks the sub-agents launched during one turn: which are still
-// out, and which have reported but not yet been delivered to the model. It is
-// safe for concurrent use — every launch runs on its own goroutine — and a nil
-// *SubagentRuns answers every question as "nothing outstanding", so a loop can
-// consult one it was never given.
+// SubagentRuns tracks launched sub-agents: still out vs reported but undelivered; nil-safe.
 type SubagentRuns struct {
 	onUpdate func(SubagentUpdate)
 	now      func() time.Time
@@ -141,12 +132,7 @@ func (r *SubagentRuns) MarkRunning(callID string) {
 	r.emit(SubagentUpdate{CallID: callID, Label: run.label, State: SubagentRunning})
 }
 
-// Complete records a finished sub-agent's report and wakes any Collect waiting
-// on it. usages is what the run spent, in order (nil for a run that never got
-// as far as a model call). The report stays pending until Collect hands it to
-// the loop, so a sub-agent that finishes while the model is mid-turn is
-// delivered at the end of that turn rather than lost. Unknown call ids are
-// ignored.
+// Complete records a finished report and wakes Collect; unknown call ids are ignored.
 func (r *SubagentRuns) Complete(callID, text string, isErr bool, usages []Usage) {
 	r.mu.Lock()
 	run, ok := r.active[callID]
@@ -261,21 +247,10 @@ func (r *SubagentRuns) emit(u SubagentUpdate) {
 	r.onUpdate(u)
 }
 
-// The delivery message. Reports come back into the conversation as a
-// user-role message — the one role every OpenAI-compatible upstream accepts
-// mid-thread — so it is labeled unmistakably as an automated delivery. How a
-// host stores and shows it is the host's business; the TEXT is contract,
-// because it is what the model reads.
-
-// SubagentDeliveryHeader opens every delivery so a model reading the
-// transcript can never mistake it for the user speaking.
+// Delivery is a user-role message (accepted mid-thread); the header marks it unmistakable.
 const SubagentDeliveryHeader = "[automated delivery -- this is the sub-agent notification you were promised, not a message from the user]"
 
-// FormatSubagentDelivery renders finished reports as the delivered message
-// text. still is how many sub-agents remain outstanding after this delivery
-// (stated explicitly so the model can choose between answering now and waiting
-// for the rest — it will be notified either way); abandoned is how many were
-// dropped because the turn cap left no turn to deliver them into.
+// FormatSubagentDelivery renders finished reports; still/abandoned are stated for the model.
 func FormatSubagentDelivery(reports []SubagentReport, still, abandoned int) string {
 	var b strings.Builder
 	b.WriteString(SubagentDeliveryHeader)

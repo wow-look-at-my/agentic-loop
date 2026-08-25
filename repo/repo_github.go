@@ -14,11 +14,7 @@ import (
 	"strings"
 )
 
-// This file holds the shared GitHub REST-API plumbing behind the repo tools:
-// the token-trying fetch, path parsing, argument helpers, and the rendering of
-// directory listings and error responses. The tool surface (schemas, agentic.Tools,
-// Execute) lives in repo.go; the per-tool handlers live in their sibling files
-// (repo_search.go, repo_commits.go, repo_prs.go, repo_issues.go, repo_write.go).
+// GitHub plumbing: token-trying fetch, path parsing, arg helpers, listing/error rendering.
 
 // GHResponse is one GitHub API response.
 type GHResponse struct {

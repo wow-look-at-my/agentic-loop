@@ -6,16 +6,7 @@ import (
 	"strings"
 )
 
-// Rates is what one model charges, in USD PER TOKEN.
-//
-// Per token, not per million, because that is the unit the model list publishes
-// and converting on the way in means the conversion happens once, here, instead
-// of at every arithmetic site.
-//
-// A rate of 0 is a real price: a free model publishes zeros, and a model that
-// publishes nothing has no Rates at all. That is the whole reason
-// ModelList.Prices is a map — absence has to stay absence, so a host renders an
-// em dash instead of claiming a call was free.
+// Rates: USD PER TOKEN, not per million; 0 is a real price, absence = no entry.
 type Rates struct {
 	Prompt     float64
 	Completion float64

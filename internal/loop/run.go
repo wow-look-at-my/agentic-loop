@@ -37,9 +37,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call fingerprint.
 	lastBatch := ""
 	repeats := 0
-	// currentAssistantID tracks the id of the in-flight assistant turn so a
-	// panic recovery can finalize it. It is set by emitAssistantMessage and
-	// cleared by emitFinalizeAssistant.
+	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
 	currentAssistantID := MessageID("")
 	finalizeAssistant := func(ev FinalizeAssistantEvent) {
 		cfg.Events.emitFinalizeAssistant(ev)
@@ -130,29 +128,20 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		assistantID, aerr := cfg.Events.emitAssistantMessage(AssistantMessageEvent{ParentID: MessageID(parentID)})
 		currentAssistantID = assistantID
 		if aerr != nil {
-			// The host failed to create or announce the row (e.g. the SSE
-			// sink died on the meta event). Finalize the turn as an error so
-			// the durable row is not stranded, then return the error.
+			// The host failed to announce the row (e.g. the SSE sink died); finalize as error.
 			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
 			res.Messages = transcript
 			return res, aerr
 		}
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
 		if err != nil {
-			// A cancelled or timed-out call is never an "error", whether or
-			// not it produced a partial completion: the host's own hard rule
-			// is that a stopped stream finalizes as cancelled, and a call
-			// that failed before streaming any bytes cancels exactly as
-			// validly as one that broke mid-stream.
+			// A cancelled/timed-out call is never an "error"; a stopped stream finalizes cancelled.
 			status := "cancelled"
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				status = "error"
 			}
 			if comp != nil {
-				// Mid-stream break/cancel: keep the partial content, reasoning
-				// and usage, but drop any assembled tool calls -- they were
-				// never executed, and replaying an assistant tool_call with no
-				// matching result 400s on most upstreams.
+				// Mid-stream break: keep partial content, drop tool calls (never executed; replay 400s).
 				partial := comp.Message
 				partial.ToolCalls = nil
 				if assistantID != "" {
@@ -196,18 +185,13 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					Messages:   cr.Messages,
 					Completion: cr.Completion,
 				})
-				// The compacted round ends on assistant, so the next loop
-				// iteration starts clean — the model is asked again with the
-				// summary in place of the full history. Continue to the next
-				// turn rather than processing this turn's now-stale calls.
+				// Compacted round ends on assistant; next iteration starts clean with the summary.
 				continue
 			}
 			// Compaction failed: proceed with the un-compacted transcript; the error is swallowed.
 		}
 
-		// Keep looping while the model is still requesting tools and we are
-		// allowed to run them: replay the assistant's tool-call message, then
-		// each tool result, so the next turn sees the full sub-conversation.
+		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
 			// A batch identical to the previous turn's makes no progress; nudge once, then end the run.
 			if fp := batchFingerprint(calls); fp == lastBatch {
@@ -229,14 +213,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			aIdx := len(transcript) - 1
 			// Finalize the assistant as complete with its tool calls before executing them.
 			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
-			// abortBatch ends the run mid-batch -- an approval decision that
-			// never arrived, or a tool callback that returned an error. It
-			// clears the pending batch: the assistant message keeps its
-			// content/reasoning but loses its tool_calls, and this batch's
-			// already-appended results are dropped, so no orphans remain to
-			// replay. The host is told to finalize the assistant row as
-			// cancelled with no tool calls, so its durable tree matches the
-			// loop's transcript.
+			// abortBatch ends the run mid-batch (approval/callback error); clears pending batch.
 			abortBatch := func(cause error) (*Result, error) {
 				transcript = transcript[:aIdx+1]
 				cleared := transcript[aIdx]
@@ -259,8 +236,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				// The hook sees a copy; downstream uses whatever the hook left.
 				call := asked
 				if cberr := cfg.Events.emitToolCall(ToolCallEvent{Call: &call}); cberr != nil {
-					// Wait for any read-only calls already dispatched so no
-					// goroutine outlives the batch, then clear it.
+					// Wait for in-flight read-only calls so none outlive the batch, then clear it.
 					wg.Wait()
 					return abortBatch(cberr)
 				}
@@ -320,10 +296,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 						}
 					}
 				}
-				// The id answered is the MODEL's, never a rewritten one: it
-				// pairs this message with the tool_call already in the
-				// transcript, and a mismatch there is an orphan no upstream
-				// will replay.
+				// The id answered is the MODEL's, never a rewritten one; a mismatch is an orphan.
 				recorded := Message{
 					Role:        RoleTool,
 					Content:     content,
@@ -353,8 +326,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// The model asked for no tools, but sub-agents may still be out; deliver what has landed.
 		if cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
 			if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns-1 {
-				// Capped final turn: don't wait for what's still running, but
-				// deliver what has arrived and declare remaining subagents lost.
+				// Capped final turn: deliver what arrived, declare remaining subagents lost.
 				reports := cfg.Subagents.Take()
 				lost := cfg.Subagents.CancelRemaining()
 				if len(reports) > 0 || lost > 0 {
@@ -496,9 +468,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			return finish(final)
 		}
 
-		// Last resort: the reasoning (a thinking model's only output), then a
-		// clear placeholder, so the caller never gets a confusing empty
-		// result.
+		// Last resort: surface the reasoning (a thinking model's only output), else a placeholder.
 		final := assistant
 		final.ToolCalls = nil
 		if strings.TrimSpace(final.Content) == "" {

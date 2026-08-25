@@ -187,11 +187,7 @@ type respStream struct {
 	ev      *StreamEvents
 	content strings.Builder
 	reason  strings.Builder
-	// parts is the output items in the order the API emitted them, which is
-	// the order the model produced them: reasoning, the text it wrote, the
-	// calls it made. itemText is the text those items carried, so a stream cut
-	// before its message item completed can still contribute the deltas it had
-	// already delivered.
+	// parts is output items in emitted order; itemText keeps deltas for a stream cut short.
 	parts    []Part
 	itemText strings.Builder
 	haveCall bool

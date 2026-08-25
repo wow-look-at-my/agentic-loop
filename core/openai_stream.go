@@ -177,8 +177,7 @@ type oaStream struct {
 	usages  []Usage
 	timings []Timings
 	sawData bool
-	// sentParts counts the parts already delivered through OnPart, so the
-	// remainder can go out at the end without any part going twice.
+	// sentParts counts parts already delivered via OnPart; the rest goes out once at the end.
 	sentParts int
 }
 

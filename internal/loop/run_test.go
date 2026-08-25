@@ -162,9 +162,7 @@ type approverFunc func(ctx context.Context, call ToolCall) (Approval, error)
 
 func (f approverFunc) Ask(ctx context.Context, call ToolCall) (Approval, error) { return f(ctx, call) }
 
-// allowAll is the toolset-wide yes a host with no policy of its own would
-// give. Every call reaches an Approver now, so a Run that means to execute
-// tools needs one.
+// allowAll is the toolset-wide yes a host with no policy of its own would give.
 var allowAll = approverFunc(func(context.Context, ToolCall) (Approval, error) { return Approval{OK: true}, nil })
 
 // The reason is what the model is told; "the user denied permission" is false when a policy refused.

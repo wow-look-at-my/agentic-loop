@@ -14,9 +14,7 @@ const (
 	diffMaxCells = 4_000_000
 )
 
-// unifiedDiff renders the unified diff between oldText and newText. fromLabel
-// and toLabel become the ---/+++ header lines (e.g. "a/path", "b/path", or
-// "/dev/null" for an added/deleted file). Identical inputs yield "".
+// unifiedDiff renders the unified diff; fromLabel/toLabel become the ---/+++ header lines.
 func unifiedDiff(fromLabel, toLabel, oldText, newText string) string {
 	if oldText == newText {
 		return ""
@@ -31,8 +29,7 @@ func unifiedDiff(fromLabel, toLabel, oldText, newText string) string {
 	}
 	body := renderHunks(diffOps(a, b))
 	if body == "" {
-		// The contents differ only by a trailing newline — no visible line
-		// change to show.
+		// The contents differ only by a trailing newline — no visible line change.
 		return ""
 	}
 	return header + body

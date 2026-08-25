@@ -26,9 +26,7 @@ type ToolContentPart struct {
 	Description string `json:"description,omitempty"`
 }
 
-// ToolResult is the outcome of executing one tool call. Content is the
-// model-facing text fed back as the tool message; IsError marks a recoverable
-// failure the model can react to.
+// ToolResult is a call's outcome; Content is model-facing text; IsError marks recoverable failure.
 type ToolResult struct {
 	Content string
 	// Parts is structured content for the HOST to render; NEVER sent to the model.
