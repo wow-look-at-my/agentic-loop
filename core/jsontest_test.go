@@ -14,21 +14,8 @@ import (
 )
 
 // Test fixtures are built from Go VALUES, never spliced into JSON text.
-//
-// Writing fmt.Sprintf(`{"sha":%q}`, sha) or `{"sha":"` + sha + `"}` makes a
-// fixture's correctness depend on what the value happens to contain: a quote,
-// a backslash or a newline in it produces a malformed body, and the test then
-// fails somewhere far from the splice -- or worse, passes for the wrong reason
-// because the code under test rejected a body the fixture never meant to send.
-// Marshaling a Go value cannot do that; the encoder escapes.
-//
-// Static JSON with nothing interpolated into it is not this problem and stays
-// as it is: no value can corrupt a constant.
 
-// jsonMust marshals v to compact JSON. It panics rather than returning an
-// error: the input is a literal written in a test, so a failure is a mistake
-// in the test itself, and a fixture that silently became "" would make the
-// assertion that reads it meaningless.
+// jsonMust marshals v to compact JSON; it panics on failure because the input is a test literal.
 func jsonMust(v any) string {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -37,8 +24,7 @@ func jsonMust(v any) string {
 	return string(raw)
 }
 
-// jsonObj is a JSON object literal, shorter than map[string]any at every call
-// site: jsonMust(jsonObj{"sha": sha, "type": "file"}).
+// jsonObj is a JSON object literal, shorter than map[string]any at every call site.
 type jsonObj = map[string]any
 
 // jsonArr is a JSON array literal.
@@ -47,10 +33,7 @@ type jsonArr = []any
 // sprintfJSON matches fmt.Sprintf over a template that opens as JSON.
 var sprintfJSON = regexp.MustCompile("fmt\\.Sprintf\\(`\\s*[\\[{]")
 
-// concatJSON matches a backtick string that both looks like JSON and is glued
-// to an expression: `{"a":"` + v, or v + `"}`. A trailing `+ "\n"` on a whole
-// document is not a splice, so a plain quoted string on the far side is
-// allowed.
+// concatJSON matches a backtick string that looks like JSON and is glued to an expression.
 var concatJSON = regexp.MustCompile("`[^`]*[\\[{][^`]*`\\s*\\+\\s*[^\"\\s]|\\+\\s*`\\s*[,:}\\]]")
 
 // The rule is a build failure rather than a convention, because this is a

@@ -7,13 +7,7 @@ import (
 	"regexp"
 )
 
-// APIError is a non-2xx response from a provider. Body holds up to 4 KiB of
-// the response body (or the HTTP status text when the body was empty); it is
-// embedded in Error() so downstream matchers — the param-strip middleware's
-// regexes in particular — can see the provider's wording. ContextOverflow
-// flags an HTTP 400 whose body says the prompt exceeded the model's context
-// window: a permanent, never-retried condition callers should surface
-// explicitly.
+// APIError is a non-2xx provider response: Body holds up to 4 KiB, ContextOverflow flags a permanent 400.
 type APIError struct {
 	Status          int
 	Body            string
@@ -25,9 +19,7 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("api error: status %d: %s", e.Status, e.Body)
 }
 
-// contextOverflowRe matches provider wordings for a prompt that exceeded the
-// model's context window ("prompt is too long", "context length", "maximum
-// context", "too many tokens", ...).
+// contextOverflowRe matches provider wordings for a prompt that exceeded the model's context window.
 var contextOverflowRe = regexp.MustCompile(`(?i)prompt (is )?too long|context (length|window)|maximum context|too many tokens|exceeds?.{0,20}(context|token)`)
 
 // IsContextOverflow reports whether err is (or wraps) an APIError flagged as a
@@ -37,13 +29,7 @@ func IsContextOverflow(err error) bool {
 	return errors.As(err, &ae) && ae.ContextOverflow
 }
 
-// IsTransient reports whether err is worth retrying: an APIError with status
-// 408, 429, or any 5xx, or any network/transport error. Context cancellation
-// and deadline expiry are never transient, and neither is any other 4xx —
-// including a context-overflow 400 (retrying the same oversized prompt is
-// futile) — nor an error returned by one of the caller's own stream callbacks
-// (the upstream call did not fail; the caller's sink did, and re-sending the
-// prompt cannot fix that).
+// IsTransient reports if err is retryable: 408/429/5xx or network errors; never cancellation, other 4xx, or callbacks
 func IsTransient(err error) bool {
 	if err == nil {
 		return false
@@ -66,37 +52,22 @@ func IsTransient(err error) bool {
 	return true
 }
 
-// requestError marks a request the library itself refused to build or send —
-// deterministic misconfiguration (missing required fields, marshal failures),
-// never transient.
+// requestError marks a request the library refused to build or send: deterministic misconfiguration, never transient.
 type requestError struct{ msg string }
 
 // Error returns the misconfiguration message.
 func (e *requestError) Error() string { return e.msg }
 
-// badRequestErr wraps a deterministic request-construction failure so
-// IsTransient classifies it as permanent.
+// badRequestErr wraps a deterministic request-construction failure so IsTransient classifies it as permanent.
 func badRequestErr(msg string) error { return &requestError{msg: msg} }
 
-// BadRequest builds a permanent failure for a request that was refused before
-// it was sent. A layer above this one -- a loop, a transport, a CLI -- needs
-// the same classification for its own refusals: without it, a caller's own
-// misconfiguration reads as an unclassified error, and a retry wrapper would
-// dutifully re-send something that cannot ever work.
+// BadRequest builds a permanent failure for a refused request, so upper layers can classify their own refusals.
 func BadRequest(msg string) error { return badRequestErr(msg) }
 
-// CallbackError marks an error as originating in one of the caller's own
-// callbacks rather than in the upstream, which is what keeps a failed sink
-// permanent instead of retried. It is transparent: the message and
-// errors.Is/errors.As behavior are the wrapped error's own.
+// CallbackError marks an error from the caller's own callback, keeping a failed sink permanent; it is transparent.
 func CallbackError(err error) error { return wrapCallbackErr(err) }
 
-// callbackError marks an error that originated in one of the caller's own
-// callbacks (StreamEvents.On*, Events.OnToolCall/OnToolResult) rather than in
-// the upstream call. It is transparent — Error() is the callback error's own
-// text and Unwrap preserves errors.Is/errors.As against the caller's sentinel
-// — and exists only so IsTransient classifies a failed sink as permanent: it
-// is never an *APIError and never retried.
+// callbackError marks an error from the caller's own callbacks, not the upstream; transparent and never retried.
 type callbackError struct{ err error }
 
 // Error returns the wrapped callback error's text unchanged.
@@ -105,9 +76,7 @@ func (e *callbackError) Error() string { return e.err.Error() }
 // Unwrap exposes the caller's original error to errors.Is / errors.As.
 func (e *callbackError) Unwrap() error { return e.err }
 
-// wrapCallbackErr marks err as callback-originated, idempotently: nil stays
-// nil, and an error already carrying the marker is returned unchanged (the
-// emit helpers can nest).
+// wrapCallbackErr marks err as callback-originated, idempotently: nil stays nil and marked errors pass through.
 func wrapCallbackErr(err error) error {
 	if err == nil {
 		return nil

@@ -7,12 +7,7 @@ import (
 	"strings"
 )
 
-// batchFingerprint identifies a tool-call batch by what the model asked for --
-// the calls' names and raw arguments, in order. Call IDs are deliberately
-// excluded: providers mint a fresh ID per call, so including them would make
-// every batch unique and the detector dead code. Lengths are interleaved so
-// no pair of adjacent fields can be re-cut into a different batch with the
-// same fingerprint.
+// batchFingerprint identifies a batch by call names and raw arguments, in order.
 func batchFingerprint(calls []ToolCall) string {
 	var b strings.Builder
 	for _, c := range calls {
@@ -29,8 +24,7 @@ func batchFingerprint(calls []ToolCall) string {
 func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, error) {
 	tool, known := cfg.Tools.Find(call.Name)
 	if !known {
-		// A name this run does not offer: the model hallucinated a tool, or it
-		// remembers one its parent has. Teach it rather than aborting.
+		// A name this run does not offer: the model hallucinated a tool; teach it.
 		text := "unknown tool: " + call.Name
 		if cfg.UnknownTool != nil {
 			text = cfg.UnknownTool(call.Name)
@@ -51,12 +45,10 @@ func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, e
 			return ToolResult{Content: deniedText(verdict.Reason), IsError: true}, nil
 		}
 	}
-	// The id is threaded on the context, where it is known -- the Tool
-	// interface stays id-free (see toolcallid.go).
+	// The id is threaded on the context; the Tool interface stays id-free.
 	result, exErr := tool.Execute(WithToolCallID(ctx, call.ID), json.RawMessage(call.Arguments))
 	if exErr != nil {
-		// Defensive: internal failures are surfaced as tool text so the model
-		// can react rather than aborting the conversation.
+		// Defensive: internal failures surface as tool text so the model can react.
 		return ToolResult{Content: "tool execution failed: " + exErr.Error(), IsError: true}, nil
 	}
 	return result, nil

@@ -70,9 +70,7 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 		fmt.Fprintf(&b, " (%s)", strings.Join(globs, ", "))
 	}
 	if len(res.Hits) == 0 {
-		// An empty result has to state what it proves. Every line of every file
-		// in scope was read, so the text really is absent from that scope --
-		// unless coverage was partial, which the note then says.
+		// An empty result states what it proves: every line in scope was read, so the text is genuinely absent.
 		b.WriteString(": no matches.\nEvery line of every file in scope was searched, so the text is genuinely absent from it — this is a real negative, not a search that gave up.")
 		if res.Note != "" {
 			b.WriteString("\n" + res.Note)
@@ -133,11 +131,7 @@ func SliceLines(content string, offset, limit int) (body, note string) {
 	return strings.Join(shown, "\n"), note + ")"
 }
 
-// MatchesPattern reports whether a path matches a find_files pattern. A pattern
-// carrying glob metacharacters is matched against both the base name and the
-// full path (so *.go and src/*.go both work); anything else is a
-// case-insensitive substring of the path. Exported for folders doing their own
-// filtering with the same rule.
+// MatchesPattern reports whether a path matches a find_files pattern (glob or case-insensitive substring).
 func MatchesPattern(p, pattern string) bool {
 	if !strings.ContainsAny(pattern, "*?[") {
 		return strings.Contains(strings.ToLower(p), strings.ToLower(pattern))
@@ -161,14 +155,7 @@ func WithinDir(p, dir string) (string, bool) {
 	return strings.TrimPrefix(p, dir+"/"), true
 }
 
-// WithinScope reports whether p falls inside a SEARCH scope, and returns the
-// name the globs are matched against.
-//
-// A search scope is a path, not a directory: grep names either a subtree or one
-// exact file, and both must work. WithinDir alone answers no for the file case
-// (a file is not a child of itself), which makes every single-file grep report
-// a false absence -- the searched file is skipped, and an empty result is then
-// presented as proof the text is not there.
+// WithinScope reports whether p falls inside a SEARCH scope (a path, not a directory) and returns the glob name.
 func WithinScope(p, scope string) (string, bool) {
 	if p == scope {
 		return path.Base(p), true

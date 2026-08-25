@@ -145,10 +145,7 @@ func TestOpenAIMessageMarshalPin(t *testing.T) {
 	assert.JSONEq(t, `{"role":"tool","content":"","tool_call_id":"call_1"}`, string(b))
 }
 
-// rejectStreamOptionsHandler fails the first request with a Z.AI-shaped 400
-// that names no parameter at all, then serves a normal SSE stream on any
-// retry -- reproducing what Complete's stream_options retry must recover
-// from.
+// rejectStreamOptionsHandler 400s the first call (no named parameter); retries stream normally.
 type rejectStreamOptionsHandler struct {
 	sseHandler
 	bodies [][]byte
@@ -276,10 +273,7 @@ func TestOpenAIStreamDecode(t *testing.T) {
 	require.Len(t, progresses, 1)
 	assert.Equal(t, PromptProgress{Processed: 50, Total: 100, Cache: 20, TimeMS: 123}, progresses[0])
 
-	// Every report the upstream sent, in the order it sent them. This dialect
-	// attaches a cumulative snapshot to each chunk (the xAI convention), and
-	// core does not fold them: which of them counts, and whether the trailing
-	// zeroed one is a correction or noise, is the reader's call.
+	// Every usage report the upstream sent is kept in order; which one counts is the reader's call.
 	require.Len(t, comp.Usages, 7)
 	assert.Equal(t, 10, comp.Usages[0].PromptTokens)
 	assert.Equal(t, 0, comp.Usages[0].CompletionTokens)
@@ -379,9 +373,7 @@ func TestOpenAIPartialOnCancel(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	// Cancel from the client side, the moment the first delta is delivered —
-	// deterministic, unlike signaling from the handler (the server may flush
-	// before the client has read anything).
+	// Cancel from the client the moment the first delta lands — deterministic, unlike handler signaling.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ev := &StreamEvents{OnText: func(string) error { cancel(); return nil }}

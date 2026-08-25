@@ -8,15 +8,12 @@ import (
 	"sync"
 )
 
-// IProvider is the common base for every registered provider. It lets the
-// tool layer and hosts ask any provider what virtual path it was mounted at.
+// IProvider is the common base for every registered provider; it lets callers ask its mount path.
 type IProvider interface {
 	Path() string
 }
 
-// BaseProvider is embedded by providers that want Path() handled for them.
-// The registry calls setPath automatically on Add/AddFile, so a provider
-// that embeds *BaseProvider always reports the correct mount path.
+// BaseProvider is embedded by providers that want Path() handled for them via the registry's setPath.
 type BaseProvider struct {
 	path string
 }
@@ -24,8 +21,7 @@ type BaseProvider struct {
 // Path returns the virtual path this provider was registered at.
 func (b *BaseProvider) Path() string { return b.path }
 
-// setPath is the internal hook the registry uses to inject the mount path.
-// Unexported so only the registry can call it.
+// setPath is the registry's internal hook to inject the mount path; unexported so only the registry calls it.
 func (b *BaseProvider) setPath(p string) { b.path = p }
 
 // pathSetter is checked by the registry to inject the path at registration.
@@ -39,20 +35,13 @@ type pathSetter interface {
 // hierarchy behind it.
 type IFileProvider interface {
 	IProvider
-	// Read returns the file's contents. The path argument is the whole virtual
-	// path as the model wrote it.
+	// Read returns the file's contents; path is the whole virtual path as the model wrote it.
 	Read(ctx context.Context, virtualPath string) (File, error)
 	// Display is the canonical rendering of the file's path for message text.
 	Display(virtualPath string) string
 }
 
-// IFolderProvider serves a folder hierarchy under a registered path prefix.
-// Every method receives the WHOLE virtual path as the model wrote it, because
-// only the folder knows its own grammar -- a repository host's
-// `/repos/<org>/<repo>@<ref>/<path>` is its business, not the tool layer's.
-//
-// Every error is model-facing: the tool layer renders it as a recoverable
-// teaching error, never a failed turn.
+// IFolderProvider serves a folder hierarchy under a registered path prefix; every error it returns is model-facing.
 type IFolderProvider interface {
 	IProvider
 	Display(path string) string
@@ -67,10 +56,7 @@ type IFolderProvider interface {
 // folder's own words when it implements ReadOnlyExplainer.
 type IWritableFolderProvider interface {
 	IFolderProvider
-	// Writable reports whether THIS path accepts changes, and when it does
-	// not, the model-facing reason (which should name what to use instead). A
-	// read-only VIEW of a writable folder, and a path that is a directory,
-	// both answer false here.
+	// Writable reports whether THIS path accepts changes, else the model-facing reason naming what to use instead.
 	Writable(path string) (bool, string)
 	// Create adds a brand-new file, failing when the path already exists.
 	Create(ctx context.Context, path, content string) (string, error)
@@ -80,23 +66,15 @@ type IWritableFolderProvider interface {
 	Remove(ctx context.Context, path string) (string, error)
 }
 
-// ReadOnlyExplainer lets a read-only folder name the writable route instead of
-// being refused with a bare "read-only" -- the difference between a model
-// retrying the same call and one that goes where it should have.
+// ReadOnlyExplainer lets a read-only folder name the writable route instead of a bare "read-only" refusal.
 type ReadOnlyExplainer interface {
 	ReadOnlyReason(path string) string
 }
 
-// PathGuard vetoes a path before any provider sees it, with the model-facing
-// reason. It is the seam a host uses to redirect one mount to another (reading
-// an attached working copy's own repository through the read-only mount would
-// show the un-staged remote state). A nil guard allows everything.
+// PathGuard vetoes a path before any provider sees it, with a model-facing reason; nil allows everything.
 type PathGuard func(path string) (blocked bool, reason string)
 
-// DuplicateMountError is returned when a provider is registered at a path
-// prefix that already has one. It is loud and obvious: the message names both
-// the conflicting path and advises the caller to remove the existing mount
-// first.
+// DuplicateMountError is returned when a provider is registered at a path prefix that already has one.
 type DuplicateMountError struct {
 	Path string
 }

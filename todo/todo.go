@@ -8,9 +8,7 @@ import (
 	"strings"
 )
 
-// The four advertised names of the built-in task-list tools. The model mutates
-// one task at a time by its stable id instead of resending the whole list, so
-// it never has to reconstruct the plan from memory.
+// The four advertised names of the built-in task-list tools.
 const (
 	TodoAddToolName      = "todo_add"
 	TodoEditToolName     = "todo_edit"
@@ -18,15 +16,10 @@ const (
 	TodoCompleteToolName = "todo_complete"
 )
 
-// TodoListPartType is the agentic.ToolContentPart type the current list rides back on
-// (as a JSON array of Todo, ids included), so a host's display follows a
-// running turn instead of waiting for the run to end. Like every structured
-// part, it never reaches the model.
+// TodoListPartType is the ToolContentPart type the current list rides back on.
 const TodoListPartType = "todo_list"
 
-// The task-list caps. A plan longer than this is not a plan, and a title long
-// enough to be a description does not fit the narrow surface a host renders
-// one in.
+// The task-list caps: a plan longer than this is not a plan.
 const (
 	todoMaxItems      = 100
 	todoMaxTitleRunes = 200
@@ -54,8 +47,7 @@ var todoCompleteDescription = "Marks ONE existing task on the task list done by 
 	"every other task keeps its id, title and state. The reply carries the whole current list, ids included, " +
 	"so re-read it from the reply."
 
-// TodoState is one task's state. The set is closed: a host renders each one,
-// and a state it does not know would show as a task with no mark.
+// TodoState is one task's state; the set is closed so a host renders each one.
 type TodoState string
 
 // The task states, in the order a schema advertises them.
@@ -68,10 +60,7 @@ const (
 // todoStates is the closed set, for validation and for the teaching error.
 var todoStates = []TodoState{TodoPending, TodoInProgress, TodoDone}
 
-// Todo is one task of a run's list. ID is the stable per-task identity the
-// model addresses it by; it is minted once and never reused, so it survives
-// across turns and unrelated mutations. Title and State are as the model set
-// them.
+// Todo is one task of a run's list; ID is the stable, never-reused identity.
 type Todo struct {
 	ID    int       `json:"id"`
 	Title string    `json:"title"`
@@ -80,31 +69,14 @@ type Todo struct {
 
 // TodoConfig configures NewTodoTools.
 type TodoConfig struct {
-	// Write receives the run's whole current task list, ids and all, after
-	// every mutation, and persists (or displays) it however the host wants.
-	// A non-nil error is reported to the model as a recoverable failure, so a
-	// list that was not stored is never reported as stored.
-	//
-	// A nil Write refuses every call: a tool that silently accepts a plan
-	// nobody keeps is worse than one that says it cannot.
+	// Write persists (or displays) the run's whole current task list after every mutation.
 	Write func(ctx context.Context, todos []Todo) error
 
-	// Initial is the list this toolset starts holding — what Write persisted
-	// on an earlier run, handed back so the model can go on addressing those
-	// tasks by the ids it was already given.
-	//
-	// A host that keeps the list across runs MUST pass it. The list is
-	// mutated in memory and Write receives the whole of it, so a toolset that
-	// starts empty does not merely forget the earlier tasks: the first
-	// mutation of a new run persists a list containing only that one task, and
-	// everything the previous run wrote is gone. Nothing in the exchange looks
-	// like a failure.
+	// Initial is the list this toolset starts holding; a host keeping it across runs MUST pass it.
 	Initial []Todo
 }
 
-// todoStore is the in-memory task list one toolset mutates, plus the minting
-// of stable ids. It is created once by NewTodoTools and shared by all four
-// tools, so the model edits a single live list that needs no reconciliation.
+// todoStore is the in-memory task list one toolset mutates, with stable id minting.
 type todoStore struct {
 	items []Todo
 	next  int // the next id to hand out, monotonically increasing, never reused
@@ -183,18 +155,14 @@ func (e *todoTool) Decl() agentic.ToolDecl {
 		Name:        e.toolName(),
 		Description: e.description(),
 		InputSchema: e.schema(),
-		// The task list is this run's own memory: nothing here leaves the
-		// process, and none of the four tools throws work away — add appends,
-		// and the other three move ONE task to a state it stays in, so
-		// repeating any of them lands where the first call did.
+		// The task list is this run's own memory; none of the four tools throws work away.
 		Destructive: agentic.Bool(false),
 		Idempotent:  e.kind != todoKindAdd,
 		OpenWorld:   agentic.Bool(false),
 	}
 }
 
-// NeedsApproval always reports false: approval wiring stays the caller's
-// concern, as with every built-in tool.
+// NeedsApproval always reports false; approval wiring stays the caller's concern.
 func (e *todoTool) NeedsApproval() bool { return false }
 
 // schema is inferred from the tool's argument struct, per the hard rule that a
@@ -350,9 +318,7 @@ func (e *todoTool) resolve(id int) (int, string) {
 	for i := range e.store.items {
 		if e.store.items[i].ID == id {
 			if idx != -1 {
-				// Ambiguous: more than one task shares the id. This cannot
-				// happen through the tools, but a damaged store must not be
-				// edited into a lie.
+				// Ambiguous: more than one task shares the id; a damaged store must not be edited.
 				return -1, "task id " + strconv.Itoa(id) + " is ambiguous: it names more than one task"
 			}
 			idx = i
@@ -420,8 +386,7 @@ func (e *todoTool) writeList(ctx context.Context) (agentic.ToolResult, error) {
 func todoListPart(todos []Todo) agentic.ToolContentPart {
 	b, err := json.Marshal(todos)
 	if err != nil {
-		// Todo is an int and two strings; Marshal cannot fail on it. An empty
-		// array is still a valid list, so a host never reads a broken document.
+		// Todo is an int and two strings; Marshal cannot fail on it.
 		b = []byte("[]")
 	}
 	return agentic.ToolContentPart{Type: TodoListPartType, Text: string(b), MimeType: "application/json"}
@@ -445,11 +410,7 @@ func todoStateList() string {
 	return strings.Join(names, ", ")
 }
 
-// RenderTodos is the model-facing rendering of a stored list: the
-// confirmation every mutation answers with, and what a host shows where it has
-// only text. Each line carries the task's stable id, so the model re-reads ids
-// from the reply instead of recalling them. A call that dropped or renamed a
-// task is visible in the reply rather than only on the user's screen.
+// RenderTodos is the model-facing rendering of a stored list, each line carrying the task's id.
 func RenderTodos(todos []Todo) string {
 	if len(todos) == 0 {
 		return "Task list cleared."

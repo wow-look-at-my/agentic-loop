@@ -210,8 +210,7 @@ func TestSessionSourceScopesByOwner(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, hits, 1)
 
-	// The match is exact and there is no wildcard, so asking as anyone else --
-	// including the empty owner -- reaches nothing.
+	// The match is exact and there is no wildcard, so any other owner reaches nothing.
 	hits, _, err = idx.Search(ctx, Query{Owner: "", Text: "tenant", Limit: 10})
 	require.NoError(t, err)
 	assert.Empty(t, hits)

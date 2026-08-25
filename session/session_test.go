@@ -140,9 +140,7 @@ func TestFileStoreRefusesACorruptedDocument(t *testing.T) {
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrNotFound)
 
-	// An id that does not match the file it sits in is the same class of
-	// problem: something moved the file, and the next Append would write the
-	// transcript back under the wrong name.
+	// An id that does not match the file it sits in is the same class of problem.
 	require.NoError(t, os.WriteFile(path, []byte(`<?xml version="1.1"?><conversation id="somethingelse" model="m"/>`), 0o644))
 	_, err = s.Get(id)
 	require.ErrorContains(t, err, "somethingelse")

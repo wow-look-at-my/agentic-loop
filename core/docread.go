@@ -7,15 +7,9 @@ import (
 	"io"
 )
 
-// A document is self-delimiting: it ends when its root element closes. That is
-// what lets documents ride back-to-back down one connection with no framing
-// layer -- no length prefix, no envelope, nothing to strip before parsing.
-// ReadDocument is that rule, written once, because every transport that
-// carries more than one document needs it.
+// A document is self-delimiting: it ends when its root element closes, so documents ride back-to-back with no framing.
 
-// maxDocument caps a single document. A transcript is large but bounded, and a
-// stream that never closes its root would otherwise be read until memory runs
-// out.
+// maxDocument caps a single document, so a stream that never closes its root is not read until memory runs out.
 const maxDocument = 64 << 20
 
 // ReadDocument reads exactly one document from r, leaving whatever follows it
@@ -64,11 +58,9 @@ type docScanner struct {
 	state   scanState
 	depth   int
 	started bool
-	// tagKind is what the tag being read turned out to be, decided from the
-	// bytes right after '<'.
+	// tagKind is what the tag being read turned out to be, decided from the bytes right after '<'.
 	tagKind tagKind
-	// lead holds the first few bytes of a tag, which is all it takes to tell a
-	// comment from a CDATA section from a PI.
+	// lead holds the first few bytes of a tag, enough to tell a comment from a CDATA section from a PI.
 	lead []byte
 	// quote is the attribute delimiter currently open, or 0.
 	quote byte

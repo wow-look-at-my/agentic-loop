@@ -125,8 +125,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	assert.Contains(t, res.Content, "Workflow runs:")
 	assert.Contains(t, res.Content, "CI: failure (https://example.com/run/77)")
 	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
-	// Which endpoint answered is plumbing. A reader who got their CI verdict is
-	// told nothing about permissions, and is never sent to change a setting.
+	// Which endpoint answered is plumbing; a reader with their verdict is told nothing.
 	assert.NotContains(t, res.Content, "permission")
 	assert.NotContains(t, res.Content, "unavailable")
 	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")

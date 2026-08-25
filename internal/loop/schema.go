@@ -10,32 +10,12 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// A tool's JSON Schema is INFERRED from the Go struct its handler decodes, so
-// the two cannot disagree. A schema written by hand -- as a Go string literal
-// or a .json file beside one -- is a second declaration of the argument list,
-// and nothing makes the second one true: a renamed field, a changed type, an
-// argument the schema never advertised, all compile and ship. Here the struct
-// is the only declaration, and its json tags are what the model is told.
-//
-// Field prose lives in `jsonschema:"..."` tags. Optionality is `omitempty` on
-// the json tag: a field without it is required.
-//
-// It is hand-rolled reflection rather than a schema library because the subset
-// a tool argument needs is small: scalars, slices of scalars, and prose.
+// A tool's JSON Schema is INFERRED from the Go struct its handler decodes.
 
 // InferSchema builds the schema for a tool's argument struct.
-//
-// It panics rather than returning an error: the input is a Go type, so a
-// failure is a build-time mistake every call would hit, never a condition a
-// request can reach. Advertising a tool with a broken contract is strictly
-// worse than not starting.
 func InferSchema[In any]() json.RawMessage { return EnumSchema[In](nil) }
 
-// EnumSchema is InferSchema for a struct with closed-set string fields, which
-// reflection cannot see: `what` is not any string, it is one of eight. Keys are
-// json property names, and naming a property that does not exist panics --
-// that is a wiring mistake, and ignoring it would leave the field
-// unconstrained while looking constrained.
+// EnumSchema is InferSchema for a struct with closed-set string fields; unknown property names panic.
 func EnumSchema[In any](enums map[string][]string) json.RawMessage {
 	typ := reflect.TypeFor[In]()
 	if typ.Kind() != reflect.Struct {
@@ -105,9 +85,7 @@ func (p prop) write(b *strings.Builder, enum []string) {
 	b.WriteByte('}')
 }
 
-// structProps reads a struct's fields in DECLARATION order, which is the order
-// the model is shown them -- and a stable advertised toolset is what a prompt
-// cache keys on, so it must not depend on map iteration.
+// structProps reads a struct's fields in declaration order for a stable toolset.
 func structProps(typ reflect.Type) []prop {
 	var out []prop
 	for i := range typ.NumField() {
@@ -121,9 +99,7 @@ func structProps(typ reflect.Type) []prop {
 		}
 		tag, ok := f.Tag.Lookup("json")
 		if !ok {
-			// encoding/json would fall back to the Go name, matching
-			// case-insensitively -- so the model would be advertised a field
-			// under a name the handler decodes only by accident.
+			// encoding/json would fall back to the Go name case-insensitively -- a decoy field name.
 			panic(fmt.Sprintf("agentic: %s.%s has no json tag; every argument field must name itself", typ.Name(), f.Name))
 		}
 		name, opts, _ := strings.Cut(tag, ",")
@@ -180,8 +156,7 @@ func scalarType(t reflect.Type) string {
 	return ""
 }
 
-// mustJSON encodes a value that cannot fail to encode (a string or a string
-// slice), so the schema builder stays an expression rather than an error path.
+// mustJSON encodes a value that cannot fail to encode.
 func mustJSON(v any) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {

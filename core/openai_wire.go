@@ -1,8 +1,6 @@
 package commonai
 
-// The chat-completions wire vocabulary on the way OUT: the tool and message
-// shapes, the transcript mapping, and the two prompt-cache breakpoints. The
-// transport and the stream decoding live in openai.go.
+// Outbound chat-completions wire vocabulary (shapes, mapping, cache); transport in openai.go.
 
 import (
 	"encoding/json"
@@ -32,22 +30,13 @@ type oaToolCall struct {
 	Function oaFunctionCall `json:"function"`
 }
 
-// oaFunctionCall is the function name and JSON-encoded arguments of a call.
-// Arguments carries no omitempty: a zero-argument call has empty arguments,
-// and a function object with no arguments field at all is what Z.AI rejects
-// with 400 "Invalid API parameter, please check the documentation". The call
-// is in the stored transcript, so that 400 repeats on every later turn.
+// oaFunctionCall has no omitempty on Arguments: a missing arguments field makes Z.AI reject with 400.
 type oaFunctionCall struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 
-// oaMessage is one chat message on the OpenAI wire. Its encoding is owned by
-// MarshalJSON, because the content field has a role-dependent presence rule
-// the standard omitempty cannot express, and because ContentBlocks (a prompt
-// cache_control block array) takes precedence over the plain Content string
-// when set. Reasoning carries the replayed gateway-extension reasoning text
-// (ReplayReasoning).
+// oaMessage is one chat message; MarshalJSON owns encoding because content presence is role-dependent.
 type oaMessage struct {
 	Role          string
 	Content       string
@@ -57,17 +46,7 @@ type oaMessage struct {
 	Reasoning     string
 }
 
-// MarshalJSON serializes a message for an OpenAI-compatible request. The
-// OpenAI spec requires a content field on tool, user, and system messages
-// even when empty: a plain `content,omitempty` drops an empty tool result and
-// produces {"role":"tool","tool_call_id":...}, which upstreams reject with
-// "invalid message content type: <nil>" / a 400 -- failing the whole turn. So
-// content is always emitted, except for an assistant message that carries
-// tool_calls, where the spec makes content optional and the model originally
-// produced none; there an empty content is omitted to match what was
-// generated. A non-empty ContentBlocks array is emitted as the content field
-// (a block pointer is never "empty" to omitempty, so even an empty string
-// content survives -- the same trick as the *string below).
+// MarshalJSON always emits content so an empty tool result doesn't 400; assistant tool_calls may omit it.
 func (m oaMessage) MarshalJSON() ([]byte, error) {
 	type wire struct {
 		Role       string       `json:"role"`
@@ -81,9 +60,7 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 		if len(m.ContentBlocks) > 0 {
 			w.Content = m.ContentBlocks
 		} else {
-			// A non-nil pointer (even to "") is always emitted by omitempty, so this
-			// forces a content field to appear; nil omits it for the assistant-with-
-			// tool-calls case above.
+			// A non-nil pointer forces the content field via omitempty; nil omits it for the tool-call case.
 			s := m.Content
 			w.Content = &s
 		}
@@ -156,9 +133,7 @@ func oaContentBlocks(m Message) ([]map[string]any, error) {
 	return blocks, nil
 }
 
-// reasoningText concatenates an assistant message's accumulated reasoning. On
-// the openai dialect the provider always produces a single ThinkingBlock; the
-// concatenation keeps replay robust to a multi-block message regardless.
+// reasoningText concatenates an assistant's thinking, robust to multi-block messages.
 func reasoningText(m Message) string {
 	var b strings.Builder
 	for _, tb := range m.Thinking {
@@ -169,14 +144,7 @@ func reasoningText(m Message) string {
 	return b.String()
 }
 
-// oaMarkPromptCache applies the two Anthropic-style ephemeral prompt-cache
-// breakpoints to a per-request wire message list in openai shape: the leading
-// system message's string content becomes a marked one-block array (the static
-// breakpoint) and the last message's content gets the moving marker. It
-// operates on the freshly-built wire structures only (the caller's Messages
-// are never touched), and empty content passes through unmarked -- an empty
-// marked text block is rejected by upstreams and caching is an optimization,
-// never a correctness requirement.
+// oaMarkPromptCache marks the system (static) and last (moving) messages; empties stay unmarked.
 func oaMarkPromptCache(msgs []oaMessage) {
 	if len(msgs) == 0 {
 		return

@@ -14,26 +14,14 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// The polling half of resource watching: once per turn it re-reads every
-// watched resource, hashes it, and records what moved.
-//
-// Polling rather than a subscription is a deliberate choice, and the reason is
-// the diff. A subscription notification carries a URI and nothing else, so even
-// with one the host would have to read the resource and compare it against what
-// it held before -- the read and the comparison are the work, and the
-// notification only saves the wait.
-//
-// Nothing here knows what MCP is. A host hands the watcher SOURCES (whatever
-// publishes resources) and a SNAPSHOT store (wherever it keeps what it saw).
+// The polling half of resource watching re-reads and hashes each resource per turn and records what moved.
 
 const (
 	// DefaultResourceMax is the per-source resource cap.
 	DefaultResourceMax = 64
 	// DefaultResourceMaxBytes is the per-resource capture cap (256 KiB).
 	DefaultResourceMaxBytes = 256 << 10
-	// resourceReadConcurrency bounds simultaneous reads, so a source
-	// advertising sixty resources gets a bounded burst rather than sixty
-	// parallel requests every turn.
+	// resourceReadConcurrency bounds simultaneous reads per turn.
 	resourceReadConcurrency = 8
 )
 
@@ -72,8 +60,7 @@ type ResourceSource interface {
 	ID() string
 	// Name is what the model is shown.
 	Name() string
-	// List advertises up to max resources; truncated reports that there were
-	// more, which is announced rather than silently dropped.
+	// List advertises up to max resources; truncated reports there were more, not silently dropped.
 	List(ctx context.Context, max int) (resources []Resource, truncated bool, err error)
 	// Read returns one resource's current content, in one or more blocks.
 	Read(ctx context.Context, uri string) ([]ResourceContent, error)
@@ -127,12 +114,9 @@ type ResourceSnapshots interface {
 type ResourceWatchConfig struct {
 	Sources   []ResourceSource
 	Snapshots ResourceSnapshots
-	// MaxResources bounds how many resources ONE source contributes. A listing
-	// longer than this is cut and the cut is announced to the model, never
-	// silently dropped. 0 uses DefaultResourceMax.
+	// MaxResources bounds how many resources ONE source contributes; the cut is announced, not dropped.
 	MaxResources int
-	// MaxBytes bounds the content captured per resource. Text past it is stored
-	// prefix-only and every reader says so. 0 uses DefaultResourceMaxBytes.
+	// MaxBytes bounds captured content per resource; text past it is stored prefix-only.
 	MaxBytes int
 }
 
@@ -143,9 +127,7 @@ type resourceWatcher struct {
 	maxResources int
 	maxBytes     int
 
-	// warned holds warnings already delivered, so a persistently broken source
-	// is reported once rather than re-announced every single turn. A warning
-	// that stops recurring and recurs again is delivered again.
+	// warned holds warnings already delivered, so a broken source is reported once.
 	mu     sync.Mutex
 	warned set.Set[string]
 }
@@ -193,8 +175,7 @@ type capture struct {
 	truncated  bool
 }
 
-// warning is one thing this pass could not account for, tagged with the source
-// it concerns so a removal is never inferred from an unreachable source.
+// warning is one thing this pass could not account for, tagged with its source.
 type warning struct {
 	sourceID string
 	text     string
@@ -210,8 +191,7 @@ func (w *resourceWatcher) Poll(ctx context.Context) (agentic.ResourcePoll, error
 	if err != nil {
 		return poll, fmt.Errorf("reading watched resources: %w", err)
 	}
-	// A run with nothing recorded has never been polled, so every resource is
-	// new because the watch is new -- not because anything moved.
+	// A run with nothing recorded has never been polled, so every resource is new.
 	poll.Baseline = len(stored) == 0
 
 	prev := make(map[string]ResourceSnapshot, len(stored))
@@ -245,8 +225,7 @@ func (w *resourceWatcher) Poll(ctx context.Context) (agentic.ResourcePoll, error
 	// told it existed, and must be told it no longer does.
 	for key, before := range prev {
 		if seen.Contains(key) || w.sourceFailed(before.SourceID, warnings) {
-			// Never report a removal on a source whose listing failed this
-			// pass: absent-because-unreachable is not absent.
+			// Never report a removal on a source whose listing failed: unreachable is not absent.
 			continue
 		}
 		change, err := w.recordRemoval(ctx, before)

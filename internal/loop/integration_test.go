@@ -46,9 +46,7 @@ func TestRunOpenAI429ThenSuccess(t *testing.T) {
 }
 
 func TestProviderRetriesWithNoPolicyConfigured(t *testing.T) {
-	// End to end over HTTP with NOTHING configured — no Retry field, no
-	// wrapper, no Run. This is the guarantee: you cannot forget to enable it.
-	// Deliberately runs the real DefaultRetry, so it pays one 500ms backoff.
+	// End to end over HTTP with nothing configured: you cannot forget to enable retry.
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if hits.Add(1) == 1 {
@@ -104,8 +102,7 @@ func TestRunOpenAIOverflowNotRetried(t *testing.T) {
 }
 
 func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
-	// An overloaded_error delivered IN-STREAM (HTTP 200 + error event, before
-	// any data) maps to a 529 APIError and is retried like any 5xx.
+	// An in-stream overloaded_error (HTTP 200 + error event) maps to a 529 and is retried.
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

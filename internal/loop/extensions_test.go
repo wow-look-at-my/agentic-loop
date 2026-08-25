@@ -91,8 +91,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 	res, err := Run(context.Background(), cfg, req)
 	require.Error(t, err)
 
-	// First call succeeded (comp non-nil, err nil); the second failed with the
-	// model's error (comp nil -- nothing was produced).
+	// First call succeeded (comp non-nil); the second failed (comp nil -- nothing produced).
 	assert.Equal(t, []int{1, 2}, turns)
 	require.NotNil(t, comps[0])
 	assert.NoError(t, errs[0])
@@ -208,8 +207,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
-	// Turn 1 stalled, so the wrap-up is turn 2 -- the call it actually is. It
-	// used to be numbered maxTurns+1, naming a turn that never ran.
+	// Turn 1 stalled, so the wrap-up is turn 2, not the old maxTurns+1.
 	assert.Equal(t, []int{1, 2}, begins)
 	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)
@@ -236,8 +234,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
-	// Both fire once per numbered turn, in order -- the subagent telemetry seam
-	// (turnHook) is byte-for-byte unaffected by the new public hooks.
+	// Both fire once per numbered turn, in order; turnHook is unaffected by the public hooks.
 	assert.Equal(t, []int{1, 2}, internal)
 	assert.Equal(t, []int{1, 2}, begins)
 }

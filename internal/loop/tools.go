@@ -7,34 +7,17 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// A tool is an individual thing, and nothing groups them.
-//
-// Every tool the model is offered -- a built-in of this library, or one a host
-// discovered on an MCP server -- is one Tool value in a flat Tools slice. The
-// loop resolves a requested name against that slice and can no more tell the
-// kinds apart than the model can. There is no executor, no routing table, and
-// no wrapper whose only job is to hide part of another wrapper: restricting a
-// toolset is filtering a slice.
+// A tool is an individual thing; every tool is one Tool value in a flat slice.
 
-// Tool is ONE callable tool: what the model is told about it, and how to run
-// it. Whether a given call may run is NOT the tool's to say -- Config.Approver
-// decides every call, and ToolDecl.Readonly is the one place a tool states
-// what it does to state.
-//
-// Execute should return a ToolResult with IsError set for recoverable,
-// model-facing failures and reserve the Go error for internal faults; Run
-// converts an Execute error into an error tool result rather than aborting the
-// loop.
+// Tool is ONE callable tool; whether a call may run is the Approver's, not the tool's.
 type Tool interface {
-	// Decl is what the model is told: name, description, schema, and whether
-	// the tool only reads.
+	// Decl is what the model is told: name, description, schema, and read-only.
 	Decl() ToolDecl
 	// Execute runs the tool with raw JSON arguments.
 	Execute(ctx context.Context, args json.RawMessage) (ToolResult, error)
 }
 
-// Tools is the flat set one run offers the model. Order is the advertised
-// order and must be deterministic -- it is part of the prompt-cache prefix.
+// Tools is the flat set one run offers the model; order is deterministic.
 type Tools []Tool
 
 // Decls is the advertised declarations, in order. Tools with an empty name are
@@ -56,9 +39,7 @@ func (ts Tools) Decls() []ToolDecl {
 	return out
 }
 
-// Find resolves an advertised name. The first tool to claim a name wins, so a
-// host that concatenates two sources gets a deterministic answer rather than a
-// silent overwrite.
+// Find resolves an advertised name; the first tool to claim a name wins.
 func (ts Tools) Find(name string) (Tool, bool) {
 	for _, t := range ts {
 		if t != nil && t.Decl().Name == name {
@@ -122,9 +103,6 @@ type funcTool struct {
 }
 
 // NewTool builds a Tool from a declaration and the function that runs it.
-// Gating is not part of the declaration: Config.Approver judges every call the
-// tool receives, and decl.Readonly is what tells it (and a sub-agent's default
-// toolset) whether this tool can change anything.
 func NewTool(decl ToolDecl, run func(ctx context.Context, args json.RawMessage) (ToolResult, error)) Tool {
 	return funcTool{decl: decl, run: run}
 }

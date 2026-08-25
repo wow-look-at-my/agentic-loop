@@ -37,8 +37,7 @@ func fillVectors(tb testing.TB, dir string, n, dim int) *Index {
 	_, err = idx.Ingest(ctx, src)
 	require.NoError(tb, err)
 
-	// Written straight in rather than through EmbedPending: the subject is the
-	// SCAN, and a fake embedder producing n vectors is not what is being timed.
+	// Written straight in rather than through EmbedPending, because the subject is the SCAN.
 	rng := rand.New(rand.NewPCG(1, 2))
 	tx, err := idx.sql.BeginTx(ctx, nil)
 	require.NoError(tb, err)
@@ -59,8 +58,7 @@ func fillVectors(tb testing.TB, dir string, n, dim int) *Index {
 	return idx
 }
 
-// fixedEmbedder answers every query with the same vector, so a scan benchmark
-// measures the scan and not an embedding call.
+// fixedEmbedder answers every query with the same vector, so a scan benchmark measures the scan.
 type fixedEmbedder struct{ dim int }
 
 func (f fixedEmbedder) EmbedQuery(context.Context, string) ([]float32, error) {

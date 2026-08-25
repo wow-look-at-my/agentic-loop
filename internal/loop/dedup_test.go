@@ -43,10 +43,7 @@ func TestOutputDeduperMarkerIsInformative(t *testing.T) {
 	assert.Contains(t, marker, "byte-identical")
 	assert.Contains(t, marker, "earlier call")
 	assert.Contains(t, marker, "Nothing has changed")
-	// The marker may only claim what the deduper actually knows. It hashes
-	// output, not arguments, so identical output is equally what a tool that
-	// IGNORES an argument produces — and telling a caller it repeated itself
-	// when it did not points the investigation the wrong way.
+	// The marker may only claim what the deduper knows: it hashes output, not arguments.
 	assert.NotContains(t, marker, "with the same inputs")
 	assert.Contains(t, marker, "this tool ignores the field you changed")
 }
@@ -107,8 +104,7 @@ func TestOutputDeduperResetIsIdempotent(t *testing.T) {
 
 func TestOutputDeduperBoundedEviction(t *testing.T) {
 	d := NewOutputDeduper()
-	// Insert one distinct output per tool name, far past the cap. Names are
-	// ASCII and valid; the deduper itself places no naming restriction.
+	// Insert one distinct output per tool name, far past the cap.
 	over := maxDedupEntries + 32
 	for i := 0; i < over; i++ {
 		name := "tool_" + strconv.Itoa(i)

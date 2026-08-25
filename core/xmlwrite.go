@@ -8,12 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// The writer is hand-rolled rather than encoding/xml because two things here
-// are not negotiable and that package does neither: emitting `&#0;` for a NUL
-// (see IsCharRefValue in xml-validator), and controlling namespace prefixes so
-// a document reads the way the schema documents it. It also writes
-// incrementally with no buffering of its own, which is what makes the
-// streaming form the same code path as the whole-document one.
+// The writer is hand-rolled because encoding/xml cannot emit &#0; or control namespace prefixes.
 
 // Namespaces. The core vocabulary and one per dialect, so provider-specific
 // data is namespaced rather than guessed at by name.
@@ -31,8 +26,7 @@ const (
 	prefixResponses = "responses"
 )
 
-// xmlDecl is the declaration every document starts with. XML 1.1 is required:
-// the restricted characters a model can emit are only expressible there.
+// xmlDecl is the declaration every document starts with; XML 1.1 is required.
 const xmlDecl = `<?xml version="1.1" encoding="UTF-8"?>` + "\n"
 
 // writer emits XML to an io.Writer, tracking the first error so callers can
@@ -66,9 +60,7 @@ type attr struct {
 	value string
 }
 
-// optAttr returns the attribute, or nothing when the value is empty. Absence
-// is meaningful in this format -- a missing cache-read-tokens says the
-// provider reported none -- so an empty value is never written as "".
+// optAttr returns the attribute, or nothing when empty; absence is meaningful in this format.
 func optAttr(name, value string) []attr {
 	if value == "" {
 		return nil
@@ -76,8 +68,7 @@ func optAttr(name, value string) []attr {
 	return []attr{{name: name, value: value}}
 }
 
-// optBoolAttr renders a tri-state boolean. A nil pointer writes NO attribute,
-// which is how the document says "unknown" — distinct from an explicit "false".
+// optBoolAttr renders a tri-state boolean; a nil pointer writes no attribute.
 func optBoolAttr(name string, v *bool) []attr {
 	if v == nil {
 		return nil
@@ -151,15 +142,12 @@ func (x *writer) element(name, content string, attrs ...attr) {
 	x.end()
 }
 
-// escapeText escapes character data. Everything XML cannot carry literally
-// becomes a character reference, including NUL: `&#0;` is four ASCII bytes, so
-// the document holds no NUL even when the content does.
+// escapeText escapes character data; everything XML cannot carry becomes a character reference.
 func escapeText(s string) string {
 	return escape(s, false)
 }
 
-// escapeAttr escapes an attribute value, additionally quoting " and the
-// whitespace an attribute-value normalizer would otherwise collapse.
+// escapeAttr escapes an attribute value, additionally quoting " and whitespace.
 func escapeAttr(s string) string {
 	return escape(s, true)
 }
@@ -176,9 +164,7 @@ func escape(s string, inAttr bool) string {
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		if r == utf8.RuneError && size <= 1 {
-			// Not valid UTF-8. Reference the byte itself; dropping it would
-			// lose content and passing it through would make the document
-			// unparseable.
+			// Not valid UTF-8: reference the byte itself, since dropping it loses content.
 			b.WriteString("&#" + strconv.Itoa(int(s[i])) + ";")
 			i++
 			continue
@@ -224,9 +210,7 @@ func needsEscape(s string, inAttr bool) bool {
 	return false
 }
 
-// mustReference reports whether a rune has to be written as a character
-// reference: NUL, which the Char production excludes outright, and the XML 1.1
-// restricted characters, which may not appear literally.
+// mustReference reports whether a rune must be written as a character reference.
 func mustReference(r rune) bool {
 	if r == 0 {
 		return true

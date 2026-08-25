@@ -10,8 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// errSink is the sentinel a consumer's failing callback returns in these
-// tests; every abort path must keep it reachable via errors.Is.
+// errSink is the sentinel a failing callback returns; every abort path must keep it reachable via errors.Is.
 var errSink = errors.New("sink closed")
 
 func TestOpenAICallbackErrorAbortsStream(t *testing.T) {

@@ -12,28 +12,15 @@ import (
 type Conversation struct {
 	// ID is the host's own conversation id.
 	ID string
-	// Owner scopes searches. A single-user host leaves it empty; what matters
-	// is that it is the SAME value the host later searches with, because the
-	// match is exact and there is no wildcard.
+	// Owner scopes searches; it must be the SAME value the host later searches with.
 	Owner string
-	// Revision changes whenever the conversation's messages change, and is
-	// otherwise opaque to the index. A message count is enough for an
-	// append-only store; a hash, an mtime or a version number all work. A
-	// revision that fails to change when the transcript does is the one way to
-	// make this index quietly wrong, so a store that cannot answer honestly
-	// should return something that always differs and pay the re-read.
+	// Revision changes whenever the messages change; a revision that fails to change makes the index quietly wrong.
 	Revision string
 }
 
 // Message is one transcript entry as the index needs it.
 type Message struct {
-	// ID must be STABLE across re-reads of the same conversation, because it
-	// is what the embeddings are keyed by: an id that changes re-embeds the
-	// message, and one that is reused for different text attaches the wrong
-	// vector to it. A host with real message ids should pass them. One without
-	// can derive an id from the conversation and position -- see
-	// SessionSource, and what that costs when a message is inserted rather
-	// than appended.
+	// ID must be STABLE across re-reads, because it is what the embeddings are keyed by.
 	ID        string
 	Role      string
 	Content   string
@@ -44,30 +31,13 @@ type Message struct {
 // interface so the index can sit over a directory of XML files, a SQL store,
 // or anything else, and so it can be tested against a corpus in memory.
 type Source interface {
-	// Conversations returns every conversation that currently exists, with the
-	// revision each is at.
+	// Conversations returns every conversation that currently exists, with its revision.
 	Conversations(ctx context.Context) ([]Conversation, error)
 	// Messages returns one conversation's transcript, in order.
 	Messages(ctx context.Context, conversationID string) ([]Message, error)
 }
 
-// Ingest brings the index up to the source's current state and returns how
-// many conversations it re-read.
-//
-// It compares each conversation's revision against the one recorded when it
-// was last indexed, and re-reads only those that have moved. A conversation
-// that has moved is re-indexed WHOLE -- its rows are replaced, not appended to
-// -- because Revision is opaque: the index knows the transcript changed and
-// nothing about how, and a store whose Put replaces a conversation outright
-// can change any part of it.
-//
-// Re-indexing whole does not re-embed whole. The vectors are keyed by message
-// id and are never touched here, so a conversation that gained one message
-// costs one embedding, not a transcript's worth.
-//
-// Conversations the source no longer lists are removed, along with their
-// vectors: a deleted conversation is not coming back, so keeping them would be
-// storage nothing can ever join to.
+// Ingest brings the index up to the source's current state, re-reading only conversations whose revision moved.
 func (i *Index) Ingest(ctx context.Context, src Source) (int, error) {
 	convs, err := src.Conversations(ctx)
 	if err != nil {
@@ -214,12 +184,6 @@ func (i *Index) forget(ctx context.Context, conversationID string) (err error) {
 }
 
 // dropOrphanedVectors deletes vectors whose message is no longer indexed.
-//
-// A conversation that is re-indexed after an EDIT rather than an append leaves
-// these behind: the replaced message's id is gone from indexed_messages, but
-// its vector is keyed by that id and nothing above deletes it. Without this
-// they accumulate for the life of the index, and every one is paid-for storage
-// that no query can reach.
 func (i *Index) dropOrphanedVectors(ctx context.Context) error {
 	for _, table := range []string{"embeddings", "embed_status"} {
 		if _, err := i.sql.ExecContext(ctx, `DELETE FROM `+table+`

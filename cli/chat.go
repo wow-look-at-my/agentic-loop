@@ -51,8 +51,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 	comp, callErr := p.Complete(cmd.Context(), req, printing(cmd.OutOrStdout()))
 	if comp != nil {
-		// What the caller has already seen belongs in the transcript even when
-		// the call failed partway: the next turn has to know what was said.
+		// What the caller has already seen belongs in the transcript even when the call failed partway.
 		if _, err := st.Append(chatSession, comp.Message); err != nil {
 			return fmt.Errorf("keeping the answer: %w", err)
 		}
@@ -74,8 +73,7 @@ func continueConversation(st session.Store, name string, turn commonai.Request) 
 	if err != nil {
 		return commonai.Request{}, err
 	}
-	// The flags govern this turn; everything they did not state stays what the
-	// conversation already was.
+	// The flags govern this turn; what they did not state stays as the conversation was.
 	out := stored
 	out.Model = turn.Model
 	if turn.System != "" {

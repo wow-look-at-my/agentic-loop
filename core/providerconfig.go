@@ -6,22 +6,15 @@ import "net/http"
 // not used on its own: embed it in the per-dialect config types (OpenAIConfig,
 // AnthropicConfig) accepted by the dialect constructors.
 type ProviderConfig struct {
-	// BaseURL is the API root and is required. OpenAI and Responses: include
-	// the version segment (e.g. "https://api.openai.com/v1"); requests POST to
-	// BaseURL + "/chat/completions" and BaseURL + "/responses" respectively.
-	// Anthropic: the bare root (e.g. "https://api.anthropic.com"); requests
-	// POST to BaseURL + "/v1/messages". Trailing slashes are trimmed before
-	// joining.
+	// BaseURL is the required API root; OpenAI includes the version segment, Anthropic the bare root.
 	BaseURL string
-	// APIKey, when non-empty, authenticates requests: a Bearer token on both
-	// OpenAI dialects, the x-api-key header on Anthropic.
+	// APIKey, when non-empty, authenticates requests: Bearer on OpenAI, x-api-key on Anthropic.
 	APIKey string
 	// HTTPClient performs the requests; nil uses http.DefaultClient.
 	HTTPClient *http.Client
 	// UserAgent, when non-empty, is sent as the User-Agent header.
 	UserAgent string
-	// Headers are applied after the dialect defaults, so a caller-supplied
-	// header can override them.
+	// Headers are applied after the dialect defaults, so a caller-supplied header can override them.
 	Headers map[string]string
 }
 
@@ -30,36 +23,19 @@ type ProviderConfig struct {
 type OpenAIConfig struct {
 	ProviderConfig
 
-	// SelfHosted adds cache_prompt:true to every request -- the KV-cache
-	// prefix-reuse opt-in llama.cpp-style servers honor. It must stay false
-	// for hosted OpenAI/Azure, which reject unknown body fields with a 400.
+	// SelfHosted adds cache_prompt:true to every request; must stay false for hosted OpenAI/Azure.
 	SelfHosted bool
-	// PromptCache emits two Anthropic-style ephemeral cache_control
-	// breakpoints in openai dialect shape -- a static one on the leading
-	// system message and a moving one on the tail content block -- for
-	// Anthropic-fronting gateways that pass cache_control through. Default
-	// false: plain OpenAI-compatible servers reject the unknown marker.
+	// PromptCache emits two ephemeral cache_control breakpoints for Anthropic-fronting gateways; default false.
 	PromptCache bool
-	// ReplayReasoning replays the accumulated reasoning text as
-	// message.reasoning on each assistant message, the gateway-extension
-	// behavior that keeps a model seeing its own chain-of-thought on the
-	// openai dialect. Default false: strict OpenAI-compatible servers reject
-	// the unknown field.
+	// ReplayReasoning replays reasoning text as message.reasoning; default false for strict OpenAI servers.
 	ReplayReasoning bool
 }
 
-// ResponsesConfig configures NewResponsesProvider: the shared ProviderConfig
-// connection base plus the one knob specific to the OpenAI Responses dialect.
+// ResponsesConfig: shared ProviderConfig plus the knob specific to the Responses dialect.
 type ResponsesConfig struct {
 	ProviderConfig
 
-	// Store opts INTO the API's server-side retention of every prompt and
-	// response. It defaults to false, unlike the API itself, because retaining
-	// a caller's conversations on a third party's servers is a decision for
-	// the caller to make out loud rather than one a library makes for them by
-	// inheriting a default. Reasoning still survives across tool calls with
-	// Store false: the provider asks for the encrypted reasoning payload and
-	// replays it.
+	// Store opts into the API's server-side retention; defaults false, the caller decides.
 	Store bool
 }
 
@@ -68,11 +44,9 @@ type ResponsesConfig struct {
 type AnthropicConfig struct {
 	ProviderConfig
 
-	// Version sets the anthropic-version header; empty defaults to
-	// "2023-06-01".
+	// Version sets the anthropic-version header; empty defaults to "2023-06-01".
 	Version string
-	// DisableCaching drops the two ephemeral cache_control breakpoints the
-	// provider otherwise places on every request.
+	// DisableCaching drops the two ephemeral cache_control breakpoints the provider otherwise places.
 	DisableCaching bool
 }
 

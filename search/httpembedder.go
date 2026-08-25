@@ -25,62 +25,29 @@ type HTTPEmbedder struct {
 	Model string
 	// APIKey, when non-empty, is sent as a Bearer token.
 	APIKey string
-	// Headers are extra request headers, set after the bearer token so one can
-	// override it.
+	// Headers are extra request headers, set after the bearer token so one can override it.
 	Headers map[string]string
 	// HTTP is the client; nil uses http.DefaultClient.
 	HTTP *http.Client
 
-	// DocumentPrefix and QueryPrefix are prepended to each input on their
-	// respective side. They are empty by default, which is correct for a
-	// symmetric model such as OpenAI's.
-	//
-	// Set them for a model that was trained with task prefixes. Getting this
-	// wrong is not an error anybody sees: every call succeeds and the results
-	// are merely worse, so the prefixes are configuration rather than a guess
-	// this package makes from a model's name. NomicDocumentPrefix and
-	// NomicQueryPrefix are the literals for one such family; for any other,
-	// read that model's card.
-	//
-	// Changing a prefix changes the vectors it produces, so it is a re-index:
-	// DropModel that model and let the backfill run again.
+	// DocumentPrefix and QueryPrefix are prepended to inputs; changing them changes the vectors, so it is a re-index.
 	DocumentPrefix string
 	QueryPrefix    string
 
-	// MaxBatch caps how many inputs go in one request, splitting a larger call
-	// into several. Zero sends whatever it is given in one request.
-	//
-	// It exists because the cap is the ENDPOINT's, and endpoints disagree:
-	// a self-hosted inference server commonly caps a batch far below what a
-	// hosted API accepts. Without it, an index batching more than the endpoint
-	// allows fails every pass forever, which looks like a broken index rather
-	// than a setting.
+	// MaxBatch caps how many inputs go in one request; the cap is the endpoint's, and endpoints disagree.
 	MaxBatch int
 }
 
-// Nomic's text models require a task instruction prefix on every input -- the
-// model card for nomic-embed-text-v1.5 states the prompt "must include a task
-// instruction prefix". These are the two that matter for retrieval, verbatim
-// from that card's own examples, colon and trailing space included.
-//
-// They are constants rather than a default because nothing here knows which
-// model an endpoint is really serving, and applying a prefix to a model that
-// was not trained on it is the same silent damage in the other direction.
+// Nomic's text models require a task instruction prefix on every input; these are the two that matter for retrieval.
 const (
 	NomicDocumentPrefix = "search_document: "
 	NomicQueryPrefix    = "search_query: "
 )
 
-// embeddingsMaxBytes caps one response. A batch of 64 vectors at 3072
-// dimensions is about 4 MB of JSON floats, so the cap sits well above what a
-// full batch from the widest model in use produces and exists only to stop an
-// unbounded read.
+// embeddingsMaxBytes caps one response, well above a full batch, to stop an unbounded read.
 const embeddingsMaxBytes = 64 << 20
 
-// embeddingsRequest is the POST body. encoding_format is sent explicitly: it
-// defaults to "float", but a gateway defaulting it to "base64" would answer
-// with strings where this expects numbers, and that failure would read as a
-// malformed response rather than as a setting.
+// embeddingsRequest is the POST body; encoding_format is sent explicitly so a base64 gateway can't break it.
 type embeddingsRequest struct {
 	Model          string   `json:"model"`
 	Input          []string `json:"input"`
@@ -179,9 +146,7 @@ func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, er
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, fmt.Errorf("search: decode embeddings: %w", err)
 	}
-	// Some gateways answer 200 with an error object instead of a status code.
-	// Reading that body as an empty data list would report "0 vectors" and
-	// lose the reason the provider actually gave.
+	// Some gateways answer 200 with an error object; reading it as empty data would lose the real reason.
 	if parsed.Error != nil && parsed.Error.Message != "" {
 		return nil, fmt.Errorf("search: embeddings: %s", parsed.Error.Message)
 	}
@@ -189,10 +154,7 @@ func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, er
 		return nil, fmt.Errorf("search: embeddings: %d vectors for %d inputs", len(parsed.Data), len(texts))
 	}
 
-	// The response carries an explicit index per vector, so array order is not
-	// the contract -- and a provider that batches concurrently can return them
-	// out of order. Sorting by the index the provider stated is what keeps
-	// each vector attached to the text it describes.
+	// The response carries an explicit index per vector, so we sort by it to keep each vector attached to its text.
 	sort.Slice(parsed.Data, func(a, b int) bool { return parsed.Data[a].Index < parsed.Data[b].Index })
 
 	out := make([][]float32, len(texts))
@@ -208,23 +170,11 @@ func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, er
 	return out, nil
 }
 
-// HTTPError is a non-2xx answer from the embeddings endpoint, carrying the
-// status separately from the body.
-//
-// The status is the only thing that separates "this model does not embed" from
-// "the attempt did not get through": a provider 400s a chat model sent to
-// /v1/embeddings, and 429s or 5xxs a model it would otherwise serve. A caller
-// deciding between those two -- offering a picker of models that actually
-// embed, say -- cannot do it on a formatted string without parsing prose back
-// apart, so the status stays a field.
-//
-// Its Error() text is unchanged from when this was a fmt.Errorf, because that
-// text reaches users through the index's own last-error report.
+// HTTPError is a non-2xx answer from the embeddings endpoint, keeping the status code separate from the body.
 type HTTPError struct {
 	// Status is the HTTP status code the endpoint answered with.
 	Status int
-	// Body is the response body, trimmed and capped, or the status line when
-	// the body was empty.
+	// Body is the response body, trimmed and capped, or the status line when empty.
 	Body string
 }
 

@@ -9,9 +9,7 @@ import (
 	"strings"
 )
 
-// what=prs and what=pr read a repository's pull requests: a capped listing,
-// and one PR's metadata + body + changed files (optionally with the full diff
-// appended).
+// what=prs and what=pr read a repository's pull requests.
 const repoPRMaxFiles = 100 // changed files listed per PR read
 
 // ghPull decodes the slice of a pull request the reads surface.
@@ -111,8 +109,7 @@ func (e *repoTools) prRead(ctx context.Context, in repoReadArgs) agentic.ToolRes
 		return agentic.ToolResult{Content: "repo_read what=pr: could not parse GitHub's response: " + uerr.Error(), IsError: true}
 	}
 
-	// Changed files and the optional diff are best-effort: a failure becomes a
-	// note in the output rather than failing the whole read.
+	// Changed files and the optional diff are best-effort: a failure becomes a note.
 	var files []ghPRFile
 	filesErr := ""
 	if fres, ferr := e.gh.FetchURL(ctx, key, fmt.Sprintf("%s/files?per_page=%d", prURL, repoPRMaxFiles), "application/vnd.github+json"); ferr != nil {

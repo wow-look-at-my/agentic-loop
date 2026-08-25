@@ -52,41 +52,20 @@ var webFetchSchema = json.RawMessage(`{
 
 // WebFetchConfig configures NewWebFetchTool.
 type WebFetchConfig struct {
-	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a
-	// client with a 45-second timeout.
+	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a 45-second timeout.
 	HTTPClient *http.Client
-	// UserAgent, when non-empty, is sent as the User-Agent header on the
-	// tool's outbound requests. (The source application injected its UA by
-	// wrapping the shared *http.Client; the explicit field mirrors
-	// agentic.ProviderConfig.)
+	// UserAgent, when non-empty, is sent as the User-Agent header on the tool's outbound requests.
 	UserAgent string
-	// TikaURL, when non-empty, is the root URL of an Apache Tika server used
-	// to extract text from fetched content (PDFs, office documents, ...).
-	// Extraction failures and empty extractions fall back to the built-in
-	// HTML cleanup silently.
+	// TikaURL, when non-empty, is the root URL of an Apache Tika server used to extract fetched text.
 	TikaURL string
-	// agentic.Provider, Model, MaxTokens, and Extra serve the optional summary_prompt
-	// path: one bounded, tool-less call to the same model summarizes the
-	// cleaned content (MaxTokens is required when agentic.Provider speaks the
-	// Anthropic dialect). With a nil agentic.Provider or empty Model, a summary
-	// request is a recoverable error result instead.
+	// agentic.Provider, Model, MaxTokens, and Extra serve the optional summary_prompt path.
 	Provider  agentic.Provider
 	Model     string
 	MaxTokens int
 	Extra     map[string]any
-	// OnCompletion, when non-nil, receives the summary call's *Completion. It
-	// is the only route out for what that call cost: the tool answers the model
-	// with text, so a host watching only tool results charges the fetch as free
-	// and under-counts the session by every summary it made. A partial
-	// completion from a failed call is reported too -- those tokens were spent.
-	// It is called synchronously, from the tool's Execute.
+	// OnCompletion, when non-nil, receives the summary call's *Completion; it is the only route out for its cost.
 	OnCompletion func(*agentic.Completion)
-	// BlockURL, when non-nil, is consulted with the validated URL string
-	// before fetching. A non-empty return refuses the fetch with exactly that
-	// text as a recoverable error result. This is the injectable seam the
-	// source application used to block fetches of its workspace repository
-	// and redirect the model to other tools — the library ships the hook, not
-	// that policy.
+	// BlockURL, when non-nil, is consulted with the validated URL string; a non-empty return refuses the fetch.
 	BlockURL func(url string) string
 }
 
@@ -97,12 +76,7 @@ type webFetchTool struct {
 	tikaURL string
 }
 
-// NewWebFetchTool builds the web_fetch tool: an unauthenticated, plain HTTP
-// GET returning cleaned page content, with an optional model-backed summarize
-// path. Append it to the rest of the toolset like any other tool. The tool is
-// Readonly, so a sub-agent's default toolset includes it and a run with no
-// Approver lets it run; gating it is Config.Approver's decision, like every
-// other call.
+// NewWebFetchTool builds the web_fetch tool: an unauthenticated, plain HTTP GET returning cleaned page content.
 func NewWebFetchTool(cfg WebFetchConfig) agentic.Tool {
 	hc := cfg.HTTPClient
 	if hc == nil {
@@ -123,9 +97,7 @@ func (e *webFetchTool) Decl() agentic.ToolDecl {
 		Description: webFetchToolDescription,
 		InputSchema: webFetchSchema,
 		Readonly:    true,
-		// Read-only and OPEN-world: fetching a URL changes nothing here and
-		// reaches an arbitrary host, which are two different facts and only the
-		// first one makes it safe for a sub-agent.
+		// Read-only and OPEN-world: fetching a URL changes nothing here but reaches an arbitrary host.
 		OpenWorld: agentic.Bool(true),
 	}
 }

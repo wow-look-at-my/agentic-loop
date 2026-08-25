@@ -117,10 +117,7 @@ func (w *resourceWatcher) newWarnings(warns []warning) []string {
 	return fresh
 }
 
-// sourceFailed reports whether this pass failed to account for a source, which
-// makes every one of its resources unknown rather than removed. A source that
-// is no longer configured at all has no warning and no listing; its resources
-// are genuinely gone from this run's reach.
+// sourceFailed reports whether this pass failed to account for a source, so its resources are unknown.
 func (w *resourceWatcher) sourceFailed(sourceID string, warns []warning) bool {
 	for _, warn := range warns {
 		if warn.sourceID == sourceID {

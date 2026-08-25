@@ -8,8 +8,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// noSleep is a policy whose backoff returns immediately, so a test measures
-// what was retried rather than how long it waited.
+// noSleep is a policy whose backoff returns immediately, so a test measures what was retried.
 var noSleep = RetryPolicy{Sleep: func(context.Context, time.Duration) error { return nil }}
 
 // scriptStep is one scripted answer: what to emit through the callbacks, and

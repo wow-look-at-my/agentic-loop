@@ -40,8 +40,7 @@ func TestRepoPRCreateDefaultsToDraftAndDefaultBranch(t *testing.T) {
 		}
 	}
 	require.Equal(t, http.MethodPost, post.Method)
-	// base defaults to the repo's default branch; draft defaults to true; no
-	// body key when the description is empty.
+	// base defaults to the repo's default branch; draft defaults to true.
 	assert.JSONEq(t, `{"title":"Add feature","head":"feature-x","base":"main","draft":true}`, post.Body)
 
 	id, _ := cache.Get("octo/hello")

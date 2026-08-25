@@ -2,17 +2,7 @@ package commonai
 
 import "sort"
 
-// Provider-specific parameters live in the dialect's own namespace. A scalar
-// the dialect is known to take rides as a qualified attribute on the element it
-// belongs to -- anthropic:top-k="40" -- because that is the shape a person
-// writing a document by hand reaches for and the shape a schema can type-check.
-// Anything else -- an object, or a parameter no schema has named yet -- rides
-// in that dialect's <params> tree, which is declared, recursive, and can hold
-// any JSON-shaped value.
-//
-// Nothing here is a wildcard. An attribute that is not in its dialect's table
-// has no global declaration, so a document carrying one fails validation
-// instead of reaching an upstream that answers with a 400.
+// Provider params live in the dialect's namespace: known scalars as attributes, the rest in the declared params tree.
 
 // dialectNS maps a dialect to its namespace.
 var dialectNS = map[Dialect]string{
@@ -55,8 +45,7 @@ var knownAttrs = map[Dialect]map[string]string{
 	},
 }
 
-// attrToWire is the reverse of knownAttrs, built once so decoding does not
-// scan.
+// attrToWire is the reverse of knownAttrs, built once so decoding does not scan.
 var attrToWire = buildAttrToWire()
 
 // buildAttrToWire inverts knownAttrs.
@@ -78,9 +67,7 @@ func KnownDialects() []Dialect {
 	return []Dialect{DialectAnthropic, DialectOpenAI, DialectResponses}
 }
 
-// sortedKeys returns a map's keys in a deterministic order. Go map iteration
-// is randomized, and a document whose attributes reshuffle between runs cannot
-// be compared, cached, or diffed.
+// sortedKeys returns a map's keys in a deterministic order; Go map iteration is randomized.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

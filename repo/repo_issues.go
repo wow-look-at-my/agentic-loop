@@ -10,10 +10,7 @@ import (
 	"strings"
 )
 
-// what=issues and what=issue read a repository's issues. GitHub's /issues
-// endpoints return pull requests too (a PR is an issue underneath); these
-// reads filter them out (list) or redirect to what=pr (read) so the model
-// gets true issues only.
+// what=issues and what=issue read a repository's issues; PRs are filtered out.
 const repoIssueMaxComments = 30 // comments shown per issue read
 
 // ghIssue decodes the slice of an issue the reads surface.
@@ -29,8 +26,7 @@ type ghIssue struct {
 	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
-	// PullRequest is present when the "issue" is actually a pull request (the
-	// issues API returns both kinds).
+	// PullRequest is present when the "issue" is actually a pull request.
 	PullRequest json.RawMessage `json:"pull_request"`
 }
 

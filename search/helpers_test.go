@@ -12,10 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSource is a corpus in memory. A conversation's revision is derived from
-// its transcript, so the fixture behaves like a real store: a revision that
-// failed to move when the content did would let a test pass while the index
-// silently went stale.
+// fakeSource is a corpus in memory, deriving each conversation's revision from its transcript.
 type fakeSource struct {
 	convs map[string]*fakeConv
 	order []string
@@ -79,15 +76,11 @@ func msg(id, role, content string) Message {
 	return Message{ID: id, Role: role, Content: content, CreatedAt: "2026-01-01T00:00:00Z"}
 }
 
-// bagEmbedder is a deterministic stand-in for an embedding model: it projects
-// a text's words onto a fixed number of buckets. Two texts sharing words point
-// in a similar direction, which is the only property the semantic half relies
-// on, and it needs no network and no key.
+// bagEmbedder projects a text's words onto fixed buckets, so shared words point in a similar direction.
 type bagEmbedder struct {
 	dim  int
 	fail error
-	// calls counts requests, so a test can assert the batching rather than
-	// assume it.
+	// calls counts requests, so a test can assert the batching.
 	calls int
 	// short makes it return one fewer vector than it was given inputs.
 	short bool

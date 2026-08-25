@@ -12,37 +12,7 @@ import (
 	"time"
 )
 
-// TestToken (the Settings -> github "Test" button's backend) probes exactly
-// ONE credential's real health against GitHub's /user endpoint — the one
-// resource every valid PAT can read regardless of scope, so a failure here
-// is about the credential itself, never a missing permission on some other
-// resource. Unlike every repo_read call, this never rotates through other
-// configured tokens or falls back to anonymous: the whole point is to answer
-// "is THIS token OK", so it tests THIS token and nothing else.
-//
-// The failure explanations reuse the same machinery repo_failure.go built
-// for the model-facing repo tools (classifyRateLimit, authRejectionDetail,
-// missingPermissionDetail, tokenExpiryDetail) — a human reading this test
-// result deserves the same real, verified reasons a model reading a failed
-// repo_read gets, not a re-derived guess.
-//
-// On success it also lists every repository the token can see (GET
-// /user/repos, the credential's own affiliation: owned, collaborator, and
-// organization-member repos alike) with GitHub's own per-repo permission
-// levels — the direct answer to "what does this token actually have access
-// to", which a scope string or a single repo's failure/success cannot show.
-//
-// It does not stop at that flat list. /user/repos' organization-member
-// affiliation is membership-based and can miss a repo a fine-grained PAT was
-// granted directly on an org it scopes without the credential also being able
-// to read its own org memberships — exactly the shape of "a token scoped to
-// read/write all of an org's contents, but a specific repo in it still isn't
-// reachable". So every organization the token can see — via GET /user/orgs
-// where that works, unioned with every Organization-type repo owner already
-// found in the flat list where it doesn't — gets its own explicit GET
-// /orgs/{org}/repos sweep, and anything that sweep finds and /user/repos
-// didn't is folded back into Repos too. Orgs is the auditable per-org
-// breakdown; Repos stays the complete, deduplicated union of both sources.
+// TestToken probes exactly one credential's real health against GitHub's /user endpoint, plus its repos and orgs.
 type TokenTestResult struct {
 	OK             bool            `json:"ok"`
 	Login          string          `json:"login,omitempty"`   // authenticated GitHub login, when ok
@@ -123,10 +93,7 @@ func TestToken(ctx context.Context, apiBase, token string, httpClient *http.Clie
 	}
 }
 
-// orgSweepMaxOrgs caps how many organizations get their own /orgs/{org}/repos
-// sweep. Plenty for any real account; stops a token that owns/belongs to an
-// unusual number of orgs from turning one test click into dozens of serial
-// GitHub calls.
+// orgSweepMaxOrgs caps how many organizations get their own /orgs/{org}/repos sweep.
 const orgSweepMaxOrgs = 20
 
 // listVisibleRepos enumerates every repository the token can see via

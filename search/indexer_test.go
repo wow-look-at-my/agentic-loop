@@ -70,9 +70,7 @@ func TestReindexingAConversationDoesNotReEmbedIt(t *testing.T) {
 	assert.Equal(t, 1, n)
 	afterFirst := emb.calls
 
-	// Appending a message re-indexes the whole conversation, but only the new
-	// message needs a vector. Re-embedding the transcript on every append is
-	// exactly the bill this keying exists to avoid.
+	// Appending re-indexes the whole conversation, but only the new message needs a vector.
 	src.put("c1", "u1", msg("m1", "user", "the original message"), msg("m2", "assistant", "a new reply"))
 	_, err = idx.Ingest(ctx, src)
 	require.NoError(t, err)
@@ -185,8 +183,7 @@ func TestRebuildingTheTextIndexKeepsThePaidForVectors(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 
-	// The vectors were never dropped, and re-indexing the same message id
-	// re-adopts them: nothing is embedded a second time.
+	// The vectors were never dropped; re-indexing the same message id re-adopts them.
 	before := emb.calls
 	got, err := idx.EmbedPending(ctx, "u1", "up/model", emb, 10)
 	require.NoError(t, err)
@@ -296,14 +293,12 @@ func TestAForeignIndexAtTheSameVersionIsRebuiltNotRefused(t *testing.T) {
 	_, err = idx.EmbedPending(ctx, "u1", "up/model", emb, 10)
 	require.NoError(t, err)
 
-	// The file now looks like one an earlier, differently-shaped index left
-	// behind, still claiming this package's current version.
+	// The file now looks like one an earlier, differently-shaped index left behind.
 	_, err = idx.sql.ExecContext(ctx, oldForeignFTSSchema)
 	require.NoError(t, err)
 	require.NoError(t, idx.Close())
 
-	// Opening it must rebuild the text half rather than fail. The vectors are
-	// in the shape this package writes, so they are kept: they cost money.
+	// Opening it rebuilds the text half rather than fail; the vectors cost money, so they are kept.
 	idx, err = OpenEphemeral(ctx, path)
 	require.NoError(t, err, "a rebuildable index must never make the host fail to start")
 	t.Cleanup(func() { _ = idx.Close() })

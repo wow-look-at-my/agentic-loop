@@ -12,9 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// firstUsage is the first report a call produced, or a zero Usage when the
-// provider reported none. Core keeps every report; a test that only cares
-// whether the numbers arrived reads the first one.
+// firstUsage is the first report a call produced, or a zero Usage when the provider reported none.
 func firstUsage(c *Completion) Usage {
 	if c == nil || len(c.Usages) == 0 {
 		return Usage{}

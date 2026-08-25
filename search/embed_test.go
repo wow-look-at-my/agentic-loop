@@ -60,8 +60,7 @@ func TestEmbedFailureLeavesTheMessagePendingRatherThanMarkedDone(t *testing.T) {
 		"a failed embedding is retried on the next pass, never recorded as covered")
 	assert.Zero(t, status.EmbeddedMessages)
 
-	// And it succeeds once the endpoint does. There is no attempt counter to
-	// have run out in the meantime.
+	// And it succeeds once the endpoint does; there is no attempt counter to have run out.
 	n, err := idx.EmbedPending(ctx, "u1", "up/model", &bagEmbedder{dim: 8}, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)

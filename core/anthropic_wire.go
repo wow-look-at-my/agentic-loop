@@ -1,8 +1,6 @@
 package commonai
 
-// The Messages API wire vocabulary on the way OUT: the transcript as content
-// blocks, the two prompt-cache breakpoints, and the shapes that carry an
-// image. The transport and the stream decoding live in anthropic.go.
+// Outbound Messages API wire vocabulary (blocks, cache, images); transport in anthropic.go.
 
 import (
 	"encoding/json"
@@ -39,11 +37,7 @@ func anWireMessages(msgs []Message) ([]map[string]any, error) {
 		case m.Role == RoleAssistant:
 			content := anAssistantContent(m)
 			if content == nil {
-				// The turn says nothing this dialect can carry. An empty text
-				// block fails the whole request ("text content blocks must
-				// contain non-whitespace text"), and the API combines
-				// consecutive same-role turns, so the drop changes nothing
-				// else. The Responses dialect omits the same turn already.
+				// An empty text block fails the whole request, so a turn with nothing replayable is dropped.
 				continue
 			}
 			out = append(out, map[string]any{"role": "assistant", "content": content})
@@ -113,12 +107,7 @@ func anAssistantContent(m Message) any {
 			continue
 		}
 		if tb.Signature == "" {
-			// Not replayable, so not replayed. The signature is what makes a
-			// thinking block the model's own; Anthropic rejects one without a
-			// valid signature, so sending it would fail the whole turn rather
-			// than lose one block. A caller whose transcript carries text-only
-			// reasoning -- from another dialect, or from storage that kept the
-			// text and dropped the signature -- must not have every turn 400.
+			// A signature-less thinking block is not replayed: Anthropic rejects it, failing the whole turn.
 			continue
 		}
 		blocks = append(blocks, map[string]any{"type": "thinking", "thinking": tb.Text, "signature": tb.Signature})
@@ -157,18 +146,7 @@ func parseToolInput(args string) map[string]any {
 	return map[string]any{}
 }
 
-// markTranscriptTail places the moving prompt-cache breakpoint on the last
-// content block of the last message, so the next request cache-hits
-// everything through this one's tail. It operates on the per-request wire
-// structures only (freshly built by anWireMessages), which is what keeps the
-// caller's transcript marker-free — old moving markers can never accumulate.
-// A non-empty string content becomes a one-block array; a non-empty block
-// array gets the marker on its last block; empty strings, empty arrays, and
-// unrecognized shapes pass through unmarked — caching is an optimization,
-// never a correctness requirement. The empty-string case matters: the API
-// rejects an empty text block, and a user turn can carry empty content, so
-// converting "" into an empty marked text block would turn a valid request
-// into a 400.
+// markTranscriptTail marks the tail's last block on the wire copy; empties are left unmarked.
 func markTranscriptTail(msgs []map[string]any) {
 	if len(msgs) == 0 {
 		return

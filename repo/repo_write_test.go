@@ -12,11 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// writableCfg builds the credential config the repo tools get when every
-// configured PAT is flagged allow_model_writes: the write list mirrors the
-// read list. The write-flow tests use it so the flow under test actually runs;
-// the initiator partition itself (unflagged tokens unreachable from writes) is
-// covered by the model-write tests below.
+// writableCfg builds the credential config when every configured PAT is allow_model_writes.
 func writableCfg(cfg GitHubConfig, tokens ...GitHubToken) GitHubConfig {
 	cfg.Tokens = tokens
 	cfg.WriteTokens = tokens
@@ -83,8 +79,7 @@ func TestRepoFileWriteCreatesNewFileWithoutSHA(t *testing.T) {
 	assert.Contains(t, res.Content, "created docs/intro.md on branch docs of octo/hello")
 	assert.Contains(t, res.Content, "commit newcommit123")
 
-	// The existence check ran against the target branch; the PUT carried the
-	// base64 content, message, and branch — and never a blob SHA (create-only).
+	// The existence check ran against the target branch; the PUT carried base64, never a blob SHA.
 	var put ghCall
 	sawCheck := false
 	for _, c := range gh.Calls() {
@@ -171,8 +166,7 @@ func TestRepoFileWriteCreatesBranchFromDefault(t *testing.T) {
 			post = c
 		}
 		if c.Method == http.MethodGet && c.Path == "/repos/octo/hello/contents/f.txt" {
-			// The existence check runs against the SOURCE ref the new branch
-			// starts from — the ref the file's content would come from.
+			// The existence check runs against the SOURCE ref the new branch starts from.
 			assert.Equal(t, "main", c.Query.Get("ref"))
 		}
 	}
@@ -262,8 +256,7 @@ func TestRepoFileWriteMissingBaseRefIsFatal(t *testing.T) {
 }
 
 func TestRepoFileWriteRetriesPastStaleCachedReadWinner(t *testing.T) {
-	// The cache holds t1 — a read-only token discovered by the read tools. The
-	// write must try it first, fail, fall through to t2, and re-cache t2.
+	// The cache holds t1, a read-only token discovered by the read tools.
 	cache := newMemCache()
 	cache.Put("octo/hello", "t1")
 	gh, ex := newFakeGitHub(t, writableCfg(GitHubConfig{Cache: cache},
@@ -346,8 +339,7 @@ func TestRepoWriteNoModelWriteTokensTeaches(t *testing.T) {
 	assert.Equal(t, noModelWriteTokensMsg, res.Content)
 	assert.Empty(t, gh.Calls(), "neither write touched GitHub")
 
-	// The read path is untouched by the partition: the same client still reads
-	// with the unflagged token.
+	// The read path is untouched by the partition.
 	read, err := client.Fetch(context.Background(), "octo", "hello", "main.go", "", "application/vnd.github.raw")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, read.Status())
@@ -430,8 +422,7 @@ func TestRepoFileWriteFatalErrorDoesNotRetryOtherTokens(t *testing.T) {
 	_, ex := newFakeGitHub(t, writableCfg(GitHubConfig{}, GitHubToken{ID: "t1", Token: "w1"}, GitHubToken{ID: "t2", Token: "w2"}), func(c ghCall) (int, string) {
 		switch {
 		case c.Method == http.MethodPut:
-			// The file appeared between the existence check and the PUT
-			// (created concurrently): GitHub 409s the sha-less create.
+			// The file appeared between the existence check and the PUT; GitHub 409s it.
 			putCalls++
 			return http.StatusConflict, `{"message":"docs/intro.md does not match"}`
 		case c.Path == "/repos/octo/hello":

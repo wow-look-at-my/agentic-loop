@@ -184,8 +184,7 @@ func TestOpenAINonStreamingJSONFallback(t *testing.T) {
 }
 
 func TestOpenAINonStreamingContentTypeInsensitive(t *testing.T) {
-	// The content-type check is a substring match, so a parameterized
-	// event-stream header still routes through the SSE path.
+	// The content-type check is a substring match, so a parameterized event-stream header still routes through SSE.
 	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"sse"},"finish_reason":"stop"}]}`}}
 	h.contentType = "text/event-stream; charset=utf-8"
 	srv := httptest.NewServer(h)
@@ -242,10 +241,7 @@ func TestAnthropicNonStreamingMalformedBody(t *testing.T) {
 	assert.False(t, IsTransient(err), "a malformed body is permanent, not retried")
 }
 
-// ---------------------------------------------------------------------------
-// Part A extension 4: OpenAIConfig.PromptCache
-// (the TS markOpenAiCache pins: static system + moving tail, clean transcript)
-// ---------------------------------------------------------------------------
+// Part A extension 4: OpenAIConfig.PromptCache (static system + moving tail, clean transcript).
 
 // countCacheControls counts the literal `"cache_control"` occurrences in a
 // serialized request body.

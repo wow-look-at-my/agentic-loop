@@ -15,8 +15,7 @@ import (
 type scriptStep struct {
 	comp *Completion
 	err  error
-	// emit, when set, fires stream events before returning (to exercise
-	// delivery tracking).
+	// emit, when set, fires stream events before returning (to exercise delivery tracking).
 	emit func(ev *StreamEvents)
 }
 
@@ -105,14 +104,12 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	assert.Equal(t, "beta", calls[1].Name)
 	require.Len(t, results, 2)
 	assert.Equal(t, "ran alpha", results[0].Content)
-	// Each result event also carries the message the loop appended for it --
-	// here identical to the transcript's own entries.
+	// Each result event carries the message the loop appended for it (here identical to the transcript).
 	require.Len(t, recorded, 2)
 	assert.Equal(t, res.Messages[2], recorded[0])
 	assert.Equal(t, res.Messages[3], recorded[1])
 
-	// The loop advertises the executor's tools, overriding req.Tools; the
-	// second request replays the assistant tool calls and the tool results.
+	// The loop advertises the executor's tools; the second request replays the tool calls and results.
 	require.Len(t, provider.reqs, 2)
 	require.Len(t, provider.reqs[0].Tools, 2)
 	assert.Equal(t, "alpha", provider.reqs[0].Tools[0].Name)
@@ -165,15 +162,10 @@ type approverFunc func(ctx context.Context, call ToolCall) (Approval, error)
 
 func (f approverFunc) Ask(ctx context.Context, call ToolCall) (Approval, error) { return f(ctx, call) }
 
-// allowAll is the toolset-wide yes a host with no policy of its own would
-// give. Every call reaches an Approver now, so a Run that means to execute
-// tools needs one.
+// allowAll is the toolset-wide yes a host with no policy of its own would give.
 var allowAll = approverFunc(func(context.Context, ToolCall) (Approval, error) { return Approval{OK: true}, nil })
 
-// A denial says WHY, and that reason is what the model is told: "the user
-// denied permission" is a false statement about a person when a policy, not a
-// person, refused -- and it sends the model to ask that person to reconsider a
-// decision they never made.
+// The reason is what the model is told; "the user denied permission" is false when a policy refused.
 func TestRunDenialCarriesItsReason(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
@@ -304,10 +296,7 @@ func TestRunApprovalAskError(t *testing.T) {
 	assert.ErrorIs(t, err, interrupted)
 	require.NotNil(t, res, "partial Result returned alongside the error")
 
-	// The first call was approved and executed and its result was appended,
-	// then the second call's Ask failed: the batch is cleared — the assistant message
-	// keeps content and reasoning but loses its tool calls, and the executed
-	// result is dropped from the transcript so no orphans remain.
+	// The first call ran and its result was appended; the second's Ask failed and the batch was cleared.
 	require.Len(t, res.Messages, 2)
 	final := res.Messages[1]
 	assert.Equal(t, "let me check", final.Content)
@@ -395,16 +384,11 @@ func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {
 	assert.Equal(t, "sorry", res.Final.Content)
 }
 
-// noTurnCapProbe is well past the 10-turn cap this loop used to carry, so a
-// regression that reintroduces one fails here instead of in production on the
-// one task that needed the 11th turn. The provider is the in-process
-// scriptProvider stub, so these turns cost microseconds.
+// noTurnCapProbe is well past the old 10-turn cap, so a regression fails here, not in production.
 const noTurnCapProbe = 40
 
 func TestRunHasNoTurnCap(t *testing.T) {
-	// A model that keeps asking for tools is never cut off. Distinct arguments
-	// per turn: a model repeating itself is the stuck detector's business
-	// (TestRunStuckFailsAfterNudge); this test is about the absence of a cap.
+	// A model that keeps asking for tools is never cut off; this test is about the absence of a cap.
 	steps := make([]scriptStep, 0, noTurnCapProbe)
 	for i := 0; i < noTurnCapProbe-1; i++ {
 		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: jsonMust(jsonObj{"i": i})})})
@@ -475,12 +459,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 }
 
 func TestRetryTrustsTheProviderContract(t *testing.T) {
-	// "Did this call stream?" is answered by the Provider contract — a partial
-	// completion accompanies the error once data has arrived — and nothing
-	// watches the callbacks to second-guess it. The cost of that simplicity,
-	// pinned here so it is a known trade and not a surprise: a Provider that
-	// emits deltas and then returns a NIL completion has lied about streaming,
-	// and its call is re-sent.
+	// "Did this call stream?" is the Provider contract's answer; deltas then nil re-sends the call.
 	netErr := errors.New("reset")
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.EmitText("leaked") }},
@@ -512,8 +491,7 @@ func TestRunRequiresProvider(t *testing.T) {
 	require.Error(t, err)
 }
 
-// repeatedCall is the batch a stuck model keeps asking for. The ID varies per
-// turn exactly as a provider would mint it — the fingerprint must ignore it.
+// repeatedCall is the batch a stuck model asks for, with a fresh ID per turn the fingerprint ignores.
 func repeatedCall(turn int) ToolCall {
 	return ToolCall{ID: fmt.Sprintf("c%d", turn), Name: "alpha", Arguments: `{"q":"same"}`}
 }
@@ -563,8 +541,7 @@ func TestRunStuckFailsAfterNudge(t *testing.T) {
 }
 
 func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
-	// Twice StuckFailAt tool turns, alternating between two batches: no two
-	// consecutive turns are identical, so the detector never fires.
+	// Alternating StuckFailAt batches: no two consecutive are identical, so the detector never fires.
 	steps := make([]scriptStep, 0, 2*StuckFailAt+1)
 	for i := 0; i < 2*StuckFailAt; i++ {
 		call := repeatedCall(i)
