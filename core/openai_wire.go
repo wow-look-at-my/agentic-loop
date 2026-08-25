@@ -38,24 +38,29 @@ type oaFunctionCall struct {
 
 // oaMessage is one chat message; MarshalJSON owns encoding because content presence is role-dependent.
 type oaMessage struct {
-	Role          string
-	Content       string
-	ContentBlocks []map[string]any
-	ToolCalls     []oaToolCall
-	ToolCallID    string
-	Reasoning     string
+	Role             string
+	Content          string
+	ContentBlocks    []map[string]any
+	ToolCalls        []oaToolCall
+	ToolCallID       string
+	Reasoning        string
+	ReasoningDetails []oaReasoningDetail
 }
 
 // MarshalJSON always emits content so an empty tool result doesn't 400; assistant tool_calls may omit it.
 func (m oaMessage) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		Role       string       `json:"role"`
-		Content    any          `json:"content,omitempty"`
-		Reasoning  string       `json:"reasoning,omitempty"`
-		ToolCalls  []oaToolCall `json:"tool_calls,omitempty"`
-		ToolCallID string       `json:"tool_call_id,omitempty"`
+		Role             string              `json:"role"`
+		Content          any                 `json:"content,omitempty"`
+		Reasoning        string              `json:"reasoning,omitempty"`
+		ReasoningDetails []oaReasoningDetail `json:"reasoning_details,omitempty"`
+		ToolCalls        []oaToolCall        `json:"tool_calls,omitempty"`
+		ToolCallID       string              `json:"tool_call_id,omitempty"`
 	}
-	w := wire{Role: m.Role, Reasoning: m.Reasoning, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID}
+	w := wire{
+		Role: m.Role, Reasoning: m.Reasoning, ReasoningDetails: m.ReasoningDetails,
+		ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
+	}
 	if !(m.Role == "assistant" && m.Content == "" && len(m.ToolCalls) > 0) {
 		if len(m.ContentBlocks) > 0 {
 			w.Content = m.ContentBlocks
@@ -72,9 +77,12 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 // prompt (when non-empty) is prepended as a system message, assistant
 // tool calls are replayed as tool_calls, and tool results ride as role:"tool"
 // messages keyed by tool_call_id. Message.Thinking is not replayed on this
-// dialect by default (OpenAI-compatible APIs have no reasoning-replay field) --
-// only when replayReasoning is set, so a strict server never sees the unknown
-// field -- and Message.ToolIsError has no wire equivalent.
+// dialect by default (a strict OpenAI-compatible server rejects an unknown
+// field) -- only when replayReasoning is set, and then both the flattened
+// text (reasoning) and, when captured, the verbatim reasoning_details array
+// go out -- a gateway requiring the latter for tool-call continuity (see
+// oaReplayReasoningDetails) ignores the former, and a server that only knows
+// the former ignores the latter. Message.ToolIsError has no wire equivalent.
 func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMessage, error) {
 	out := make([]oaMessage, 0, len(msgs)+1)
 	if system != "" {
@@ -91,6 +99,7 @@ func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMe
 		}
 		if replayReasoning && m.Role == RoleAssistant {
 			wm.Reasoning = reasoningText(m)
+			wm.ReasoningDetails = oaReplayReasoningDetails(m)
 		}
 		for _, tc := range m.ToolCalls {
 			wm.ToolCalls = append(wm.ToolCalls, oaToolCall{
@@ -142,6 +151,49 @@ func reasoningText(m Message) string {
 		}
 	}
 	return b.String()
+}
+
+// oaReasoningDetail is one item of an OpenRouter-style reasoning_details
+// array. A field this dialect never interprets (Signature, Format, Index) is
+// still captured and replayed, since a downstream gateway checks the whole
+// item, not the fields this library happens to read.
+type oaReasoningDetail struct {
+	Type      string  `json:"type"`
+	Text      string  `json:"text,omitempty"`
+	Summary   string  `json:"summary,omitempty"`
+	Data      string  `json:"data,omitempty"`
+	Signature *string `json:"signature,omitempty"`
+	ID        string  `json:"id,omitempty"`
+	Format    string  `json:"format,omitempty"`
+	Index     int     `json:"index,omitempty"`
+}
+
+// oaReasoningDetailsJSON marshals a captured reasoning_details array for
+// storage in a ThinkingBlock's Signature, or "" when none arrived.
+func oaReasoningDetailsJSON(details []oaReasoningDetail) string {
+	if len(details) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(details)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// oaReplayReasoningDetails decodes the reasoning_details array a Thinking
+// block's Signature holds, or nil for a block with none. See USAGE.md.
+func oaReplayReasoningDetails(m Message) []oaReasoningDetail {
+	for _, tb := range m.Thinking {
+		if tb.Signature == "" {
+			continue
+		}
+		var details []oaReasoningDetail
+		if err := json.Unmarshal([]byte(tb.Signature), &details); err == nil {
+			return details
+		}
+	}
+	return nil
 }
 
 // oaMarkPromptCache marks the system (static) and last (moving) messages; empties stay unmarked.

@@ -6,7 +6,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wow-look-at-my/go-containers v0.0.0-20260820210621-2e1261867045 // go-toolchain:auto-branch
-	github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260816073403-a21628c1fff2 // go-toolchain:auto-branch
+	github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260823201203-7268eddb2e3f // go-toolchain:auto-branch
 )
 
 require (
@@ -14,7 +14,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260816073403-a21628c1fff2 // indirect; go-toolchain:auto-branch
+	github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260823201203-7268eddb2e3f // indirect; go-toolchain:auto-branch
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

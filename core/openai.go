@@ -97,7 +97,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return o.parseNonStream(body)
 	}
 
-	st := &oaStream{ev: ev, acc: newToolCallAccumulator()}
+	st := &oaStream{ev: ev, acc: newToolCallAccumulator(), reasoningDetails: newReasoningDetailAccumulator()}
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("openai: %w", scanErr)
 		if st.sawData {
@@ -126,7 +126,8 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 // Extra or the provider default. CacheKey, when set, rides as
 // prompt_cache_key, and selfHosted adds cache_prompt:true. promptCache marks
 // the per-request wire copy with the two ephemeral cache breakpoints;
-// replayReasoning echoes assistant reasoning back as message.reasoning.
+// replayReasoning echoes assistant reasoning back as message.reasoning, plus
+// the verbatim reasoning_details array when one was captured.
 func (o *openaiProvider) buildBody(req Request, includeDefaultStreamOptions bool) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.ParamsFor(DialectOpenAI) {

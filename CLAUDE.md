@@ -128,7 +128,9 @@ side of that line it falls on — do not put it on both.
   constructs one.
 - **The Responses dialect exists for exactly one thing** (`responses.go` +
   `responses_wire.go`): a reasoning model's chain of thought surviving a tool
-  call, which chat-completions has no field for. So the reasoning ITEM with its
+  call, which standard chat-completions has no field for (OpenRouter's
+  `reasoning_details` extension is the one exception, replayed by the openai
+  dialect too — USAGE.md). So the reasoning ITEM with its
   `encrypted_content` is what gets replayed, never a summary alone — a summary
   is prose about the reasoning. `Store` is FALSE by default against the API's
   own default (third-party retention is the caller's decision to make out
@@ -304,7 +306,8 @@ side of that line it falls on — do not put it on both.
   is what made Z.AI 400 the turn — forever, since the call is persisted.
 - **The Responses dialect exists for exactly one thing** (`core/responses.go` +
   `core/responses_wire.go`): a reasoning model's chain of thought surviving a
-  tool call, which chat-completions has no field for. So the reasoning ITEM
+  tool call, which standard chat-completions has no field for (OpenRouter's
+  `reasoning_details` is the one exception — USAGE.md). So the reasoning ITEM
   with its `encrypted_content` is replayed, never a summary alone — a summary
   is prose ABOUT the reasoning. `Store` is FALSE by default against the API's
   own default (third-party retention is the caller's decision to make out

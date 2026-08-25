@@ -27,7 +27,7 @@ type OpenAIConfig struct {
 	SelfHosted bool
 	// PromptCache emits two ephemeral cache_control breakpoints for Anthropic-fronting gateways; default false.
 	PromptCache bool
-	// ReplayReasoning replays reasoning text as message.reasoning; default false for strict OpenAI servers.
+	// ReplayReasoning replays reasoning as message.reasoning/reasoning_details; default false for strict servers.
 	ReplayReasoning bool
 }
 
