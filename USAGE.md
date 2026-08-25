@@ -219,11 +219,24 @@ Two of the three dialects talk to the same OpenAI endpoints. They are not
 interchangeable, and exactly one thing separates them:
 
 **On chat completions, a reasoning model's chain of thought does not survive
-a tool call.** The reasoning arrives as deltas, and the request format has
-nowhere to put it back — so on the next turn the model re-derives what it
-already worked out, pays for those tokens again, and loses the prompt cache
-at every reasoning boundary. In a long tool-using investigation that is the
-dominant cost.
+a tool call by default.** The reasoning arrives as deltas, and the standard
+request format has nowhere to put it back — so on the next turn the model
+re-derives what it already worked out, pays for those tokens again, and
+loses the prompt cache at every reasoning boundary. In a long tool-using
+investigation that is the dominant cost.
+
+One gateway shape is the exception, and `ReplayReasoning` covers it:
+OpenRouter's chat-completions-compatible endpoint streams a structured
+`reasoning_details` array (fragments keyed by index, same shape as
+`tool_calls`) for a model it fronts with a Responses-only backend. The
+OpenAI dialect captures that array verbatim in the turn's `ThinkingBlock`
+(`Signature`), and replays it unchanged on the next request alongside the
+flattened `reasoning` text. Skipping it is not cosmetic: the gateway needs
+those item ids to pair a `function_call` with its output when it
+reconstructs the Responses-API request underneath, and a transcript missing
+them gets rejected with "No tool output found for function call `<id>`" on
+the very next turn after a tool call — with no clue, from this dialect's own
+wire shape, why.
 
 **The Responses API models a turn as an ordered list of items**, and a
 reasoning item can be sent back verbatim. This provider asks for

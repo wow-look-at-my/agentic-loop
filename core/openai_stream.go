@@ -170,10 +170,7 @@ func (a *toolCallAccumulator) finish() []ToolCall {
 // empty reports whether any tool calls were accumulated.
 func (a *toolCallAccumulator) empty() bool { return len(a.order) == 0 }
 
-// reasoningDetailAccumulator reassembles a streamed reasoning_details array
-// by index; a reasoning.text (or summary/data) item streams as fragments at
-// the same index, which must concatenate in order to match the item the
-// model actually produced.
+// reasoningDetailAccumulator merges streamed reasoning_details fragments by index.
 type reasoningDetailAccumulator struct {
 	byIndex map[int]*oaReasoningDetail
 	order   []int

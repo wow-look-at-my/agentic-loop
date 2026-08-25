@@ -181,15 +181,8 @@ func oaReasoningDetailsJSON(details []oaReasoningDetail) string {
 	return string(b)
 }
 
-// oaReplayReasoningDetails decodes the verbatim reasoning_details array this
-// dialect stashed in a Thinking block's Signature. A gateway that requires
-// reasoning continuity for a tool call (a reasoning model reachable only
-// through its own provider's Responses-shaped API, fronted by an
-// OpenAI-compatible chat-completions endpoint) reconstructs that API's
-// request from this array; sending back only the flattened text drops the
-// item ids it pairs a tool call against, and the request is rejected. A
-// block with no Signature, or one holding a different dialect's opaque
-// payload (not a JSON array), contributes nothing here.
+// oaReplayReasoningDetails decodes the reasoning_details array a Thinking
+// block's Signature holds, or nil for a block with none. See USAGE.md.
 func oaReplayReasoningDetails(m Message) []oaReasoningDetail {
 	for _, tb := range m.Thinking {
 		if tb.Signature == "" {

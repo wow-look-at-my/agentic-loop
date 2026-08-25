@@ -89,14 +89,9 @@ func normalizeStopReason(reason string) string {
 	return reason
 }
 
-// oaAssistantMessage assembles one assistant turn's parts in the order this
-// layer produces them: reasoning first, then the content it produced, then
-// the calls it asked for. Chat-completions accumulates reasoning and content
-// as two separate streams rather than as interleaved blocks, so that order is
-// all the wire actually says. reasoningDetailsJSON is the verbatim captured
-// reasoning_details array (see oaReasoningDetailsJSON), carried in the one
-// ThinkingPart's Signature for replay; it is kept even when reasoning is
-// empty, since a gateway can send structured details with no flat summary.
+// oaAssistantMessage assembles one turn's parts: reasoning (text plus, when
+// captured, the verbatim reasoningDetailsJSON in Signature -- see
+// oaReasoningDetailsJSON), then content, then tool calls.
 func oaAssistantMessage(reasoning, reasoningDetailsJSON, content string, calls []ToolCall) Message {
 	var parts []Part
 	if reasoning != "" || reasoningDetailsJSON != "" {

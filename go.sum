@@ -28,10 +28,10 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/wow-look-at-my/go-containers v0.0.0-20260820210621-2e1261867045 h1:1ir/Tf75SwE29xK4Fn5e85LksidQh9x/6GGGFOjzv7w=
 github.com/wow-look-at-my/go-containers v0.0.0-20260820210621-2e1261867045/go.mod h1:7j8wbDwrqh+uJnlENqD5iwsgYkF4y3kIgremn/ctvVE=
-github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260816073403-a21628c1fff2 h1:N/hbvskOyqFp2/7XNsOGEPdPZCCU/Qs27O9657aha+Q=
-github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260816073403-a21628c1fff2/go.mod h1:xv6IYynqwPf55CVw0W22JQi3K0ppGqkMbTAL6X38k9c=
-github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260816073403-a21628c1fff2 h1:rNkeP/626DUmQDMElg1LPSWOKfRoMu0e8reLMH6cHNc=
-github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260816073403-a21628c1fff2/go.mod h1:CcOrybN7QHPAjIDgYMdoIIuJEGAEt9exfRJFyNt2ExM=
+github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260823201203-7268eddb2e3f h1:Agjl7o3+QTwaB0x1SOXKvWBa0B92ezVmomq8uSu7Vo0=
+github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260823201203-7268eddb2e3f/go.mod h1:fo8rGd1J/vHnMhYJC8G83y0p0qLPTodt0PQWgPs4Lt8=
+github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260823201203-7268eddb2e3f h1:RlDOfsJjYqgALLw78r911v/O977Z8J5sDjlWG38tjws=
+github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260823201203-7268eddb2e3f/go.mod h1:Ns6nb3kmT1kZNUzZ1IEpGFLoyFmgMFd17xoqsbOIHEQ=
 go.yaml.in/yaml/v3 v3.0.4/go.mod h1:DhzuOOF2ATzADvBadXxruRBLzYTpT36CKvDb3+aBEFg=
 golang.org/x/mod v0.37.0 h1:vF1DjpVEshcIqoEaauuHebaLk1O1forxjxBaVn884JQ=
 golang.org/x/mod v0.37.0/go.mod h1:m8S8VeM9r4dzDwjrKO0a1sZP3YjeMamRRlD+fmR2Q/0=
