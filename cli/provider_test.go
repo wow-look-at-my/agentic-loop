@@ -21,10 +21,14 @@ func TestDialectFlagPicksTheWireFormat(t *testing.T) {
 		dialect string
 		path    string
 		body    string
+		reply   string // a minimal non-empty stream; a bare "[DONE]" now retries and spins
 	}{
-		{"openai", "/chat/completions", `"messages"`},
-		{"anthropic", "/v1/messages", `"max_tokens"`},
-		{"responses", "/responses", `"input"`},
+		{"openai", "/chat/completions", `"messages"`,
+			`data: {"choices":[{"delta":{"content":"ok"}}]}` + "\n\ndata: [DONE]\n\n"},
+		{"anthropic", "/v1/messages", `"max_tokens"`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}` + "\n\ndata: [DONE]\n\n"},
+		{"responses", "/responses", `"input"`,
+			`data: {"type":"response.output_text.delta","delta":"ok"}` + "\n\ndata: [DONE]\n\n"},
 	} {
 		t.Run(tc.dialect, func(t *testing.T) {
 			var gotPath, gotBody string
@@ -32,7 +36,7 @@ func TestDialectFlagPicksTheWireFormat(t *testing.T) {
 				gotPath = r.URL.Path
 				gotBody = string(readAll(t, r.Body))
 				w.Header().Set("Content-Type", "text/event-stream")
-				_, _ = w.Write([]byte("data: [DONE]\n\n"))
+				_, _ = w.Write([]byte(tc.reply))
 			}))
 			defer srv.Close()
 
@@ -84,7 +88,7 @@ func TestTheKeyComesFromTheEnvironment(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"ok"}}]}` + "\n\ndata: [DONE]\n\n"))
 	}))
 	defer srv.Close()
 

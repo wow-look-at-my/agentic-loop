@@ -290,3 +290,89 @@ func TestRetryingProvider(t *testing.T) {
 		assert.Equal(t, "ok", comp.Message.Content)
 	})
 }
+
+func TestRetryingProviderEmptyCompletion(t *testing.T) {
+	t.Run("a genuinely empty completion retries", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{
+			{comp: emptyComp()},
+			{comp: emptyComp()},
+			{comp: assistantComp("recovered")},
+		}}
+		var delays []time.Duration
+		policy := RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond,
+			Sleep: func(_ context.Context, d time.Duration) error { delays = append(delays, d); return nil }}
+
+		comp, err := Retrying(inner, &policy).
+			Complete(context.Background(), commonai.Request{Model: "m"}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "recovered", comp.Message.Content)
+		assert.Len(t, inner.reqs, 3)
+		assert.Equal(t, []time.Duration{500 * time.Millisecond, 1 * time.Second}, delays)
+	})
+
+	t.Run("the retry is announced with a synthetic error naming the cause", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{{comp: emptyComp()}, {comp: assistantComp("ok")}}}
+		var seen []commonai.RetryAttempt
+		ev := &commonai.StreamEvents{OnRetry: func(a commonai.RetryAttempt) error { seen = append(seen, a); return nil }}
+		_, err := Retrying(inner, &noSleep).
+			Complete(context.Background(), commonai.Request{Model: "m"}, ev)
+		require.NoError(t, err)
+		require.Len(t, seen, 1)
+		require.Error(t, seen[0].Err, "the caller can render why it retried, not just that it did")
+	})
+
+	t.Run("attempts exhausted on empty returns the empty completion, no error", func(t *testing.T) {
+		inner := &scriptProvider{steps: []scriptStep{{comp: emptyComp()}, {comp: emptyComp()}}}
+		policy := RetryPolicy{MaxAttempts: 2, Sleep: noSleep.Sleep}
+		comp, err := Retrying(inner, &policy).
+			Complete(context.Background(), commonai.Request{Model: "m"}, nil)
+		require.NoError(t, err, "an empty answer is not a transport failure")
+		require.NotNil(t, comp)
+		assert.Empty(t, comp.Message.Content)
+		assert.Len(t, inner.reqs, 2)
+	})
+
+	t.Run("a tool-call-only completion is not empty and is not retried", func(t *testing.T) {
+		toolOnly := &commonai.Completion{
+			Message: commonai.NewMessage(commonai.RoleAssistant,
+				commonai.ToolCallPart{ID: "c1", Name: "grep", Arguments: "{}"}),
+		}
+		inner := &scriptProvider{steps: []scriptStep{
+			{comp: toolOnly},
+			{comp: assistantComp("never reached")},
+		}}
+		comp, err := Retrying(inner, &noSleep).
+			Complete(context.Background(), commonai.Request{Model: "m"}, nil)
+		require.NoError(t, err)
+		assert.Len(t, comp.Message.ToolCalls, 1)
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("a thinking-only completion is not empty and is not retried", func(t *testing.T) {
+		thinkingOnly := &commonai.Completion{
+			Message: commonai.NewMessage(commonai.RoleAssistant, commonai.ThinkingPart{Text: "hmm"}),
+		}
+		inner := &scriptProvider{steps: []scriptStep{
+			{comp: thinkingOnly},
+			{comp: assistantComp("never reached")},
+		}}
+		comp, err := Retrying(inner, &noSleep).
+			Complete(context.Background(), commonai.Request{Model: "m"}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "hmm", comp.Message.Thinking[0].Text)
+		assert.Len(t, inner.reqs, 1)
+	})
+
+	t.Run("an empty completion alongside an error is not double-counted as retryable", func(t *testing.T) {
+		// A permanent error still wins even though the completion is also empty:
+		// the error path is authoritative, and retrying it is already covered by IsTransient.
+		inner := &scriptProvider{steps: []scriptStep{
+			{comp: emptyComp(), err: &commonai.APIError{Status: 400, Body: "bad request"}},
+			{comp: assistantComp("never reached")},
+		}}
+		_, err := Retrying(inner, &noSleep).
+			Complete(context.Background(), commonai.Request{Model: "m"}, nil)
+		require.Error(t, err)
+		assert.Len(t, inner.reqs, 1)
+	})
+}
