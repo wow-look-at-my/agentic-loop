@@ -16,8 +16,8 @@ const SubagentReportKind = "subagent_report"
 const wrapUpInstruction = "Stop researching and write your final answer now, using only the information already gathered above. " +
 	"Do not call any tools and do not keep thinking -- output the complete, self-contained report that directly answers the task."
 
-// noOutputPlaceholder is the final content when the model produced nothing.
-const noOutputPlaceholder = "(subagent produced no output)"
+// noOutputPlaceholder is the final content when a turn has no text, tool call, or thinking.
+const noOutputPlaceholder = "(no output was produced this turn)"
 
 // StuckNudgeAt and StuckFailAt bound a model repeating identical tool-call batches.
 const (

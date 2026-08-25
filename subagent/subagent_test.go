@@ -689,6 +689,6 @@ func TestSubagentNoOutputPlaceholder(t *testing.T) {
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
-	assert.Equal(t, "(subagent produced no output)", res.Content,
+	assert.Equal(t, "(no output was produced this turn)", res.Content,
 		"the nested Run's fallback placeholder surfaces as the report")
 }

@@ -2,6 +2,8 @@ package extras
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
@@ -74,10 +76,36 @@ func (p RetryPolicy) Do(ctx context.Context, fn func() error) error {
 	}
 }
 
-// retryComplete runs one model call with retry. A retry happens ONLY when the
-// failed attempt streamed nothing — signalled by a nil completion, per the
-// Provider contract — and the error is transient: once a delta reached the
-// caller's sink, re-sending would duplicate it.
+// errEmptyCompletion marks a successful call that carried no text, tool call, or thinking.
+var errEmptyCompletion = errors.New("upstream returned no text, tool call, or thinking")
+
+// completionIsEmpty reports whether a successful completion carries nothing a
+// caller could act on: no text, no tool call, no thinking (redacted included).
+// A nil comp is not "empty" here -- that is the separate nothing-streamed case
+// retryComplete already handles via its own err/comp check.
+func completionIsEmpty(comp *commonai.Completion) bool {
+	if comp == nil {
+		return false
+	}
+	m := comp.Message
+	if strings.TrimSpace(m.Content) != "" || len(m.ToolCalls) > 0 || len(m.Parts) > 0 {
+		return false
+	}
+	for _, tb := range m.Thinking {
+		if tb.Text != "" || tb.Redacted != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// retryComplete runs one model call with retry. Two conditions retry: the
+// attempt streamed nothing and the error is transient (a nil completion, per
+// the Provider contract -- once a delta reached the caller's sink, re-sending
+// would duplicate it), or the attempt succeeded but came back genuinely empty
+// (no text, no tool call, no thinking). An empty completion is never mid-way
+// through anything -- nothing was emitted to the caller's sink either -- so
+// re-sending it is exactly as safe as re-sending a nothing-streamed error.
 //
 // Every retry is announced through StreamEvents.OnRetry BEFORE the backoff, so
 // a waiting caller can show what failed and what is being waited on rather
@@ -88,13 +116,19 @@ func retryComplete(ctx context.Context, p commonai.Provider, policy RetryPolicy,
 	var err error
 	for attempt := 1; ; attempt++ {
 		comp, err = p.Complete(ctx, req, ev)
-		// comp != nil IS "this attempt streamed something": re-sending would duplicate what the caller already saw.
-		if err == nil || comp != nil || !commonai.IsTransient(err) || attempt >= attempts {
+		empty := err == nil && completionIsEmpty(comp)
+		// comp != nil (on an error) IS "this attempt streamed something": re-sending would duplicate what the caller already saw.
+		retryable := empty || (err != nil && comp == nil && commonai.IsTransient(err))
+		if !retryable || attempt >= attempts {
 			break
+		}
+		retryErr := err
+		if empty {
+			retryErr = errEmptyCompletion
 		}
 		delay := policy.delay(attempt)
 		if cberr := ev.EmitRetry(commonai.RetryAttempt{
-			Attempt: attempt, Of: attempts, Delay: delay, Err: err,
+			Attempt: attempt, Of: attempts, Delay: delay, Err: retryErr,
 		}); cberr != nil {
 			// The caller pulled the plug on retrying; surface their error, not the upstream's.
 			return comp, cberr

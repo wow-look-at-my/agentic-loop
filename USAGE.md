@@ -825,6 +825,19 @@ attempt cannot make the next one unsafe.
 only ever sees the outcome. A custom `Provider` implementation is
 responsible for its own retry.
 
+**A genuinely empty completion retries too**, using the same `RetryPolicy`
+and the same attempt cap: no text, no tool call, no thinking (redacted
+included) means the call produced nothing a caller could act on, which is
+never a legitimate answer. This is not a transport error -- `err` is nil --
+but it is exactly as safe to re-send as a nothing-streamed error, because
+nothing reached the caller's sink either. `OnRetry` still fires first, with
+a synthetic `Err` naming the cause, so a waiting caller sees why. A run
+that exhausts every attempt still empty returns that empty completion with
+`err == nil`; the host decides what to show for it (`Run`'s own last-resort
+placeholder is `internal/loop/run_config.go`'s `noOutputPlaceholder`). A
+tool-call-only or thinking-only completion is not empty and is never
+retried on this account.
+
 ### Rate limiting
 
 `ProviderConfig.RateLimiter`, when set, throttles the provider's outgoing
