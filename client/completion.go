@@ -6,36 +6,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// Completion is the outcome of one model call: the assembled assistant
-// message, the call's final (merged, total-floored) usage, and the normalized
-// stop reason.
-//
-// UsageReported is true iff the provider reported at least one usage snapshot
-// during the call. Usage is a value type, so a caller reading only the
-// returned Completion could not otherwise distinguish an upstream that
-// reported all-zero usage from one that reported none at all (common on local
-// OpenAI-compatible servers) -- check UsageReported before persisting or
-// displaying Usage.
-//
-// Timings is the last provider-reported timings snapshot (llama.cpp-style
-// upstreams attach one per chunk; the last one wins), or nil when the
-// provider never reported timings -- a tri-state like the Usage cache fields.
-// The Anthropic dialect never sets it.
-//
-// RawUsage is the provider's usage object verbatim (the raw JSON the upstream
-// sent, or, for the Anthropic dialect where usage arrives as fragments, the
-// merged wire-shaped object), for logging and for extracting provider extras --
-// reasoning-token and dollar-cost figures -- the normalized Usage drops.
-// ReasoningTokens is the openai
-// usage.completion_tokens_details.reasoning_tokens figure when present
-// (tri-state; Anthropic never reports one). CostUsd is the provider-reported
-// dollar cost from usage.cost or usage.estimated_cost when present
-// (OpenRouter/Requesty/DeepInfra style; tri-state). Each stays nil unless the
-// upstream reported it -- never zero-fill or estimate.
-//
-// Streamed records whether the response actually arrived as an SSE stream. A
-// server that ignored stream:true and answered with one JSON body is accepted
-// transparently, and this is how a caller can tell.
+// One model call's outcome: message, folded usage, stop reason; usage fields are tri-state, never zero-filled.
 type Completion struct {
 	Message         Message
 	Usage           Usage
@@ -117,12 +88,7 @@ func unfold(c *Completion) *commonai.Completion {
 	return out
 }
 
-// hasUsage reports whether a completion carries anything a usage report would
-// say. UsageReported is the answer when it is set, and the rest is for a
-// caller-supplied Provider that filled in the numbers and not the flag: the
-// flag exists to separate reported zeros from reported nothing, and dropping
-// counts because the flag disagrees with them would lose real numbers to a
-// bookkeeping field.
+// hasUsage reports whether a completion carries anything a usage report would say.
 func hasUsage(c *Completion) bool {
 	return c.UsageReported ||
 		usageEvidence(&c.Usage) > 0 ||
@@ -130,16 +96,7 @@ func hasUsage(c *Completion) bool {
 		len(c.RawUsage) > 0 || c.ReasoningTokens != nil || c.CostUsd != nil
 }
 
-// mergeUsage folds one streamed usage snapshot into the running view of a
-// call's usage. OpenAI-compatible upstreams differ here: OpenAI itself emits a
-// single final usage chunk (stream_options.include_usage), while others (xAI)
-// attach a usage object to EVERY chunk carrying the cumulative-so-far counts.
-// Both are monotonic snapshots of the same call, so the newest snapshot wins
-// and snapshots are NEVER summed — summing cumulative snapshots would multiply
-// the real counts by the chunk count. The one guard is against a regressing
-// snapshot (a final chunk that zeroes or truncates usage): a snapshot
-// reporting strictly less evidence than one already seen is discarded. Equal
-// evidence lets the LATER snapshot win (it may carry richer cache detail).
+// mergeUsage folds a streamed snapshot in: newest wins, snapshots never summed, regressing ones discarded.
 func mergeUsage(prev, next *Usage) *Usage {
 	if next == nil {
 		return prev
@@ -150,9 +107,7 @@ func mergeUsage(prev, next *Usage) *Usage {
 	return prev
 }
 
-// usageEvidence is the comparable size of a usage snapshot: the larger of
-// total_tokens and prompt+completion (upstreams disagree on whether total
-// includes separately-counted reasoning tokens).
+// usageEvidence is the comparable size of a snapshot: max of total_tokens and prompt+completion.
 func usageEvidence(u *Usage) int {
 	e := u.PromptTokens + u.CompletionTokens
 	if u.TotalTokens > e {
@@ -161,12 +116,7 @@ func usageEvidence(u *Usage) int {
 	return e
 }
 
-// floorTotal normalizes a finalized usage: TotalTokens is floored at
-// prompt+completion, since some upstreams omit total_tokens or report it
-// smaller than the parts. A genuine surplus is preserved — xAI reports
-// total = prompt + completion + reasoning tokens — so reasoning spend stays
-// visible. Applied only when a call finalizes; streamed snapshots are merged
-// untouched.
+// floorTotal floors TotalTokens at prompt+completion, preserving any genuine surplus.
 func floorTotal(u Usage) Usage {
 	if pc := u.PromptTokens + u.CompletionTokens; u.TotalTokens < pc {
 		u.TotalTokens = pc

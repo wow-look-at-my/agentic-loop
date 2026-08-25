@@ -9,12 +9,9 @@ import (
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
-	// Timings is the llama.cpp-style timing snapshot llama.cpp/ollama attach
-	// to streamed chunks; each occurrence replaces the previous (last wins).
+	// Timings is a llama.cpp/ollama timing snapshot; each replaces the previous (last wins).
 	Timings *Timings `json:"timings,omitempty"`
-	// PromptProgress is a non-standard prefill-progress update some upstreams
-	// emit before the first token while a long prompt is ingested. It rides a
-	// choices-less chunk.
+	// PromptProgress is a non-standard prefill-progress update emitted on a choices-less chunk.
 	PromptProgress *PromptProgress `json:"prompt_progress,omitempty"`
 }
 
@@ -43,16 +40,7 @@ func (d oaDelta) reasoning() string {
 	return d.Reasoning
 }
 
-// oaUsage is the wire shape of a usage snapshot, capturing the cache
-// accounting of three dialects: OpenAI/vLLM/OpenRouter report cached tokens
-// under prompt_tokens_details.cached_tokens, DeepSeek reports
-// prompt_cache_hit_tokens, and Anthropic-compatible layers pass through
-// cache_read_input_tokens. The cache fields are pointers so an absent field
-// is distinguishable from an explicit zero (the tri-state contract). The
-// provider-reported dollar figure rides under cost (OpenRouter/Requesty) or
-// estimated_cost (DeepInfra), and reasoning tokens under
-// completion_tokens_details.reasoning_tokens -- all pointers for the same
-// tri-state reason.
+// oaUsage is the wire usage shape; cache fields are pointers so absent != explicit zero.
 type oaUsage struct {
 	PromptTokens           int                      `json:"prompt_tokens"`
 	CompletionTokens       int                      `json:"completion_tokens"`
@@ -70,8 +58,7 @@ type oaPromptTokensDetails struct {
 	CachedTokens *int `json:"cached_tokens"`
 }
 
-// oaCompletionTokenDetail is the OpenAI breakdown of completion tokens; the
-// reasoning_tokens figure is the only field the library reads.
+// oaCompletionTokenDetail is the completion-token breakdown; reasoning_tokens is the only field read.
 type oaCompletionTokenDetail struct {
 	ReasoningTokens *int `json:"reasoning_tokens"`
 }
@@ -133,9 +120,7 @@ func (u *oaUsage) toUsage() Usage {
 	return out
 }
 
-// toolCallAccumulator reassembles tool calls that arrive in fragments across
-// streaming deltas. OpenAI streams tool calls by index: the first delta for
-// an index carries id/name, and subsequent deltas append argument fragments.
+// toolCallAccumulator reassembles tool calls by index; first delta has id/name, rest append args.
 type toolCallAccumulator struct {
 	byIndex map[int]*oaToolCall
 	order   []int
@@ -221,12 +206,7 @@ func (st *oaStream) emitRemaining(comp *Completion) error {
 	return nil
 }
 
-// onData decodes one SSE payload. Unparseable chunks are tolerated silently;
-// a prompt_progress chunk is forwarded and carries nothing else; usage
-// snapshots are merged newest-wins (never summed) so both the OpenAI
-// single-final-chunk and the xAI usage-on-every-chunk conventions yield the
-// same result; timings snapshots replace each other. A callback error aborts
-// the stream.
+// onData decodes one payload; unparseable chunks ignored, usage newest-wins, timings replace.
 func (st *oaStream) onData(data []byte) error {
 	var chunk oaChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
@@ -238,9 +218,7 @@ func (st *oaStream) onData(data []byte) error {
 	}
 	if chunk.Usage != nil {
 		st.sawData = true
-		// Every report is kept, in order, exactly as sent: which of them
-		// counts -- and whether they are snapshots of one running total or
-		// separate charges -- is the reader's call, not a translator's.
+		// Every usage report is kept in order as sent; which counts is the reader's call, not ours.
 		u := chunk.Usage.toUsage()
 		var raw struct {
 			Usage json.RawMessage `json:"usage"`
@@ -266,10 +244,7 @@ func (st *oaStream) onData(data []byte) error {
 	for _, ch := range chunk.Choices {
 		if ch.Delta.Content != "" {
 			st.sawData = true
-			// Reasoning and content are two separate streams on this layer,
-			// reasoning first, so content starting IS the reasoning block
-			// ending -- the last moment its part can be delivered in the order
-			// it actually occupies.
+			// Reasoning and content are separate streams; content starting IS when the reasoning block ends.
 			if err := st.closeReasoning(); err != nil {
 				return err
 			}

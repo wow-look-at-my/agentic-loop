@@ -301,10 +301,7 @@ func TestFailureRankTokenRateLimitOutranksAnonymousRateLimit(t *testing.T) {
 		header: rateLimitHeaders("0", time.Now().Add(time.Minute), "core"),
 		authed: false,
 	}
-	// The ordering is the whole contract: a rate-limited PAT outranks a
-	// rate-limited anonymous attempt, so the anonymous fallback (which runs
-	// last) can never win the keep-the-best selection and misattribute the
-	// failure to "not one of your configured tokens".
+	// The ordering is the whole contract: a rate-limited PAT outranks the anonymous attempt.
 	assert.Greater(t, failureRank(limited), failureRank(anonLimited),
 		"a rate-limited PAT must outrank a rate-limited anonymous attempt")
 }

@@ -56,8 +56,7 @@ func TestHTTPEmbedderSendsTheModelAndReturnsAVectorPerInput(t *testing.T) {
 	require.Len(t, *got, 1)
 	assert.Equal(t, "text-embed", (*got)[0].Model)
 	assert.Equal(t, []string{"one", "two"}, (*got)[0].Input)
-	// Sent explicitly: a gateway defaulting this to base64 would answer with
-	// strings where the decoder expects numbers.
+	// Sent explicitly: a gateway defaulting this to base64 would break the decoder.
 	assert.Equal(t, "float", (*got)[0].EncodingFormat)
 }
 

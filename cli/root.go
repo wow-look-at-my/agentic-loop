@@ -139,10 +139,7 @@ func store() (session.Store, error) {
 	return session.NewFile(dir)
 }
 
-// answerText is what a completion says, for a surface whose output is text.
-// Reasoning is not part of it: a caller piping cai into something else asked
-// for the answer, and prose about how the model got there would silently
-// become part of their data.
+// answerText is what a completion says; reasoning is excluded so it never silently becomes part of piped data.
 func answerText(comp *client.Completion) string {
 	if comp == nil {
 		return ""

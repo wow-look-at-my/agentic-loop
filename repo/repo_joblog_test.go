@@ -41,8 +41,7 @@ func TestRepoJobLogReturnsTheTailOfALongLogAndSaysSo(t *testing.T) {
 	require.False(t, res.IsError, res.Content)
 	assert.Contains(t, res.Content, fmt.Sprintf("lines 51-%d of %d", jobLogTailLines+50, jobLogTailLines+50))
 	assert.Contains(t, res.Content, "the tail")
-	// The window is what it claims: the first 50 lines are absent, and the
-	// last one is present.
+	// The window is what it claims: the first 50 lines are absent, the last present.
 	assert.NotContains(t, res.Content, "\nline 50\n")
 	assert.Contains(t, res.Content, "line "+strconv.Itoa(jobLogTailLines+50))
 }

@@ -6,27 +6,13 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// streamWriter writes the response document to a connection as the call
-// produces it.
-//
-// Text streams delta by delta, because that is what a reader watches. Every
-// other part is written when it is finished, from OnPart: a thinking block's
-// signature arrives after its text and cannot be added to an element already
-// open, so a document built from deltas alone would say something the
-// completion does not.
-//
-// Nothing is written until the first event, so a call that fails before
-// producing anything is answered with an <error> document instead of an empty
-// <response> that has to carry the failure inside it.
+// streamWriter writes the response document as it runs; nothing is written until the first event.
 type streamWriter struct {
 	w  io.Writer
 	rw *commonai.ResponseWriter
-	// sent counts the parts written from OnPart, so finish can write the tail
-	// of the completion that no event announced -- a block cut off mid-stream.
+	// sent counts the parts written from OnPart, so finish can write the tail of the completion.
 	sent int
-	// pending is the text streamed into the open <text> element, so the
-	// finished TextPart that follows is recognized as the same one rather than
-	// written twice.
+	// pending is text streamed into the open <text> element, so the finished TextPart is the same one.
 	pending string
 	role    commonai.Role
 }

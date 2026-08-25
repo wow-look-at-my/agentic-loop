@@ -8,10 +8,7 @@ import (
 	"github.com/wow-look-at-my/xml-validator/validator"
 )
 
-// Decoding goes through xml-validator rather than encoding/xml for two
-// reasons: it is the parser that accepts `&#0;`, and it is the one that can
-// check a document against the schema. Everything that arrives from outside is
-// validated before anything acts on it -- see Validate.
+// Decoding goes through xml-validator, which accepts &#0; and can check against the schema.
 
 // DecodeRequest reads a <request> document.
 func DecodeRequest(data []byte) (Request, error) {
@@ -34,9 +31,7 @@ func DecodeConversation(data []byte) (string, Request, error) {
 	return id, req, err
 }
 
-// DecodeError reads a standalone <error> document back into the error it
-// describes, so a failure keeps its kind and its status across a transport
-// instead of arriving as a string a caller has to match on.
+// DecodeError reads a standalone <error> document back into the error it describes.
 func DecodeError(data []byte) error {
 	root, err := parseRoot(data, elError)
 	if err != nil {
@@ -62,10 +57,7 @@ func DecodeConversationIDs(data []byte) ([]string, error) {
 	return ids, nil
 }
 
-// DecodeResponse reads a <response> document. A document whose root never
-// closed is a stream that was cut: the parts that did arrive come back with an
-// error saying so, because throwing away output the caller already watched
-// arrive helps nobody.
+// DecodeResponse reads a <response> document; a cut stream returns the parts with an error.
 func DecodeResponse(data []byte) (*Completion, error) {
 	root, err := parseRoot(data, elResponse)
 	if err != nil {
@@ -481,9 +473,7 @@ func dialectOfNS(ns string) (Dialect, bool) {
 	return DialectAuto, false
 }
 
-// isCore reports whether an element is in the core vocabulary. An element with
-// no namespace counts: a document that declares no default namespace is still
-// readable, and the schema is what decides whether it was valid.
+// isCore reports whether an element is in the core vocabulary; no namespace counts as core.
 func isCore(el *validator.Element) bool {
 	return el.Namespace == NS || el.Namespace == ""
 }
@@ -498,9 +488,7 @@ func attrOf(el *validator.Element, name string) string {
 	return ""
 }
 
-// optBoolOf reads a tri-state boolean attribute. An ABSENT attribute is nil
-// (unknown), which is a different answer from an explicit "false" — the caller
-// resolves unknown to whatever the cautious value is for that fact.
+// optBoolOf reads a tri-state boolean; an absent attribute is nil (unknown), not false.
 func optBoolOf(el *validator.Element, name string) *bool {
 	for _, a := range el.Attrs {
 		if a.Local == name && (a.Namespace == "" || a.Namespace == NS) {

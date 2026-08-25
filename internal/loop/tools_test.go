@@ -106,8 +106,7 @@ func TestToolsSubset(t *testing.T) {
 	f := &fakeExec{tools: []ToolDecl{{Name: "one"}, {Name: "two"}, {Name: "three"}}}
 	reg := f.registry()
 
-	// The order is the registry's, not the caller's: the advertised list is
-	// part of the prompt-cache prefix, so it must not depend on argument order.
+	// The order is the registry's, not the caller's: it must not depend on argument order.
 	assert.Equal(t, []string{"one", "two"}, reg.Subset([]string{"two", "one", "missing"}).Names())
 	assert.Empty(t, reg.Subset(nil))
 	assert.Empty(t, reg.Subset([]string{"missing"}))

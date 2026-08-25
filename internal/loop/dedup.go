@@ -7,35 +7,13 @@ import (
 	"sync"
 )
 
-// UnchangedPrefix labels a collapsed tool result: the tool's output this turn
-// was byte-identical to an earlier call in the same conversation, so instead
-// of re-dumping the full text the loop feeds back a short marker that points
-// the model at the earlier result already in context.
+// UnchangedPrefix labels a tool result byte-identical to an earlier call in the conversation.
 const UnchangedPrefix = "[unchanged]"
 
-// maxDedupEntries bounds the deduper's internal map. FIFO eviction drops the
-// oldest key when the cap is reached, so a long-lived deduper (one per Run,
-// reused across turns) cannot grow without bound even when a model calls many
-// distinct tools with many distinct outputs.
+// maxDedupEntries bounds the deduper's map; FIFO eviction drops the oldest key at the cap.
 const maxDedupEntries = 512
 
-// OutputDeduper collapses byte-identical, read-only tool results into a short
-// marker so the model never re-reads a huge output it already saw this
-// conversation. Only read-only tools are eligible, and an IsError result is
-// never collapsed -- a marker must never hide a failure.
-//
-// The deduper is keyed by tool name plus the SHA-256 of the result content:
-// two different searches that both return "no matches" are genuinely the same
-// information, so they collapse regardless of the differing arguments that
-// produced them. The first occurrence of a (tool, content) pair still returns
-// the full content -- dedup can only shrink repeats -- and each repeat returns
-// the marker with a running occurrence count.
-//
-// The map is bounded (see maxDedupEntries): when it exceeds the cap the oldest
-// entries are evicted first. One OutputDeduper should be created per Run call
-// (or per conversation, when reused across turns) and Reset when earlier tool
-// outputs leave the model's context, since a marker is only meaningful while
-// the full output it references is still in the active thread.
+// OutputDeduper collapses byte-identical read-only tool results into a short marker.
 type OutputDeduper struct {
 	mu   sync.Mutex
 	keys []string
@@ -47,9 +25,7 @@ func NewOutputDeduper() *OutputDeduper {
 	return &OutputDeduper{seen: map[string]int{}}
 }
 
-// Reset clears all remembered outputs, so the next call to each tool counts as
-// its first occurrence again. Call it when earlier tool outputs leave the
-// model's context (compaction, a rewound thread, a new conversation).
+// Reset clears remembered outputs; call it when earlier outputs leave the model's context.
 func (d *OutputDeduper) Reset() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -57,17 +33,7 @@ func (d *OutputDeduper) Reset() {
 	d.seen = make(map[string]int, len(d.seen))
 }
 
-// Collapse returns the content to feed back to the model for one tool result.
-// The first time a (tool, byte-identical content) pair is seen it returns
-// result.Content unchanged with deduped=false; each repeat returns the
-// [unchanged] marker with deduped=true and the occurrence count incremented
-// (2, 3, ...).
-//
-// It takes the tool's DECLARATION, not just its name, because what may
-// collapse is this type's decision and not each caller's: a tool that is not
-// read-only never collapses (a marker must never hide a side effect), nor does
-// an IsError result (it must never hide a failure). A caller re-deriving that
-// rule is a second copy of it that nothing keeps in agreement.
+// Collapse returns the content for one result; first occurrence unchanged, repeats get the marker.
 func (d *OutputDeduper) Collapse(tool ToolDecl, result ToolResult) (content string, deduped bool) {
 	if !tool.Readonly || tool.Name == "" || result.IsError {
 		return result.Content, false
@@ -92,15 +58,7 @@ func (d *OutputDeduper) Collapse(tool ToolDecl, result ToolResult) (content stri
 	return result.Content, false
 }
 
-// unchangedMarker builds the stable marker text for the n-th occurrence
-// (n = 2 for the first repeat) of an unchanged read-only tool output.
-//
-// It states what is known — that the OUTPUT repeated — and never that the
-// inputs did. The deduper keys on tool plus content hash, deliberately not on
-// arguments, so identical output is also what a tool IGNORING an argument
-// produces: three differently-worded queries once collapsed here because the
-// tool read none of them, and a marker asserting the caller had repeated
-// itself sent the model looking for a fault in itself instead of in the call.
+// unchangedMarker states the OUTPUT repeated, never that the inputs did.
 func unchangedMarker(tool string, n int) string {
 	return fmt.Sprintf("%s The output of %s is byte-identical to an earlier call in this conversation (repeat #%d). Nothing has changed — reference that earlier result rather than re-reading it. If you did change the arguments, the difference made no difference: either it genuinely does not affect the result, or this tool ignores the field you changed — check its schema before trying a third phrasing.",
 		UnchangedPrefix, tool, n)

@@ -82,8 +82,7 @@ func TestPartsNoEventAnnouncedAreStillWritten(t *testing.T) {
 			Timings:    []commonai.Timings{{PredictedN: 2, PredictedMS: 40}},
 			StopReason: commonai.StopToolUse,
 		},
-		// One text delta, and nothing else: the tool call and the usage have to
-		// come from the completion at the end.
+		// One text delta, and nothing else: the tool call and usage come from the completion at the end.
 		emit: func(ev *commonai.StreamEvents) error { return ev.OnText("written once") },
 	}
 	data := ask(t, Config{Provider: p}, askDoc(t, "hi"))
@@ -177,8 +176,7 @@ func TestTurnOverridesTheConversationsDefaults(t *testing.T) {
 	assert.Equal(t, 500, p.reqs[1].MaxTokens)
 	assert.Equal(t, "k2", p.reqs[1].CacheKey)
 	require.Len(t, p.reqs[1].Tools, 1)
-	// A number crosses the document as the literal that was written, not as a
-	// float that has been through a conversion nobody asked for.
+	// A number crosses the document as the literal that was written, not as a float.
 	assert.Equal(t, "0.5", fmt.Sprint(p.reqs[1].Extra["temperature"]))
 
 	assert.Equal(t, "base", p.reqs[2].Model, "the override was for its own turn only")

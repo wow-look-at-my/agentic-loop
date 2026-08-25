@@ -15,9 +15,7 @@ import (
 	"testing"
 )
 
-// memFolder is an in-memory folder: a flat map of relative path -> content,
-// mounted under one prefix. It embeds BaseProvider so the registry injects
-// its path automatically.
+// memFolder is an in-memory folder: a flat map of relative path -> content under one prefix.
 type memFolder struct {
 	*BaseProvider
 	files    map[string]string
@@ -519,8 +517,7 @@ func TestCaseInsensitiveMatchPreservesDisplayCasing(t *testing.T) {
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "content")
 
-	// Mixed-case query also routes to the same provider (the error is
-	// about the file, not the mount — proving the provider was found).
+	// Mixed-case query also routes to the same provider (the error is about the file, not the mount).
 	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/REPOS/FILE.GO"}`)
 	assert.True(t, res.IsError)
 	assert.NotContains(t, res.Content, "not available")

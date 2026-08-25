@@ -21,34 +21,11 @@ type Rates struct {
 	Completion float64
 	CacheRead  float64
 	CacheWrite float64
-	// CacheWrite1h is the one-hour cache-write tier, published by the model
-	// list and NOT used by Cost: Usage.CacheWriteTokens is a single integer
-	// with no tier in it, so nothing here can tell the two apart. The library
-	// places only five-minute breakpoints, so CacheWrite is the right rate for
-	// every call it makes. The field is carried rather than dropped because a
-	// host that grows one-hour breakpoints needs it, and inventing it later
-	// from a multiplier is the guess this avoids.
+	// CacheWrite1h is the one-hour cache-write tier, published but not used by Cost (no tier in the usage tokens).
 	CacheWrite1h float64
 }
 
-// Cost prices one model call in USD.
-//
-// Three things the obvious formula gets wrong, each worth real money:
-//
-//   - PromptTokens ALREADY CONTAINS the cached tokens. Every dialect normalizes
-//     to that. Pricing the whole prompt at Prompt and then adding the cache
-//     terms bills the cached tokens twice, and cache reads are routinely 60-90%
-//     of a long session's prompt.
-//   - Cache-write tokens are prompt tokens charged at the WRITE rate, not at
-//     the write rate on top of the input rate.
-//   - Reasoning tokens are already inside CompletionTokens on both dialects, so
-//     they are not a term here at all. Adding one roughly doubles the price of
-//     a reasoning-heavy turn.
-//
-// A provider that reports more cached tokens than prompt tokens is
-// inconsistent. The uncached term clamps at zero rather than going negative;
-// Anomalous reports the same condition so a host can say so out loud instead of
-// quietly billing less than the invoice.
+// Cost prices one model call in USD; cached tokens are already in PromptTokens, so cache terms bill separately.
 func (r Rates) Cost(u Usage) float64 {
 	read, write := cacheCounts(u)
 	uncached := u.PromptTokens - read - write
@@ -61,9 +38,7 @@ func (r Rates) Cost(u Usage) float64 {
 		float64(u.CompletionTokens)*r.Completion
 }
 
-// Anomalous reports whether a usage record prices something it cannot: more
-// cached tokens than there were prompt tokens. Cost clamps; this is how a host
-// finds out it clamped.
+// Anomalous reports more cached tokens than prompt tokens; Cost clamps, and this is how a host finds out.
 func Anomalous(u Usage) bool {
 	read, write := cacheCounts(u)
 	return read+write > u.PromptTokens
@@ -134,24 +109,10 @@ func ratesOf(p modelListPricing) (Rates, bool) {
 	return r, true
 }
 
-// maxPlausiblePerTokenUSD bounds a real chat-completion price, USD per
-// token. Nothing on the market approaches this — the priciest reasoning
-// models top out under $1,000 per million tokens, i.e. $0.001 per token —
-// so it exists only to tell a genuine per-token wire value from one a
-// provider already expressed per million tokens.
+// maxPlausiblePerTokenUSD bounds a real per-token price, telling a per-token value from one already per million.
 const maxPlausiblePerTokenUSD = 0.001
 
-// parseRate reads one published rate, in USD per token. A negative one is
-// refused rather than clamped: it is a document nobody should be billing
-// from.
-//
-// Most model lists follow OpenRouter's convention and publish USD per TOKEN
-// ("0.000015"). Not every one does: crof.ai's own /v1/models reports "0.35"
-// for a model its own pricing page prices at $0.35 per million tokens —
-// already per million, not per token. Reading that as per-token billed a
-// real turn a millionfold high. A value that would cross
-// maxPlausiblePerTokenUSD under the per-token reading is already per
-// million and is rescaled instead.
+// parseRate reads a published rate in USD per token; a value over maxPlausiblePerTokenUSD is per million and rescaled.
 func parseRate(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {

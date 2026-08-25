@@ -11,10 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// "CI failed" is the whole of what a user usually says, so a report that
-// answers it with "build: failure" only renames the question. These pin that
-// what=status carries the REASON, that anything it could not explain is named
-// rather than dropped, and that what=check_run is the drill-down.
+// These pin that what=status carries the REASON, and what=check_run is the drill-down.
 
 // checkRun builds one check-run fixture.
 func checkRun(id int, name, conclusion string, extra jsontest.Obj) jsontest.Obj {

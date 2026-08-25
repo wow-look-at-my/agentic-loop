@@ -7,25 +7,10 @@ import (
 	"strings"
 )
 
-// The Actions-API account of a commit's CI, used when the Checks API cannot be
-// read.
-//
-// The two APIs describe the same GitHub Actions runs behind two separate
-// permissions: `checks` for /commits/{sha}/check-runs, `actions` for
-// /actions/runs. A fine-grained personal access token cannot hold the first —
-// "Checks" is not in the repository-permission list a PAT is built from, so
-// the Checks API answers one with 403 and there is no setting that changes
-// that. Reporting only "check runs: unavailable" therefore left every
-// PAT-backed reader knowing CI was red with no way to find out why, which is
-// the whole question. Workflow runs, their jobs, and each failed job's failed
-// steps answer it through `actions`, which a PAT can hold.
-//
-// This is a fallback, not a second opinion: it runs only when the check-runs
-// read failed, so a working Checks API costs nothing extra.
+// The Actions-API account of a commit's CI, used when the Checks API cannot be read.
 
 const (
-	// actionsRunLimit bounds how many workflow runs for one commit are
-	// reported. Several workflows on one push is normal; fifty is not.
+	// actionsRunLimit bounds how many workflow runs for one commit are reported.
 	actionsRunLimit = 5
 	// actionsJobLimit bounds the jobs listed per run.
 	actionsJobLimit = 30
@@ -163,9 +148,7 @@ func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWork
 			fmt.Fprintf(&b, "      step %d failed: %s (%s)\n", step.Number, nameOrUnnamed(step.Name), step.Conclusion)
 			shown++
 		}
-		// Naming the step that died renames the question. What the reader came
-		// for -- the compiler error, the failing assertion -- is in the log,
-		// and this is the only place the id needed to fetch it is on screen.
+		// Naming the step that died renames the question; the log has the real error.
 		if job.ID != 0 {
 			fmt.Fprintf(&b, "      %s {\"what\":\"job_log\",\"org\":%q,\"repo\":%q,\"job_id\":%d} gives this job's full log.\n",
 				RepoReadToolName, org, repo, job.ID)

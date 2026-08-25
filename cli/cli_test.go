@@ -45,9 +45,7 @@ func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	// One process runs every case, so each invocation starts from the defaults
-	// -- otherwise a flag one case passed is still set for the next, and a test
-	// for a MISSING flag passes because a previous case supplied it.
+	// One process runs every case, so each invocation starts from the defaults; a prior case's flag must not leak.
 	resetFlags()
 	root.SetOut(&out)
 	root.SetErr(&errOut)
@@ -57,14 +55,7 @@ func run(t *testing.T, stdin string, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// resetFlags puts the per-execution state back: the flag variables, and the
-// context cobra caches on each command.
-//
-// The context matters as much as the flags here. Cobra fills a command's ctx
-// only when it is nil (command.go, ExecuteC), so a command executed a second
-// time in the same process keeps the FIRST run's context -- and a test that
-// cancels its own context then waits forever for a serve that never saw it.
-// One process runs every case here; a real cai executes the tree once.
+// resetFlags puts the per-execution state back: the flag variables, and the context cobra caches on each command.
 func resetFlags() {
 	flagEndpoint, flagDialect, flagModel, flagSystem = "", "", "", ""
 	flagMaxTok, flagTemp, flagImages, flagSessions = 0, -1, nil, ""

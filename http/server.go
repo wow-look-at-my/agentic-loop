@@ -17,8 +17,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/session"
 )
 
-// maxBody caps an inbound document. A model call's transcript is large but
-// bounded; anything past this is not a conversation.
+// maxBody caps an inbound document; anything past this is not a conversation.
 const maxBody = 32 << 20
 
 // contentType is what every document is served and accepted as.
@@ -26,15 +25,9 @@ const contentType = "application/xml; charset=utf-8"
 
 // Config builds a Server.
 type Config struct {
-	// Provider runs the calls and is required.
-	//
-	// It is the format's own Provider, not the Go client's: what the document
-	// says the provider reported has to be what the provider reported, and a
-	// server that folded the usage reports on the way out would be answering
-	// with its own arithmetic instead.
+	// Provider runs the calls and is required; it is the format's own Provider, not the Go client's.
 	Provider commonai.Provider
-	// Store holds conversations for the stateful endpoints. Nil serves the
-	// stateless endpoint only, and answers the rest with 501.
+	// Store holds conversations for the stateful endpoints; nil serves the stateless one only.
 	Store session.Store
 }
 
@@ -179,10 +172,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request, req commonai.Reques
 	stream.finish(comp, err)
 
 	if store != nil && comp != nil {
-		// A turn the caller has already seen belongs in the transcript even
-		// when the call failed partway: the next turn has to know what was
-		// said, and a caller cannot append it themselves without guessing what
-		// arrived.
+		// A turn the caller has already seen belongs in the transcript even when the call failed partway.
 		_, _ = store.Append(id, comp.Message)
 	}
 }
@@ -245,9 +235,7 @@ func overlay(stored, turn commonai.Request) commonai.Request {
 	return out
 }
 
-// writeError answers with an <error> document and the status that goes with
-// it. It is only ever used before any of the answer has been written; once the
-// response document is open, a failure is appended inside it instead.
+// writeError answers with an <error> document and the status that goes with it.
 func writeError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(statusFor(err))
@@ -271,14 +259,11 @@ func statusFor(err error) int {
 	case commonai.IsBadRequest(err):
 		return http.StatusBadRequest
 	case commonai.ErrorKind(err) == commonai.ErrorKindCanceled:
-		// The caller went away, or their deadline did. Nothing here failed,
-		// and nothing is owed a body.
+		// The caller went away, or their deadline did; nothing here failed.
 		return httpStatusClientClosed
 	}
 	return http.StatusInternalServerError
 }
 
-// httpStatusClientClosed is nginx's 499, which has no net/http constant. It is
-// the only status that says "the caller stopped waiting", and answering 500
-// would blame the server for the caller's own cancellation.
+// httpStatusClientClosed is nginx's 499, which has no net/http constant; answering 500 would blame the server.
 const httpStatusClientClosed = 499

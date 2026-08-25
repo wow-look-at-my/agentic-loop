@@ -1,10 +1,6 @@
 package commonai
 
-// An image is held the way it was supplied -- inline bytes with a media type,
-// or a URI -- and it is never converted between the two. The format cannot
-// fetch a URL (that would be this library making a request the caller did not
-// ask for, to a host the caller did not name), and it cannot invent a URL for
-// bytes. So a dialect that cannot express the form it was given says so.
+// An image is held as supplied -- inline bytes or a URI -- and never converted between the two.
 
 // dataURI is an inline image as the data: URI the OpenAI dialects take.
 func (i ImagePart) dataURI() string {
@@ -14,8 +10,7 @@ func (i ImagePart) dataURI() string {
 // inline reports whether the image carries its own bytes.
 func (i ImagePart) inline() bool { return i.Data != "" && i.MediaType != "" }
 
-// imageRef is the reference form of an image for a dialect that takes a URI:
-// the supplied URI, or a data: URI built from the supplied bytes.
+// imageRef is the reference form of an image: the supplied URI, or a data: URI.
 func imageRef(d Dialect, i ImagePart) (string, error) {
 	switch {
 	case i.Src != "":

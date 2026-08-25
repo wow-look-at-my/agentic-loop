@@ -18,9 +18,7 @@ import (
 // an allowed_tools name that resolves to nothing — is a recoverable error
 // tool result that teaches the valid shape, never a Go error.
 func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
-	// A body nobody can parse is the one failure still answered synchronously
-	// even in async mode: there is nothing to launch, and the model should
-	// learn that from the call it just made.
+	// A body nobody can parse is the one failure still answered synchronously.
 	var in subagentArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return agentic.ToolResult{Content: "invalid run_subagent arguments: " + err.Error(), IsError: true}, nil
@@ -29,10 +27,7 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (agent
 		return e.run(ctx, in), nil
 	}
 
-	// Asynchronous: register the run, hand back a receipt, and let the
-	// goroutine report through the registry. Every other failure -- an
-	// unconfigured model, a misused argument -- reaches the model as that
-	// report, one delivery later, rather than as this call's result.
+	// Asynchronous: register the run, hand back a receipt, and report through the registry.
 	callID := agentic.ToolCallID(ctx)
 	if callID == "" {
 		callID = e.cfg.Runs.NewCallID()
@@ -70,17 +65,13 @@ func (e *subagentTool) launched(ctx context.Context, callID string, in subagentA
 // share_context selection, an allowed_tools name that resolves to nothing — is
 // a recoverable error tool result that teaches the valid shape.
 func (e *subagentTool) run(ctx context.Context, in subagentArgs) agentic.ToolResult {
-	// Serialize per the shared Gate. Acquisition is cancellable so a caller
-	// disconnect (or a stopped turn) while waiting returns promptly. The
-	// asynchronous path takes the slot itself, BEFORE marking the run running,
-	// so a queued launch reads as queued rather than as an unexplained delay.
+	// Serialize per the shared Gate; acquisition is cancellable so a caller disconnect returns promptly.
 	release, err := e.cfg.Gate.Acquire(ctx)
 	if err != nil {
 		return agentic.ToolResult{Content: "run_subagent was cancelled before it could start: " + err.Error(), IsError: true}
 	}
 	defer release()
-	// The synchronous path has no registry to report usages through; the host
-	// sees each nested turn's Completion on the SubagentActivityTurnEnd step.
+	// The synchronous path has no registry; the host sees each turn's Completion on TurnEnd.
 	res, _ := e.runGated(ctx, in)
 	return res
 }
@@ -97,11 +88,7 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 		return agentic.ToolResult{Content: "run_subagent requires a non-empty prompt describing the task", IsError: true}, nil
 	}
 
-	// Pick the sub-agent's toolset. Default: the read-only subset only. When
-	// the orchestrator pins it with allowed_tools, select that subset from the
-	// FULL toolset instead — so an explicitly-named non-read-only tool IS
-	// granted. An unresolved name is a recoverable tool error (it lists the
-	// valid tools) so the model can correct the call.
+	// Pick the sub-agent's toolset: the read-only subset, or allowed_tools' pick from the full set.
 	subTools := e.readonly
 	granted := false
 	if len(in.AllowedTools) > 0 {
@@ -112,9 +99,7 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 		subTools, granted = e.cfg.Tools.Subset(keep), true
 	}
 
-	// Build the optional parent-context block the orchestrator asked to share
-	// and fold it into the task. A bad selection (e.g. last_n without a count)
-	// is a recoverable tool error so the model can correct the call.
+	// Build the optional parent-context block the orchestrator asked to share.
 	block, brief, errMsg := e.buildContextBlock(ctx, in)
 	var spent []agentic.Usage
 	if brief != nil {
@@ -138,17 +123,11 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 	if runErr != nil {
 		return agentic.ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}, spent
 	}
-	// Not just the final text: a run that ended by emitting a tool-call
-	// envelope as TEXT never answered, and passing that up as findings is the
-	// one failure the orchestrator cannot detect for itself.
+	// Not just the final text: a run that ended by emitting a tool-call envelope never answered.
 	return subagentReport(res.Final.Content), spent
 }
 
-// unavailableTool is what a sub-agent is told when it names a tool this run
-// does not offer. A bare "unknown tool" would be misleading: the name usually
-// IS a real tool of the parent, withheld either because it modifies state or
-// because the orchestrator pinned the run to a smaller set -- and the
-// sub-agent can only stop asking for it if it is told which.
+// unavailableTool tells a sub-agent why a tool it named is not offered this run.
 func (e *subagentTool) unavailableTool(granted bool) func(string) string {
 	if granted {
 		return func(name string) string { return "tool not in the sub-agent's allowed set: " + name }
@@ -252,9 +231,7 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 				Content: text,
 			})
 		}
-		// What the turn cost, while the run is still going. A sub-agent
-		// answers in text, so this and the report's Usages are the only
-		// routes out; a host without them charges every sub-agent as free.
+		// What the turn cost, while the run is still going.
 		act(SubagentActivity{
 			CallID:     callID,
 			Kind:       SubagentActivityTurnEnd,
@@ -266,9 +243,7 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 	cfg.Events.OnToolCall.Subscribe(&c.toolCall)
 	cfg.Events.OnToolResult.Subscribe(&c.toolResult)
 	cfg.Events.OnTurnEnd.Subscribe(&c.turnEnd)
-	// Keep c alive for the life of cfg: the weak pointers in the Event
-	// fields reference &c.toolCall etc., and c must not be collected until
-	// the run is done.
+	// Keep c alive for the life of cfg, since the Event fields hold weak pointers.
 	cfg.KeepAlive = c
 	return cfg
 }
@@ -287,12 +262,7 @@ func thinkingText(blocks []agentic.ThinkingBlock) string {
 	return strings.Join(parts, "\n")
 }
 
-// approveAll is the nested run's Approver: a tool the sub-agent holds is
-// authorized by construction (read-only by default, or explicitly granted via
-// allowed_tools), so nothing is gated — matching the source loop, which
-// executed sub-agent tool calls without consulting the approval flow. It is
-// also what keeps an explicitly granted non-Readonly tool runnable, now that a
-// nil Approver would refuse one.
+// approveAll is the nested run's Approver: nothing is gated, since held tools are already authorized.
 type approveAll struct{}
 
 // Ask always allows.

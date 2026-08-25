@@ -51,8 +51,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 	comp, callErr := p.Complete(cmd.Context(), req, printing(cmd.OutOrStdout()))
 	if comp != nil {
-		// What the caller has already seen belongs in the transcript even when
-		// the call failed partway: the next turn has to know what was said.
+		// What the caller has already seen belongs in the transcript even when the call failed partway.
 		if _, err := st.Append(chatSession, comp.Message); err != nil {
 			return fmt.Errorf("keeping the answer: %w", err)
 		}

@@ -36,13 +36,11 @@ type (
 	Dialect              = commonai.Dialect
 	Param                = commonai.Param
 
-	// Rates is what one model charges, per token, and ModelList is the document
-	// it comes out of — the same one that names the dialect.
+	// Rates is what one model charges per token; ModelList is the document it comes out of.
 	Rates     = commonai.Rates
 	ModelList = commonai.ModelList
 
-	// RetryPolicy and RateLimiter are the extras' policies, reachable here
-	// because ProviderConfig carries them.
+	// RetryPolicy and RateLimiter are the extras' policies, reachable here via ProviderConfig.
 	RetryPolicy = extras.RetryPolicy
 	RateLimiter = extras.RateLimiter
 )
@@ -94,11 +92,7 @@ var (
 	IsBadRequest      = commonai.IsBadRequest
 )
 
-// Error constructors, for a caller building a layer of its own on top -- a
-// loop, a decorating Provider, a callback that fails. They exist because
-// IsTransient reads the CONCRETE type: a caller's own marker for "the sink
-// failed" or "I refused to send this" would be classified transient and
-// re-sent, which is the opposite of what it means.
+// Error constructors; a caller's own marker for refusal would be classified transient and re-sent.
 var (
 	BadRequest    = commonai.BadRequest
 	CallbackError = commonai.CallbackError

@@ -15,8 +15,7 @@ func TestRunOnStopInjectsAndContinues(t *testing.T) {
 	}}
 	sys := &MessageQueue{}
 	events := Events{}
-	// A host re-arms while its own policy says to, and stops when it does not.
-	// The loop asks every time; deciding when to stop asking is the host's.
+	// A host re-arms while its policy says to; the loop asks every time, the host decides when to stop.
 	asked := 0
 	stopCb := func(ev StopEvent) error {
 		asked++

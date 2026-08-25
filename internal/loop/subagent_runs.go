@@ -8,25 +8,9 @@ import (
 	"time"
 )
 
-// Sub-agent runs are ASYNCHRONOUS: run_subagent returns as soon as the
-// sub-agent is launched, so the orchestrator can launch several at once and
-// keep working while they run. SubagentRuns is the registry that makes the
-// promise in that launch receipt true — it is the one place that knows a
-// sub-agent is outstanding, and Run consults it before finishing a turn.
-//
-// The two halves:
-//
-//   - The run_subagent tool calls Launch, MarkRunning and Complete from the
-//     goroutine it spawns per sub-agent.
-//   - The loop calls Pending/Collect: a turn that would otherwise end while
-//     sub-agents are still out instead waits for the next report and delivers
-//     it into the conversation, which is what "you will be notified" means.
-//
-// One registry per turn (SubagentConfig.Runs; a nil one makes run_subagent
-// synchronous -- it blocks until the sub-agent answers).
+// Sub-agent runs are ASYNCHRONOUS: run_subagent returns as soon as the sub-agent is launched.
 
-// SubagentState is the lifecycle state of one launched sub-agent, as reported
-// to the browser on the "subagent_update" event.
+// SubagentState is the lifecycle state of one launched sub-agent.
 type SubagentState string
 
 const (
@@ -39,15 +23,11 @@ const (
 	// SubagentFailed means the run ended in an error (a failed model call, or
 	// the library's recoverable misuse text — both reach the orchestrator).
 	SubagentFailed SubagentState = "error"
-	// SubagentAbandoned means the turn ended (its cap was reached) while the
-	// sub-agent was still running, so its report will never be delivered. It
-	// is reported rather than dropped quietly — an abandoned run cost real
-	// tokens and answered nothing.
+	// SubagentAbandoned means the turn ended while the sub-agent was still running.
 	SubagentAbandoned SubagentState = "abandoned"
 )
 
-// SubagentReport is one finished sub-agent's result, waiting to be delivered
-// into the parent conversation.
+// SubagentReport is one finished sub-agent's result, waiting to be delivered.
 type SubagentReport struct {
 	// CallID is the parent run_subagent tool call that launched it, which is
 	// also the id the live-activity telemetry is stamped with.
@@ -57,14 +37,7 @@ type SubagentReport struct {
 	// Text is the sub-agent's final report (or the error text).
 	Text    string
 	IsError bool
-	// Usages is what this sub-agent spent: one entry per model call the nested
-	// run made, in order, plus the share_context=summary briefing when there was
-	// one. Deliberately not summed, for the same reason Result.Usages is not --
-	// successive turns re-send an overlapping prompt.
-	//
-	// A sub-agent answers its parent in text, so without this a host's session
-	// cost silently omitted every sub-agent, and money that was never emitted
-	// cannot be recovered afterwards.
+	// Usages is what this sub-agent spent: one entry per model call, in order.
 	Usages []Usage
 	// Duration is wall-clock from launch to report. Reported to the browser
 	// only — the delivered text stays deterministic.
@@ -80,9 +53,7 @@ type subagentRun struct {
 	startedAt time.Time
 }
 
-// SubagentUpdate is one lifecycle change, delivered to the callback
-// NewSubagentRuns was given. It is transient telemetry: a host renders it, and
-// it never re-enters any model's context.
+// SubagentUpdate is one lifecycle change; transient telemetry, never in a model's context.
 type SubagentUpdate struct {
 	CallID string
 	Label  string
@@ -110,21 +81,15 @@ type SubagentRuns struct {
 	mu sync.Mutex
 	// active holds runs that have not reported yet, keyed by call id.
 	active map[string]*subagentRun
-	// ready holds reports that have arrived but not yet been delivered into
-	// the conversation, oldest first.
+	// ready holds arrived reports not yet delivered into the conversation, oldest first.
 	ready []SubagentReport
-	// signal is a capacity-1 notification channel: Complete pokes it, Collect
-	// waits on it. A non-blocking send is enough because Collect always
-	// re-reads the whole ready slice under the lock.
+	// signal is a capacity-1 notification channel: Complete pokes it, Collect waits.
 	signal chan struct{}
-	// seq numbers the ids minted for backends that assign none, so two
-	// launches in one turn can never collide.
+	// seq numbers ids for backends that assign none, so two launches never collide.
 	seq int
 }
 
-// nextID mints an id for a launch whose tool call carried none. A backend that
-// assigns no tool_call id is rare but real, and two sub-agents sharing an id
-// would report over each other.
+// nextID mints an id for a launch whose tool call carried none.
 func (r *SubagentRuns) nextID() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -132,15 +97,10 @@ func (r *SubagentRuns) nextID() string {
 	return "subagent_" + strconv.Itoa(r.seq)
 }
 
-// NewCallID mints a fresh, unique sub-agent call id. It is the exported
-// counterpart of nextID for hosts that launch a run outside this package
-// (the subagent tool package) without a tool-call id to borrow.
+// NewCallID mints a fresh, unique sub-agent call id; exported counterpart of nextID.
 func (r *SubagentRuns) NewCallID() string { return r.nextID() }
 
-// NewSubagentRuns returns an empty registry. onUpdate receives one
-// SubagentUpdate per lifecycle change (nil = no telemetry); it must be safe
-// for concurrent use, since launches report from their own goroutines while
-// the turn's own events are still being written.
+// NewSubagentRuns returns an empty registry; onUpdate gets one update per change.
 func NewSubagentRuns(onUpdate func(SubagentUpdate)) *SubagentRuns {
 	return &SubagentRuns{
 		onUpdate: onUpdate,
@@ -217,9 +177,7 @@ func (r *SubagentRuns) Complete(callID, text string, isErr bool, usages []Usage)
 	}
 }
 
-// Pending reports how many sub-agents are unfinished or have reported without
-// being delivered yet. Run uses it to decide whether a turn that produced no
-// tool calls may actually end.
+// Pending reports how many sub-agents are unfinished or undelivered.
 func (r *SubagentRuns) Pending() int {
 	if r == nil {
 		return 0
@@ -229,9 +187,7 @@ func (r *SubagentRuns) Pending() int {
 	return len(r.active) + len(r.ready)
 }
 
-// Running reports how many sub-agents are still executing (nothing delivered
-// can bring them back). It is what the delivery message tells the model is
-// still outstanding.
+// Running reports how many sub-agents are still executing.
 func (r *SubagentRuns) Running() int {
 	if r == nil {
 		return 0
@@ -241,10 +197,7 @@ func (r *SubagentRuns) Running() int {
 	return len(r.active)
 }
 
-// Collect blocks until at least one sub-agent has reported, then returns EVERY
-// report ready at that moment (so several finishing together cost one delivery,
-// not one each). It returns ctx.Err() if the turn is cancelled first, and nil,
-// nil when nothing is outstanding at all.
+// Collect blocks until a sub-agent reports, then returns every report ready then.
 func (r *SubagentRuns) Collect(ctx context.Context) ([]SubagentReport, error) {
 	if r == nil {
 		return nil, nil
@@ -270,10 +223,7 @@ func (r *SubagentRuns) Collect(ctx context.Context) ([]SubagentReport, error) {
 	}
 }
 
-// Take drains the reports that have already arrived without waiting for the
-// ones still running. It is the capped-final-turn path: there is no turn left
-// to consume a delivery, so what is in hand is delivered and nothing is waited
-// for.
+// Take drains arrived reports without waiting; the capped-final-turn path.
 func (r *SubagentRuns) Take() []SubagentReport {
 	if r == nil {
 		return nil
@@ -285,10 +235,7 @@ func (r *SubagentRuns) Take() []SubagentReport {
 	return out
 }
 
-// CancelRemaining marks every still-running sub-agent abandoned and returns
-// how many there were. The runs themselves stop when the turn's context is
-// cancelled; this is what makes their loss visible — in the columns, and in
-// the count the delivery message states.
+// CancelRemaining marks every still-running sub-agent abandoned and returns the count.
 func (r *SubagentRuns) CancelRemaining() int {
 	if r == nil {
 		return 0
@@ -306,8 +253,7 @@ func (r *SubagentRuns) CancelRemaining() int {
 	return len(stranded)
 }
 
-// emit hands one lifecycle update to the host. Telemetry is best-effort, like
-// the activity steps: a host that does not listen never fails a sub-agent.
+// emit hands one lifecycle update to the host; telemetry is best-effort.
 func (r *SubagentRuns) emit(u SubagentUpdate) {
 	if r.onUpdate == nil {
 		return

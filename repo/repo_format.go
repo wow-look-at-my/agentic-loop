@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-// The shapes GitHub's REST responses decode into, and the shared formatting
-// every repo tool renders through — including the failure describers, which are
-// the one place a 401/403/404/429 becomes a sentence naming what the reader can
-// act on. see docs/diagnostics.md
+// The shapes GitHub's REST responses decode into, and the shared formatting.
 
 // GHRepo is one repository in an org/user repos response. Only the fields the
 // listing surfaces are decoded.
@@ -37,9 +34,7 @@ func parseRepoArray(body []byte) ([]GHRepo, error) {
 	return repos, nil
 }
 
-// IsDirectoryListing reports whether a raw-media file read actually returned a
-// directory listing (the contents API serves directories as JSON even when the
-// raw media type is requested).
+// IsDirectoryListing reports whether a raw-media file read returned a directory listing.
 func IsDirectoryListing(body []byte, ctype string) bool {
 	if !strings.Contains(ctype, "json") {
 		return false
@@ -48,9 +43,7 @@ func IsDirectoryListing(body []byte, ctype string) bool {
 	return len(t) > 0 && t[0] == '['
 }
 
-// DescribeGitHubFailure turns a non-2xx contents response into a model-facing
-// message naming the distinct cause (rate limit with its wait, no-token
-// access, missing credential, ...). See explainFailure in repo_failure.go.
+// DescribeGitHubFailure turns a non-2xx contents response into a model-facing message.
 func DescribeGitHubFailure(op, org, repo, inner string, res GHResponse, numTokens int) string {
 	return DescribeResourceFailure(op, RepoPath(org, repo, inner), res, numTokens)
 }

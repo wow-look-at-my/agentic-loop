@@ -64,8 +64,7 @@ func TestDecodeModelListReadsPublishedRates(t *testing.T) {
 func TestDecodeModelListNamesTheDialectFromTheSamePass(t *testing.T) {
 	assert.Equal(t, DialectOpenAI, decoded(t, openRouterModelList).Dialect)
 
-	// The ENVELOPE decides first, because a list with no models at all still
-	// identifies its server.
+	// The ENVELOPE decides first, because a list with no models at all still identifies its server.
 	assert.Equal(t, DialectOpenAI, decoded(t, `{"object":"list","data":[]}`).Dialect)
 	assert.Equal(t, DialectAnthropic, decoded(t, `{"has_more":false,"data":[]}`).Dialect)
 
@@ -108,10 +107,7 @@ func TestAFreeModelIsPricedAndAnUnpricedOneIsAbsent(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// A document that will not parse is an ERROR, never an empty result. An
-// endpoint publishing no prices and an endpoint answering with an error page
-// are different facts, and collapsing them makes a misconfigured URL look
-// exactly like a cheap provider.
+// A document that will not parse is an ERROR, never an empty result; a misconfigured URL must not look cheap.
 func TestADocumentThatWillNotParseIsAnError(t *testing.T) {
 	for _, body := range []string{"", "not json", "<html>not json</html>"} {
 		_, err := DecodeModelList([]byte(body))

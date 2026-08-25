@@ -22,12 +22,7 @@ import (
 	"time"
 )
 
-// RateLimiter gates request starts to at most one every interval -- a
-// fixed-rate gate of interval = one minute / n for n requests per minute. It
-// is safe for concurrent use by multiple goroutines, and a single RateLimiter
-// shared across several providers (e.g. one per benchmark harness run)
-// throttles them TOGETHER, keeping concurrent callers under one per-endpoint
-// cap.
+// RateLimiter gates request starts to at most one every interval -- a fixed-rate gate of one minute / n for n per minute.
 type RateLimiter struct {
 	mu       sync.Mutex
 	interval time.Duration
@@ -38,9 +33,7 @@ type RateLimiter struct {
 	sleep func(context.Context, time.Duration) error
 }
 
-// NewRateLimiter returns a RateLimiter permitting at most n request starts per
-// minute (spaced evenly). n is clamped to >= 1 so a zero value can never
-// divide by zero.
+// NewRateLimiter returns a RateLimiter permitting at most n request starts per minute, n clamped to >= 1.
 func NewRateLimiter(n int) *RateLimiter {
 	if n < 1 {
 		n = 1
@@ -60,9 +53,7 @@ func (l *RateLimiter) Wait(ctx context.Context) error {
 	}
 	t := now()
 	if l.next.IsZero() || !t.Before(l.next) {
-		// The rate gate has opened (or never closed): admit now. If the
-		// previous call was slow, next may sit in the past; starting from the
-		// current time (not chasing the missed slots) preserves the average.
+		// The gate has opened: admit now; starting from the current time (not chasing missed slots) preserves the average.
 		l.next = t.Add(l.interval)
 		l.mu.Unlock()
 		return nil
@@ -88,9 +79,7 @@ func (l *RateLimiter) sleepFor(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// rateLimitedTransport waits on the limiter before delegating to the base
-// transport, so every request the http.Client sends -- retries included -- is
-// gated. A canceled context aborts the wait and the request.
+// rateLimitedTransport waits on the limiter before delegating, so every request the http.Client sends is gated.
 type rateLimitedTransport struct {
 	base    http.RoundTripper
 	limiter *RateLimiter
@@ -103,11 +92,7 @@ func (rt *rateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, er
 	return rt.base.RoundTrip(req)
 }
 
-// RateLimitedClient returns a copy of base (or http.DefaultClient when base is
-// nil) whose transport is wrapped with limiter. The copy preserves base's
-// other settings (timeout, redirect policy, ...) so limiting is additive,
-// never replacing. A nil limiter returns base unchanged -- the common case,
-// since a caller that wants no limiter passes none.
+// RateLimitedClient returns a copy of base with a limiter-wrapped transport; a nil limiter returns base unchanged.
 func RateLimitedClient(base *http.Client, limiter *RateLimiter) *http.Client {
 	if limiter == nil {
 		return base

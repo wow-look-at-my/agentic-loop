@@ -6,9 +6,8 @@ import (
 	"strconv"
 )
 
-// Element and attribute names. They are constants because they are the format:
-// a rename here is a breaking change to every consumer, not a refactor.
 const (
+	// Element and attribute names; a rename here is a breaking change, not a refactor.
 	elRequest      = "request"
 	elResponse     = "response"
 	elConversation = "conversation"
@@ -244,8 +243,7 @@ func writePart(x *writer, p Part) {
 	}
 }
 
-// writeTool writes one advertised tool. The input schema is a param tree, not
-// a JSON string: a schema nothing can validate is not a schema.
+// writeTool writes one advertised tool; the input schema is a param tree, not JSON.
 func writeTool(x *writer, t ToolDecl) {
 	attrs := []attr{{name: "name", value: t.Name}}
 	attrs = append(attrs, optAttr("description", t.Description)...)

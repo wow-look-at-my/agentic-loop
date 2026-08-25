@@ -12,32 +12,22 @@ import (
 // so far, and without this the difference between "no message says that" and
 // "the message that says it has not been indexed yet" is invisible.
 type Status struct {
-	// IndexedConversations / IndexedMessages is what the text index holds for
-	// this owner.
+	// IndexedConversations / IndexedMessages is what the text index holds for this owner.
 	IndexedConversations int64
 	IndexedMessages      int64
-	// StaleConversations is how many of the source's conversations are at a
-	// revision the index has not read. Non-zero means a search can miss a
-	// message that is really there.
+	// StaleConversations is how many conversations sit at a revision the index has not read.
 	StaleConversations int64
-	// LastError is the last indexing failure, verbatim, or "" if the last pass
-	// succeeded.
+	// LastError is the last indexing failure, verbatim, or "" if the last pass succeeded.
 	LastError string
 
-	// Model is the embedding model this status was computed for, or "" when
-	// none was given -- in which case every field below is zero and semantic
-	// search is simply not running.
+	// Model is the embedding model this status was computed for, or "" if semantic search is off.
 	Model string
-	// EmbeddedMessages is how many of the owner's messages have vectors under
-	// Model; PendingEmbeddings how many still need one.
+	// EmbeddedMessages is how many messages have vectors under Model; PendingEmbeddings how many need one.
 	EmbeddedMessages  int64
 	PendingEmbeddings int64
-	// TruncatedMessages is how many embedded messages were longer than
-	// maxChunksPerMessage chunks and are therefore covered only up to that
-	// point by the semantic half. The text half still covers them whole.
+	// TruncatedMessages is how many messages exceeded maxChunksPerMessage; the text half still covers them.
 	TruncatedMessages int64
-	// Dim is the width of the stored vectors, read from the rows themselves
-	// rather than assumed from the model's name.
+	// Dim is the width of the stored vectors, read from the rows rather than assumed.
 	Dim int64
 }
 

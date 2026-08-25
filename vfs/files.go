@@ -5,23 +5,7 @@ import (
 	"strings"
 )
 
-// The filesystem tools: one vocabulary for reading and writing files, whatever
-// is behind them. A host mounts providers under virtual path prefixes --
-//
-//	/repos/...        a repository host, read-only
-//	/workspace/...    an editable working copy
-//	/attachments/...  files a user uploaded
-//
-// -- and the model addresses every one of them with the same seven tools. The
-// library owns what a file tool IS: the names, the model-facing descriptions,
-// the argument schemas, the caps, and every word of the rendering. A host owns
-// what is behind a mount, and nothing about its storage reaches here.
-//
-// The module is optional: a host that mounts no providers gets non-nil tools
-// that return the unavailable message. Providers can be added or removed at
-// runtime via the Add/AddFile/Remove methods on the returned *FileTools.
-// More specific path prefixes always shadow less specific ones, regardless
-// of registration order.
+// The filesystem tools: one vocabulary for reading and writing files behind mounted providers.
 
 // The advertised tool names.
 const (
@@ -52,11 +36,9 @@ type DirEntry struct {
 	Name string
 	Dir  bool
 	Size int64
-	// Note annotates the entry, e.g. a repository's visibility or a staged
-	// file's state.
+	// Note annotates the entry, e.g. a repository's visibility or a staged file's state.
 	Note string
-	// Kind overrides the rendered type column for entries that are neither a
-	// plain file nor a directory (symlink, submodule).
+	// Kind overrides the rendered type column for non-file, non-directory entries (symlink, submodule).
 	Kind string
 }
 
@@ -73,10 +55,7 @@ type File struct {
 	Content string
 	// Note annotates the header line, e.g. "staged: modified".
 	Note string
-	// TruncatedNote, when non-empty, states that the folder served less than
-	// the whole file and by how much. It is separate from read_file's own line
-	// window, because merging the two would misstate what the line numbers are
-	// relative to.
+	// TruncatedNote, when non-empty, states the folder served less than the whole file and by how much.
 	TruncatedNote string
 }
 
@@ -106,36 +85,21 @@ type GrepResult struct {
 	Hits []GrepHit
 	// Files is how many distinct files matched.
 	Files int
-	// Truncated reports that the hit cap was reached, so matches exist that are
-	// not listed. Never leave this unsaid.
+	// Truncated reports the hit cap was reached, so unlisted matches exist.
 	Truncated bool
-	// Note carries anything else the reader must know to read the result
-	// correctly -- most importantly, when the search covered only part of what
-	// the path named. A partial search that looks complete is worse than no
-	// search, so a folder that could not cover its scope says so here.
+	// Note carries anything else needed to read the result, e.g. when the search covered only part of the path.
 	Note string
 }
 
 // FileToolsConfig configures NewFileTools.
 type FileToolsConfig struct {
-	// Providers are the mounts, keyed by their virtual path prefix
-	// (e.g. "/repos", "/workspace"). Matching is case-insensitive but
-	// preserves the original casing for display. An empty map yields non-nil
-	// tools that return the unavailable message. Values are IFolderProvider
-	// or IFileProvider.
+	// Providers are the mounts keyed by virtual path prefix (e.g. "/repos"); an empty map yields unavailable tools.
 	Providers map[string]any
-	// MountsBlurb is appended to every tool description: the host's own
-	// sentence naming what its mounts are, since the library cannot know.
+	// MountsBlurb is the host's sentence naming its mounts, appended to every tool description.
 	MountsBlurb string
-	// Notes are appended to ONE tool's description, keyed by tool name, for
-	// facts about the host's mounts that only that tool needs -- that its grep
-	// searches a local copy and so is unmetered, that a write stages locally
-	// and must never be reported as pushed. MountsBlurb is what every tool
-	// gets; this is what one gets, and the split is what keeps a write's
-	// warning out of every read's description.
+	// Notes hold per-tool facts about the host's mounts, appended to that one tool's description.
 	Notes map[string]string
-	// Unavailable explains a mount the model named that this run does not
-	// serve. It receives the mount name; a nil func gets a plain default.
+	// Unavailable explains a mount this run does not serve; it receives the mount name.
 	Unavailable func(mount string) string
 	// Guard vetoes paths before the provider sees them.
 	Guard PathGuard
@@ -187,10 +151,7 @@ func (ft *FileTools) Tools() agentic.Tools {
 	return ft.tools
 }
 
-// Add registers an IFolderProvider at the given path prefix. Returns a loud
-// error if a provider is already mounted at that prefix (case-insensitive).
-// More specific prefixes shadow less specific ones regardless of registration
-// order.
+// Add registers an IFolderProvider at the given path prefix, erroring loudly on a duplicate mount.
 func (ft *FileTools) Add(prefix string, p IFolderProvider) error {
 	if prefix == "" || p == nil {
 		return nil
@@ -207,8 +168,7 @@ func (ft *FileTools) AddFile(prefix string, p IFileProvider) error {
 	return ft.files.registry.add(prefix, p)
 }
 
-// Remove removes the provider registered at the given path prefix.
-// Subsequent tool calls for that path will return the unavailable message.
+// Remove removes the provider at the given path prefix; later calls there return the unavailable message.
 func (ft *FileTools) Remove(prefix string) {
 	ft.files.registry.remove(prefix)
 }

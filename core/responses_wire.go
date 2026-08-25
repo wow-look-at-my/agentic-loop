@@ -2,19 +2,12 @@ package commonai
 
 import "encoding/json"
 
-// The Responses wire vocabulary: the items that go in and come out, the tool
-// shape, and the usage object. Its one structural fact -- input and output are
-// the SAME item vocabulary -- is what makes reasoning replay possible at all,
-// so the mapping lives here and the transport lives in responses.go.
+// The Responses wire vocabulary, where input and output share the same item vocabulary.
 
-// respIncludeEncryptedReasoning asks the API to return each reasoning item's
-// encrypted payload, which is the only way to replay reasoning when store is
-// false -- and store is false by default here.
+// respIncludeEncryptedReasoning asks for the encrypted payload, the only way to replay reasoning.
 const respIncludeEncryptedReasoning = "reasoning.encrypted_content"
 
-// respTool is the Responses wire shape of an advertised tool. Unlike
-// chat-completions there is no nested "function" object: the name, description
-// and parameters sit on the tool itself.
+// respTool is the Responses wire shape of a tool; no nested "function" object here.
 type respTool struct {
 	Type        string          `json:"type"`
 	Name        string          `json:"name"`
@@ -22,28 +15,19 @@ type respTool struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-// respItem is one item on the Responses wire, in either direction. The API's
-// input and output are the SAME item vocabulary, which is what makes replay
-// possible: an item that came out can go straight back in.
+// respItem is one item on the Responses wire, in either direction.
 type respItem struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
 	Role string `json:"role,omitempty"`
-	// Content is a message's parts: input_text on the way in, output_text on
-	// the way out.
+	// Content is a message's parts: input_text in, output_text out.
 	Content []respContent `json:"content,omitempty"`
-	// CallID, Name and Arguments describe a function_call; CallID and Output a
-	// function_call_output. The call_id (not the item id) is what pairs them.
-	// Arguments keeps omitempty because one struct serves every item type, and
-	// only a function_call may carry the field at all; a function_call gets a
-	// non-empty value from toolArgs, so its own field never disappears.
+	// CallID, Name and Arguments describe a function_call; CallID and Output a function_call_output.
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
 	Output    string `json:"output,omitempty"`
-	// Summary and EncryptedContent belong to a reasoning item. The summary is
-	// the human-readable trace; the encrypted content is the opaque payload
-	// that must be replayed verbatim for the model to keep its own reasoning.
+	// Summary and EncryptedContent belong to a reasoning item; the payload must be replayed verbatim.
 	Summary          []respContent `json:"summary,omitempty"`
 	EncryptedContent string        `json:"encrypted_content,omitempty"`
 }
@@ -70,17 +54,7 @@ const (
 	respImageInput  = "input_image"
 )
 
-// respInputItems maps the neutral transcript onto Responses input items.
-//
-// An assistant turn can become SEVERAL items, and their ORDER is the contract:
-// reasoning first, then the text it produced, then the tool calls it made --
-// the order the model itself emitted them. A tool result is a top-level
-// function_call_output item keyed by call_id, not a message with a role.
-//
-// A reasoning item is replayed only when it carries the encrypted payload: the
-// summary alone is prose about the reasoning, and sending it as though it were
-// the reasoning would hand the model a paraphrase of its own thinking. A block
-// with no payload is dropped rather than half-replayed.
+// respInputItems maps the transcript onto Responses input items, keeping their emitted order.
 func respInputItems(msgs []Message) ([]respItem, error) {
 	out := make([]respItem, 0, len(msgs))
 	for _, m := range msgs {
@@ -124,9 +98,7 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 	return out, nil
 }
 
-// respInputContent builds a user message's content list. Text alone is one
-// input_text, which is what this dialect takes for the ordinary case; an image
-// rides as an input_image beside it, in the position it occupied.
+// respInputContent builds a user message's content list: text alone is one input_text.
 func respInputContent(m Message) ([]respContent, error) {
 	if !hasImage(m) {
 		return []respContent{{Type: respTextInput, Text: m.Content}}, nil

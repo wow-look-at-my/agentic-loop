@@ -8,41 +8,14 @@ import (
 	"strings"
 )
 
-// what=job_log reads one Actions job's own log.
-//
-// It is the end of the only chain a token without the Checks API has. The
-// check-run detail read (what=check_run) carries a failing step's error
-// annotations, and a fine-grained PAT cannot reach it at all -- "Checks" is not
-// a repository permission a PAT can be granted. The Actions fallback
-// (repo_actions.go) gets as far as naming the step that failed, which renames
-// the question rather than answering it. The log is where the compiler error,
-// the failing assertion and the stack trace actually are, and
-// /actions/jobs/{id}/logs is served under `actions`, which a PAT CAN hold.
-//
-// GitHub answers that endpoint with a 302 to a short-lived signed storage URL.
-// The redirect is followed by the http.Client, which drops the Authorization
-// header crossing hosts -- correct here, since the signature is the credential
-// and forwarding a PAT to storage would leak it.
-//
-// GitHub also 404s this endpoint for two reasons that have nothing to do with
-// a token's access, and both look identical on the wire to "no configured
-// token can see this": a job that has not finished yet -- undocumented, but
-// reported: the log is not archived to storage until the job completes, so an
-// in-flight job has none to serve -- and a job GitHub marks "skipped", which
-// never ran a step and so never produced one. A 404 here re-reads the job's
-// own status first, because that read can PROVE the job exists and these
-// tokens can see it, which the generic explanation must not then contradict.
+// what=job_log reads one Actions job's own log, where the failing assertion lives.
 
 const (
-	// jobLogMaxBytes caps one log read. A job that installs a toolchain and
-	// runs a test suite produces a few MB; this holds those whole.
+	// jobLogMaxBytes caps one log read.
 	jobLogMaxBytes = 24 << 20
-	// jobLogTailLines is how much of an over-long log is returned when the
-	// caller asked for no particular window. The tail is where a failure is:
-	// the step that died is the last thing that ran.
+	// jobLogTailLines is how much of an over-long log is returned when no window is asked.
 	jobLogTailLines = 400
-	// jobLogMaxLines caps an explicit window, so one call cannot return a
-	// hundred thousand lines into the model's context.
+	// jobLogMaxLines caps an explicit window.
 	jobLogMaxLines = 2_000
 )
 
@@ -56,9 +29,7 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) agentic.Too
 
 	resource := fmt.Sprintf("job %d of %s", in.JobID, RepoPath(in.Org, in.Repo, ""))
 	target := fmt.Sprintf("%s/actions/jobs/%d/logs", e.gh.RepoURL(in.Org, in.Repo), in.JobID)
-	// application/json, though the body that arrives is plain text: the
-	// endpoint 415s "Must accept 'application/json'" on the honest Accept,
-	// because what it serves under that header is the 302 to storage.
+	// application/json though the body is plain text; the endpoint 415s otherwise.
 	res, err := e.gh.FetchURLOpts(ctx, RepoCacheKey(in.Org, in.Repo), target,
 		"application/json", FetchOptions{MaxBytes: jobLogMaxBytes, NoRedirect: true})
 	if err != nil {

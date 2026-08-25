@@ -61,13 +61,7 @@ func (e *repoTools) commitList(ctx context.Context, in repoReadArgs) agentic.Too
 func formatCommits(org, repo, ref, path string, commits []ghCommitEntry) string {
 	header := "commits of " + RepoPath(org, repo, "")
 	var scope []string
-	// Name the ref even when the caller passed none. Saying only "commits of
-	// <repo>" leaves the reader unable to tell WHICH branch answered, so one
-	// that needs a NAMED branch cannot use the result and re-reads every
-	// repository through the raw API instead: six such reads cost ~10k prompt
-	// tokens to establish six branch heads. A caller who wants a named branch
-	// passes "ref"; this says plainly when they did not, which is what makes
-	// the second call targeted instead of a hand audit.
+	// Name the ref even when the caller passed none, so the reader knows which branch answered.
 	if r := strings.TrimSpace(ref); r != "" {
 		scope = append(scope, "ref "+r)
 	} else {

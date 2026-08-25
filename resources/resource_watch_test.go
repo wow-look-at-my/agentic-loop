@@ -25,8 +25,7 @@ type fakeSource struct {
 	blobs    map[string][]byte
 	listErr  error
 	readErr  map[string]bool
-	// cap, when >0, is how many resources this source claims to have beyond
-	// what it lists, so the watcher sees a truncated listing.
+	// cap, when >0, is how many resources this source claims beyond what it lists.
 	claims int
 }
 

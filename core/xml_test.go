@@ -132,8 +132,7 @@ func TestToolSchemaRoundTrip(t *testing.T) {
 	require.Len(t, got.Tools, 1)
 	assert.Equal(t, "grep", got.Tools[0].Name)
 	assert.True(t, got.Tools[0].Readonly)
-	// Byte-for-byte: member order and the 1.50 literal both survive, which is
-	// what makes the tree a lossless mapping rather than a lossy one.
+	// Byte-for-byte: member order and the 1.50 literal both survive, a lossless mapping.
 	assert.Equal(t, schema, string(got.Tools[0].InputSchema))
 }
 
@@ -152,8 +151,7 @@ func TestDialectParamsRoundTrip(t *testing.T) {
 	data, err := EncodeRequestBytes(req)
 	require.NoError(t, err)
 	require.NoError(t, Validate(data), "document:\n%s", data)
-	// The scalar rides as a qualified attribute; the object rides as a
-	// namespaced element, because an attribute cannot hold an object.
+	// The scalar rides as a qualified attribute; the object as a namespaced element.
 	assert.Contains(t, string(data), `anthropic:top-k="40"`)
 	assert.Contains(t, string(data), `openai:reasoning-effort="high"`)
 	assert.Contains(t, string(data), "<anthropic:params>")
@@ -357,8 +355,7 @@ func TestEscapesInvalidUTF8(t *testing.T) {
 }
 
 func TestEffectivePartsFallsBackToFlatFields(t *testing.T) {
-	// A caller that only ever set Content -- the shape every existing consumer
-	// uses -- still encodes correctly.
+	// A caller that only ever set Content -- the shape every consumer uses -- still encodes correctly.
 	m := Message{Role: RoleAssistant, Content: "hi", ToolCalls: []ToolCall{{ID: "c", Name: "n", Arguments: "{}"}}}
 	parts := m.EffectiveParts()
 	require.Len(t, parts, 2)

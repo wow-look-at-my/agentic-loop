@@ -11,34 +11,25 @@ import (
 const (
 	// ErrorKindAPI is a non-2xx answer from the upstream.
 	ErrorKindAPI = "api"
-	// ErrorKindOverflow is a prompt that exceeded the model's context window.
-	// It is a permanent, never-retried condition, and it is the one failure a
-	// caller can usually fix without a person.
+	// ErrorKindOverflow is a prompt that exceeded the model's context window: permanent, never retried, usually fixable.
 	ErrorKindOverflow = "context-overflow"
-	// ErrorKindRequest is a request this library refused to build or send:
-	// deterministic misconfiguration, never transient.
+	// ErrorKindRequest is a request this library refused to build or send: deterministic misconfiguration, never transient
 	ErrorKindRequest = "request"
 	// ErrorKindCanceled is the caller's own context ending the call.
 	ErrorKindCanceled = "canceled"
 	// ErrorKindUnsupported is a document the target dialect cannot express.
 	ErrorKindUnsupported = "unsupported"
-	// ErrorKindTransport is everything else: a connection that failed, a
-	// stream that broke, a body that would not read.
+	// ErrorKindTransport is everything else: a connection that failed, a stream that broke, a body that would not read.
 	ErrorKindTransport = "transport"
 )
 
-// UnsupportedError is a request that cannot be expressed in the target
-// dialect: an image by URL where only inline bytes work, a reasoning block
-// with no replayable payload, a parameter with nowhere to go. It is an error
-// rather than a silent omission because a request quietly stripped of a thing
-// the caller asked for is a wrong answer that looks like a right one.
+// UnsupportedError is a request the target dialect cannot express; an error, not a silent omission that looks right.
 type UnsupportedError struct {
 	// Dialect is the target that cannot express it.
 	Dialect Dialect
 	// What names the thing, in the format's own vocabulary.
 	What string
-	// Why explains what the dialect does instead, when there is something the
-	// caller could do about it.
+	// Why explains what the dialect does instead, when there is something the caller could do about it.
 	Why string
 }
 
@@ -62,13 +53,10 @@ func IsUnsupported(err error) bool {
 	return errors.As(err, &ue)
 }
 
-// ErrorKind classifies a failure the way the format names it, so a caller can
-// branch on what happened without matching message text.
+// ErrorKind classifies a failure the way the format names it, so a caller can branch on what happened.
 func ErrorKind(err error) string { return errorKind(err) }
 
-// IsBadRequest reports whether err is one the library refused to send, rather
-// than one an upstream produced. A transport answering an HTTP status needs
-// exactly this distinction: the caller's document was wrong, or it was not.
+// IsBadRequest reports whether err is one the library refused to send, rather than one an upstream produced.
 func IsBadRequest(err error) bool {
 	var re *requestError
 	return errors.As(err, &re)

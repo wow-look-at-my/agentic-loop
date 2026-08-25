@@ -6,26 +6,9 @@ import (
 	"strings"
 )
 
-// MCP resources are the protocol's second server primitive, and the one almost
-// nothing consumes: a tool is advertised in the model's context, while a
-// resource is not, so a model never learns a resource exists and never asks for
-// it. This is the host closing that gap. At every turn boundary the watcher
-// re-reads the run's resources, and anything that changed is announced as a
-// short automated notice -- names and change ids, never content.
-//
-// The notice is a POINTER, deliberately. Dumping a changed resource into the
-// thread would cost its full size on every subsequent turn and invalidate the
-// prompt cache each time; announcing it costs a line, and the model spends
-// tokens on the diff only if it decides the change matters. The change id is
-// what makes "whenever" true -- it resolves to the exact before/after the
-// watcher saw, however many further changes land in between.
-//
-// The library owns the watching and the words; a host supplies the SOURCE the
-// resources come from (ResourceSource) and where snapshots are kept
-// (ResourceSnapshots). Nothing here knows what MCP is.
+// MCP resources are announced as short automated notices of what changed, never content.
 
-// resourceNoticeHeader opens every notice so a model reading the transcript can
-// never mistake it for the user speaking.
+// resourceNoticeHeader opens every notice so the model never mistakes it for the user.
 const resourceNoticeHeader = "[automated notice -- the host is watching this conversation's MCP resources; this is not a message from the user]"
 
 // Resource change kinds, as reported to the model.
@@ -39,8 +22,7 @@ const (
 // carries no content: everything here is announced to the model, and the
 // before/after bytes stay in storage until mcp_resource_diff asks for them.
 type ResourceChange struct {
-	// ChangeID is the opaque id the model quotes back to mcp_resource_diff. It
-	// resolves to this exact change for the life of the conversation.
+	// ChangeID is the opaque id the model quotes back to mcp_resource_diff.
 	ChangeID string
 	// Server is the MCP server's display name.
 	Server string
@@ -50,11 +32,9 @@ type ResourceChange struct {
 	Label string
 	// Kind is one of the Resource* constants above.
 	Kind string
-	// Summary is a one-line shape-of-the-change, e.g. "4.1 KB -> 4.3 KB, +7 -2
-	// lines". Empty when there is nothing useful to say beyond the kind.
+	// Summary is a one-line shape-of-the-change, e.g. "4.1 KB -> 4.3 KB, +7 -2 lines".
 	Summary string
-	// Note is an accuracy caveat that must travel with the change, e.g. that the
-	// captured content was truncated. Empty when the capture was complete.
+	// Note is an accuracy caveat that must travel with the change.
 	Note string
 }
 
@@ -62,16 +42,9 @@ type ResourceChange struct {
 type ResourcePoll struct {
 	// Changes are the resources that differ from the last pass.
 	Changes []ResourceChange
-	// Warnings are servers or resources the pass could NOT account for -- a
-	// failed list, an unreadable resource, a listing cut off at the cap. They
-	// are delivered to the model even when nothing changed, because "no notice"
-	// otherwise reads as "nothing changed", and a hole must never pass for an
-	// absence.
+	// Warnings are servers or resources the pass could NOT account for.
 	Warnings []string
-	// Baseline marks the conversation's first pass, where every resource is
-	// new because nothing was being watched before. It changes only the
-	// wording: the model is being introduced to the resources, not told they
-	// just changed.
+	// Baseline marks the first pass, where every resource is new; changes only the wording.
 	Baseline bool
 }
 
@@ -82,10 +55,7 @@ func (p ResourcePoll) Empty() bool { return len(p.Changes) == 0 && len(p.Warning
 // changed since the previous pass. Implemented by tools.ResourceWatcher; the
 // interface lives here because chat may not import tools.
 type ResourceWatcher interface {
-	// Poll performs one pass. Remote failures are reported as Warnings rather
-	// than errors -- one broken server must not fail a chat turn. A returned
-	// error is a host-side failure (storage), and the caller still tells the
-	// model the watch did not run.
+	// Poll performs one pass; remote failures are reported as Warnings, not errors.
 	Poll(ctx context.Context) (ResourcePoll, error)
 }
 

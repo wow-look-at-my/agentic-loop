@@ -17,19 +17,11 @@ import (
 type SessionSource struct {
 	// Store is the conversations to index.
 	Store session.Store
-	// Owner scopes every conversation this source reports, and is what a
-	// search must ask with. A single-user store leaves it empty; a host
-	// running one store per tenant sets it per source.
+	// Owner scopes every conversation this source reports; a search must ask with it.
 	Owner string
 }
 
-// Revisions is the optimization a store can offer: a change marker per
-// conversation without reading the transcripts.
-//
-// Without it, SessionSource has to read every conversation on every pass just
-// to learn which ones moved, which is the whole corpus per pass. session.File
-// implements this from the file's size and modification time, turning that
-// read into a stat.
+// Revisions is the optional change marker a store can offer, avoiding a full read per pass.
 type Revisions interface {
 	Revisions() (map[string]string, error)
 }
@@ -80,19 +72,7 @@ func (s *SessionSource) Messages(_ context.Context, conversationID string) ([]Me
 	return out, nil
 }
 
-// messageID is the stable identity the index keys a message's vectors by.
-//
-// A message the host already identified keeps that id. Otherwise the id is the
-// conversation plus the message's POSITION, which is stable for the
-// append-only transcript a turn produces -- appending message N+1 does not
-// move any of the first N.
-//
-// The cost of that choice: INSERTING or removing a message mid-transcript
-// shifts every position after it, so each of those messages looks new and is
-// embedded again. session.Put replacing a transcript wholesale is the way that
-// happens. It is the honest trade for a store whose messages have no ids of
-// their own -- the alternative, hashing the content, silently merges two
-// identical messages in one conversation into a single searchable row.
+// messageID is the stable vector key: a host message id if any, else conversation plus the message's position.
 func messageID(conversationID string, pos int, m commonai.Message) string {
 	if m.ID != "" {
 		return m.ID
@@ -100,14 +80,7 @@ func messageID(conversationID string, pos int, m commonai.Message) string {
 	return conversationID + ":" + strconv.Itoa(pos)
 }
 
-// searchableText is the part of a message worth indexing: its text, in order.
-//
-// Thinking blocks are deliberately excluded. They carry provider tokens and
-// are the model's working notes rather than anything it said, and a search
-// that surfaced them would answer with reasoning the user never saw. Tool
-// CALLS are excluded for the same reason -- the arguments are a machine
-// protocol. A tool RESULT is ordinary content and is indexed: it is often
-// exactly what someone is looking for.
+// searchableText is the message's indexed text; thinking blocks and tool calls are excluded, results indexed.
 func searchableText(m commonai.Message) string {
 	var out []byte
 	for _, p := range m.EffectiveParts() {
@@ -123,12 +96,7 @@ func searchableText(m commonai.Message) string {
 	return string(out)
 }
 
-// transcriptRevision is the fallback change marker: a hash over the messages
-// that would be indexed.
-//
-// It hashes the same text Messages returns, so a change the index cannot see
-// -- a tool call's arguments, a thinking block's signature -- does not trigger
-// a re-read that would produce identical rows.
+// transcriptRevision hashes the indexed text, so a change the index cannot see doesn't trigger a re-read.
 func transcriptRevision(req commonai.Request) string {
 	h := sha256.New()
 	for _, m := range req.Messages {

@@ -11,9 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Fake upstreams, for the tests that drive a constructed provider over HTTP
-// and assert on the folded Completion -- which is what a Go caller holds, and
-// the one thing the core package cannot report on.
+// Fake upstreams, for tests that drive a constructed provider over HTTP and assert on the folded Completion.
 
 // sseHandler serves the given data payloads as an SSE stream, terminated by
 // [DONE], capturing the request body and headers.
@@ -114,9 +112,7 @@ func mustAnthropic(t *testing.T, cfg AnthropicConfig) Provider {
 	return p
 }
 
-// oaProvider is shorthand for an OpenAI-dialect test provider. Providers retry
-// by default, so tests inject the fast no-sleep policy -- otherwise every
-// retrying test would wait out real exponential backoff.
+// oaProvider is shorthand for an OpenAI-dialect test provider using the fast no-sleep retry policy.
 func oaProvider(t *testing.T, baseURL string) Provider {
 	t.Helper()
 	return mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: baseURL, Retry: retryTestPolicy(4)}})

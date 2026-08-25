@@ -6,13 +6,7 @@ import (
 	"math"
 )
 
-// Vectors are stored as little-endian float32 BLOBs, L2-NORMALIZED at write
-// time. Normalizing on the way in makes the similarity a plain dot product, so
-// the read path -- the part that runs once per stored vector on every query --
-// does one multiply-add per dimension and no square roots at all.
-//
-// There is no vector index and no approximate search: the whole set is scanned.
-// see docs/search.md for the measurement that says this is enough.
+// Vectors are stored as L2-normalized little-endian float32 BLOBs, so similarity is a plain dot product.
 
 // float32Bytes is the width of one stored dimension.
 const float32Bytes = 4
@@ -45,13 +39,7 @@ func encodeVector(v []float32) ([]byte, error) {
 	return out, nil
 }
 
-// dotBlob returns the dot product of a normalized query vector with a stored
-// normalized vector blob, without allocating a decoded copy of the blob. Both
-// sides being normalized makes this the cosine similarity.
-//
-// A blob of a different dimension than the query returns ok=false. That is not
-// a corrupt row: it is a vector some OTHER embedding model produced, and the
-// two are not comparable. The caller drops it rather than scoring it.
+// dotBlob returns the cosine of a normalized query and a stored blob without allocating a decoded copy.
 func dotBlob(query []float32, blob []byte) (score float64, ok bool) {
 	if len(query) == 0 || len(blob) != len(query)*float32Bytes {
 		return 0, false

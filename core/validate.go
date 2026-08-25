@@ -8,10 +8,7 @@ import (
 	"github.com/wow-look-at-my/xml-validator/validator"
 )
 
-// The schema is the normative definition of the format: a non-Go
-// implementation should be able to speak it from these files alone. They are
-// embedded so validation needs nothing on disk, and they are the same files
-// the repository publishes -- there is one copy, not a copy per consumer.
+// The schema is the normative format definition, embedded so validation needs nothing on disk.
 
 //go:embed schema/*.xsd
 var schemaFS embed.FS
@@ -23,9 +20,7 @@ func SchemaFS() embed.FS { return schemaFS }
 // schemaMain is the entry point that imports the dialect schemas.
 const schemaMain = "schema/common-ai-api.xsd"
 
-// Validate checks a document against the schema. Everything arriving from
-// outside goes through this before anything acts on it: a document that does
-// not validate is one whose meaning nobody agreed on.
+// Validate checks a document against the schema before anything acts on it.
 func Validate(data []byte) error {
 	main, err := schemaFS.ReadFile(schemaMain)
 	if err != nil {

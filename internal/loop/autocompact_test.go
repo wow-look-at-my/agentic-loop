@@ -113,12 +113,9 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 	assert.Equal(t, "this is the summary", res.Messages[1].Content)
 	assert.Equal(t, "final answer after compaction", res.Messages[2].Content)
 
-	// Two numbered turns: the original and the post-compaction answer.
-	// (Compact calls Provider.Complete directly, not runModelCall, so the
-	// summarize call does not increment res.Turns.)
+	// Two numbered turns (the summarize call does not increment res.Turns).
 	assert.Equal(t, 2, res.Turns)
-	// The tool calls from the first turn were NOT executed (compaction
-	// replaced the transcript before execution).
+	// The first turn's tool calls were NOT executed (compaction replaced the transcript first).
 	assert.Empty(t, exec.executed, "the stale tool calls were not executed")
 }
 
@@ -192,8 +189,7 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	_, err := Run(context.Background(), cfg, req)
 	require.NoError(t, err, "compaction failure is non-fatal")
 	assert.False(t, compacted, "the compaction event did not fire")
-	// The original tool calls were executed (compaction failed, so the
-	// loop fell through to normal tool execution).
+	// The original tool calls ran (compaction failed, so the loop fell through to normal execution).
 	assert.NotEmpty(t, exec.executed, "tools ran after compaction failed")
 }
 

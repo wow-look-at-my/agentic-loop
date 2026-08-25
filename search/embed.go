@@ -7,62 +7,25 @@ import (
 )
 
 const (
-	// chunkRunes is the window one embedding covers. Every embedding model
-	// flattens its whole input to a single vector, so a window that is too
-	// wide averages several unrelated topics into a direction that matches
-	// none of them.
+	// chunkRunes is the window one embedding covers; too wide a window averages unrelated topics into a direction that matches none.
 	chunkRunes = 1200
-	// chunkOverlap is how much of the previous window each chunk repeats, so a
-	// passage that straddles a boundary is whole inside one of the two.
+	// chunkOverlap is how much of the previous window each chunk repeats, so a straddling passage is whole in one chunk.
 	chunkOverlap = 120
-	// maxChunksPerMessage caps what one message can cost. A 40 KB tool result
-	// would otherwise be 30-odd embeddings of build output. The cap is
-	// RECORDED per message (embed_status.chunks_total), so a partially
-	// embedded message is reported as partial; the text index covers all of
-	// it regardless.
+	// maxChunksPerMessage caps what one message can cost; the cap is recorded per message (embed_status.chunks_total).
 	maxChunksPerMessage = 16
-	// embedBatchSize is how many chunks go in one request. A message's chunks
-	// never span two batches, so a batch that lands is a whole number of
-	// finished messages.
+	// embedBatchSize is how many chunks go in one request; a message's chunks never span two batches.
 	embedBatchSize = 64
 )
 
-// Embedder turns text into vectors.
-//
-// The two sides are separate methods because retrieval is ASYMMETRIC in most
-// modern embedding models: a stored passage and the question that should find
-// it are embedded differently, and the model is told which it is being given.
-// Nomic's text models require a task prefix on every input -- their card says
-// the prompt "must include a task instruction prefix" -- and the E5 and BGE
-// families have their own. Getting it wrong costs retrieval quality and costs
-// it SILENTLY: every call succeeds, every vector is well-formed, and the
-// results are quietly worse. One symmetric Embed method makes that mistake the
-// default and invisible, so there isn't one.
-//
-// An implementation for a symmetric model (OpenAI's, say) does the same thing
-// on both sides, which is a one-line method, not a burden.
-//
-// It is an interface because the index does no HTTP of its own and holds no
-// endpoint or key -- the same rule the rest of this module follows.
-// HTTPEmbedder is the implementation for an OpenAI-compatible /v1/embeddings
-// endpoint.
+// Embedder turns text into vectors; retrieval is asymmetric, so passages and queries embed separately.
 type Embedder interface {
-	// EmbedDocuments embeds text that is being STORED, to be found later. It
-	// must return exactly one vector per input, in the same order.
+	// EmbedDocuments embeds text being STORED; it must return exactly one vector per input, in order.
 	EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)
 	// EmbedQuery embeds one search query.
 	EmbedQuery(ctx context.Context, text string) ([]float32, error)
 }
 
-// chunkContent splits content into overlapping windows of runes. It returns
-// the windows to embed (at most maxChunksPerMessage) and total, the number the
-// content would have needed -- total > len(chunks) is the truncation the caller
-// has to record rather than swallow.
-//
-// Splitting is by rune count, not by sentence or paragraph. That is a
-// deliberate floor rather than a first attempt at something smarter: prose, a
-// stack trace, a diff and a JSON blob are all ordinary message content here,
-// and none of them share a boundary rule.
+// chunkContent splits content into overlapping rune windows, returning the chunks to embed and the total needed (total > len(chunks) is truncation).
 func chunkContent(content string) (chunks []string, total int) {
 	r := []rune(content)
 	if len(r) == 0 {
@@ -196,9 +159,7 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 	if err != nil {
 		return 0, fmt.Errorf("search: embed %d chunks with %q: %w", len(b.texts), model, err)
 	}
-	// A provider returning a different number of vectors than it was given
-	// inputs cannot be lined back up with the messages that produced them.
-	// Storing the overlap would attach one message's vector to another's id.
+	// A provider returning a different number of vectors than inputs cannot be matched back to their messages.
 	if len(vecs) != len(b.texts) {
 		return 0, fmt.Errorf("search: %q returned %d vectors for %d inputs", model, len(vecs), len(b.texts))
 	}

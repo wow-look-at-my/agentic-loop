@@ -203,9 +203,7 @@ func TestRetryingProvider(t *testing.T) {
 	})
 
 	t.Run("a streamed delta blocks the retry", func(t *testing.T) {
-		// Once a delta reached the sink, re-sending would duplicate it — even
-		// though the failure itself is transient. A provider that streamed
-		// says so by returning its partial completion alongside the error.
+		// Once a delta reached the sink, re-sending would duplicate it; the provider returns its partial completion.
 		var got []string
 		partial := &commonai.Completion{
 			Message: commonai.NewMessage(commonai.RoleAssistant, commonai.TextPart{Text: "tok"}),

@@ -36,9 +36,7 @@ func runModelCall(
 	return comp, err
 }
 
-// fallbackOutput picks the text to surface when the loop ends without a
-// written answer: the content, then the accumulated reasoning (a thinking
-// model's only output), then a clear placeholder.
+// fallbackOutput picks the text to surface when the loop ends without a written answer.
 func fallbackOutput(m Message) string {
 	if s := strings.TrimSpace(m.Content); s != "" {
 		return s

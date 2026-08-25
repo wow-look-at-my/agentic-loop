@@ -13,8 +13,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/todo"
 )
 
-// recorder is a host store: it appends every post-mutation list the executor
-// hands it, so the driver can prove the host saw exactly the changes intended.
+// recorder is a host store: it appends every post-mutation list the executor hands it.
 type recorder struct {
 	snapshots [][]todo.Todo
 }
@@ -58,12 +57,7 @@ func main() {
 		}
 	}
 
-	// The intended end state after the sequence above:
-	//   add "write it"        -> [#1 pending]
-	//   add "test it" in_prog -> [#1 pending, #2 in_progress]
-	//   edit #2 done          -> [#1 pending, #2 done]
-	//   complete #1           -> [#1 done, #2 done]
-	//   cancel #2             -> [#1 done]
+	// The intended end state after the sequence above is a single done task.
 	want := []todo.Todo{{ID: 1, Title: "write it", State: todo.TodoDone}}
 	got := rec.snapshots[len(rec.snapshots)-1]
 	if len(got) != len(want) {

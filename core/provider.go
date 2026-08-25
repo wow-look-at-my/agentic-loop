@@ -5,11 +5,7 @@ import (
 	"time"
 )
 
-// PromptProgress reports prompt-processing (prefill) progress, when the
-// upstream emits it (ollama with the llama.cpp return_progress patch):
-// Processed/Total is the fraction of the prompt ingested, Cache the portion
-// served from the prompt cache, and TimeMS the elapsed prefill time in
-// milliseconds. The JSON tags match the upstream prompt_progress object.
+// PromptProgress reports prefill progress (Processed/Total, Cache, TimeMS); JSON tags match upstream.
 type PromptProgress struct {
 	Processed int   `json:"processed"`
 	Total     int   `json:"total"`
@@ -17,14 +13,7 @@ type PromptProgress struct {
 	TimeMS    int64 `json:"time_ms"`
 }
 
-// Timings is the llama.cpp-style per-call timing snapshot some
-// OpenAI-compatible upstreams (llama.cpp, ollama) attach to streamed chunks:
-// PromptN prompt tokens processed in PromptMS milliseconds (prefill), and
-// PredictedN tokens generated in PredictedMS milliseconds. The field names and
-// types are wire-faithful to the upstream timings object. The library only
-// surfaces what the provider reported -- it never synthesizes timings from
-// wall-clock time; that remains the caller's choice. The Anthropic dialect
-// has no equivalent and never reports timings.
+// Timings is the llama.cpp-style timing snapshot some OpenAI-compatible upstreams attach.
 type Timings struct {
 	PromptN     int     `json:"prompt_n,omitempty"`
 	PromptMS    float64 `json:"prompt_ms,omitempty"`
@@ -32,12 +21,7 @@ type Timings struct {
 	PredictedMS float64 `json:"predicted_ms,omitempty"`
 }
 
-// RetryAttempt describes a failed model call that is about to be re-sent:
-// which attempt just failed (1-based) out of how many are allowed, how long
-// the backoff before the next one is, and why it failed. It exists so a
-// caller can SHOW the failure and the wait -- retrying is otherwise a silent
-// gap that, at the default ten attempts of uncapped backoff, can run for
-// minutes with no sign the call is still alive.
+// RetryAttempt describes a failed call about to be re-sent (attempt, backoff, why) so a caller can show them.
 type RetryAttempt struct {
 	Attempt int
 	Of      int
@@ -45,56 +29,20 @@ type RetryAttempt struct {
 	Err     error
 }
 
-// StreamEvents are optional streaming callbacks for one model call. All
-// fields are optional and a nil *StreamEvents is valid: providers guard every
-// emit. OnText receives content deltas, OnReasoning thinking/reasoning
-// deltas, OnUsage each merged usage snapshot as it arrives, OnProgress
-// prefill progress updates, OnTimings each provider-reported timings
-// snapshot (OpenAI dialect only -- Anthropic never fires it), and OnRetry a
-// transient failure about to be re-attempted.
-//
-// A non-nil error returned by any callback ABORTS the stream read
-// immediately: Complete stops consuming the upstream response and returns the
-// partial *Completion (content, reasoning, tool calls, and usage accumulated
-// so far) together with that error. The error is returned unwrapped or
-// %w-wrapped, so errors.Is against a sentinel the callback returned holds; it
-// is never converted into an *APIError and never classified transient, so
-// neither the retry policy nor the param-strip middleware will re-send a call
-// whose sink failed. A provider marks data as seen BEFORE each emit, so even a
-// callback that fails on the very first delta yields a partial completion --
-// which is what tells the layers above the call is no longer safe to re-send.
+// StreamEvents are optional callbacks; a non-nil error ABORTS the stream, returning partial result.
 type StreamEvents struct {
 	OnText      func(string) error
 	OnReasoning func(string) error
-	// OnPart fires when a content part is COMPLETE, in the order the parts
-	// appear in the finished message, and every part of that message is
-	// delivered exactly once.
-	//
-	// A delta says what the text is; only a finished part carries what goes on
-	// its element. A thinking block's signature is the case that forces this:
-	// it arrives after its text, and it cannot be attached to an element a
-	// host has already opened and streamed into. So a host writing the answer
-	// out as it arrives streams OnText for the live view and takes everything
-	// else from here, and what it writes is the same message the call returns
-	// rather than a re-ordered approximation of it.
+	// OnPart fires when a content part is COMPLETE, delivered exactly once, in finished-message order.
 	OnPart     func(Part) error
 	OnUsage    func(Usage) error
 	OnProgress func(PromptProgress) error
 	OnTimings  func(Timings) error
-	// OnRetry fires before each backoff, from the retry layer rather than
-	// from a dialect provider. Returning an error stops the retrying and
-	// surfaces that error in place of the upstream's. It does NOT count as
-	// "streamed something": a notification about a failed attempt cannot make
-	// the next one unsafe.
+	// OnRetry fires before each backoff; returning an error stops the retrying and surfaces it.
 	OnRetry func(RetryAttempt) error
 }
 
-// The Emit helpers are how a Provider delivers events, and they are exported
-// because implementing a Provider is a thing callers do -- a mock, a router, a
-// cache, a decorator. Each tolerates a nil receiver and a nil callback, skips
-// an empty delta, and wraps whatever the callback returns so a failed SINK is
-// never classified transient and re-sent. Calling ev.OnText directly skips all
-// three, which is why they are not a convenience.
+// The Emit helpers deliver events, tolerating nil receivers, so a failed sink is never re-sent.
 
 // EmitText forwards a non-empty content delta, tolerating nil receivers.
 func (ev *StreamEvents) EmitText(s string) error {
@@ -188,30 +136,15 @@ type Request struct {
 	System   string
 	Messages []Message
 	Tools    []ToolDecl
-	// SystemParts is the system prompt as ordered parts, for the dialects that
-	// take one as content blocks. System is its flattened text view, and is
-	// what a caller that only ever set a string keeps using.
+	// SystemParts is the system prompt as ordered parts; System is its flattened text view.
 	SystemParts []Part
 	MaxTokens   int
 	Extra       map[string]any
-	// DialectExtra is provider-specific parameters addressed to ONE dialect,
-	// which is what lets a single request carry both `anthropic:top-k` and
-	// `openai:seed` without either reaching the wrong upstream. A dialect
-	// provider merges Extra (which is addressed to whoever runs) with its own
-	// entry here, and ignores every other dialect's.
+	// DialectExtra is provider-specific parameters for ONE dialect, so a request can carry both.
 	DialectExtra map[Dialect]map[string]any
 	CacheKey     string
 
-	// AutoCompact is the fraction (0..1) of the model's context window at
-	// which the agentic loop compacts the conversation before the next turn:
-	// when the last turn's prompt tokens reach AutoCompact * ContextWindow,
-	// the transcript is replaced by a two-message summary round. Zero (the
-	// default) disables auto-compaction. A typical value is 0.8.
-	//
-	// It lives on Request because a session IS a stored request: the fraction
-	// is a property of the conversation, not of the model call. ContextWindow
-	// (the denominator) lives on Config, because it is a property of the model
-	// the host chose, not of the conversation.
+	// AutoCompact is the fraction (0..1) of the context window at which the loop compacts; 0 disables it.
 	AutoCompact float64
 }
 
@@ -245,37 +178,14 @@ func (r Request) ParamsFor(d Dialect) map[string]any {
 	return out
 }
 
-// Normalized stop reasons. OpenAI finish reasons are mapped (stop → end_turn,
-// tool_calls → tool_use, length → max_tokens); Anthropic already uses these
-// names. Anything else passes through raw.
+// Normalized stop reasons; OpenAI finish reasons are mapped to these, anything else passes raw.
 const (
 	StopEndTurn   = "end_turn"
 	StopToolUse   = "tool_use"
 	StopMaxTokens = "max_tokens"
 )
 
-// Completion is the outcome of one model call: the assembled assistant
-// message, everything the provider said about what the call cost, and the
-// normalized stop reason.
-//
-// Usages holds every usage report the provider sent, in the order it sent
-// them, each exactly as reported. Upstreams disagree about what a usage report
-// means -- OpenAI emits one final snapshot, xAI attaches a cumulative snapshot
-// to every chunk, Anthropic sends fragments -- and reconciling that into a
-// single figure is a policy, not a translation. A translator that folded them
-// would be inventing a number the provider never sent; a reader that wants one
-// number folds the list itself. An empty Usages means the provider reported
-// nothing at all, which is not the same as reporting zeros.
-//
-// Timings holds every provider-reported timings snapshot in order
-// (llama.cpp-style upstreams attach one per chunk); it is empty when the
-// provider reported none. The Anthropic dialect never reports timings.
-//
-// Streamed records whether the response actually arrived as an SSE stream. A
-// 2xx that is NOT text/event-stream is read as a plain JSON body and
-// reassembled into a Completion with Streamed false -- a server that ignores
-// stream:true is accepted transparently, and the flag preserves the truth of
-// how the call was transported.
+// Completion is the outcome of one model call: the message, usage reports, and the stop reason.
 type Completion struct {
 	Message    Message
 	Usages     []Usage
@@ -284,26 +194,7 @@ type Completion struct {
 	StopReason string
 }
 
-// Provider executes one streaming model call. Implementations stream under
-// the hood and deliver deltas through ev (which may be nil). Build one with
-// the wire dialect's constructor -- NewOpenAIProvider or NewAnthropicProvider;
-// everything else in the library (Run, OneShot, Compact, NewParamStripper,
-// the built-in tool executors) works against this interface.
-//
-// On a mid-stream failure or cancellation AFTER data has arrived -- including
-// a stream callback returning an error -- Complete MUST return the PARTIAL
-// *Completion alongside the error, both non-nil, so the caller can keep the
-// partial content, reasoning, and the last usage snapshot. Before any data
-// (connection errors, non-2xx responses), the completion MUST be nil.
-//
-// That rule is load-bearing, not just convenient: a non-nil completion is how
-// the layers above tell that a failed call already streamed, and therefore
-// that re-sending it would duplicate output the caller has seen. Retry and
-// NewParamStripper both read it, and neither watches the callbacks to
-// second-guess it. An implementation that emits deltas and then returns a nil
-// completion will be re-sent.
-//
-// Providers must be safe for concurrent use by multiple goroutines.
+// Provider runs one streaming model call; after data arrives, returns partial Completion + error.
 type Provider interface {
 	Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error)
 }

@@ -11,32 +11,12 @@ import (
 	"time"
 )
 
-// what=status reads a commit's CI state through GitHub's two separate,
-// never-merged mechanisms: the legacy commit-status API (posted by
-// "context" — this org's own all-builds gate is one) and the native GitHub
-// Actions checks API (check runs). Both are reported, because GitHub itself
-// has no single verdict combining them over REST.
-//
-// "ref" (a branch, tag, or commit SHA) resolves the same way both endpoints
-// already resolve it; omitted, it resolves to the repository's default
-// branch (defaultBranch, repo_search.go), so "what's the status of this
-// repo" means its default branch's HEAD without a round trip to ask what
-// that branch is first.
-//
-// A red check is reported WITH ITS REASON. "CI failed" is the whole of what a
-// user usually says, and a report that answers it with "Build and test:
-// failure" only renames the question — so every failing check run is followed
-// up with its own detail read (title, summary, annotations) and rendered
-// inline. see docs/tools/repo-tools.md
+// what=status reads a commit's CI state through both the status and check-runs APIs.
 
 const (
-	// statusFailureDetailLimit bounds how many failing check runs are followed
-	// up with a detail read, so one catastrophic commit cannot turn a single
-	// tool call into fifty. Anything past it is NAMED as unexplained rather
-	// than dropped: a truncated report that looks complete is worse than none.
+	// statusFailureDetailLimit bounds how many failing check runs get a detail read.
 	statusFailureDetailLimit = 5
-	// statusSummaryMaxRunes caps each inlined failure summary. The drill-down
-	// (what=check_run) carries the full text.
+	// statusSummaryMaxRunes caps each inlined failure summary.
 	statusSummaryMaxRunes = 4_000
 	// checkRunTextMaxRunes caps what=check_run's own output text.
 	checkRunTextMaxRunes = 60_000
@@ -89,9 +69,7 @@ type ghAnnotation struct {
 	Message         string `json:"message"`
 }
 
-// failedConclusions are the check-run conclusions that mean a human has to go
-// look. "cancelled" is among them: a cancelled run explains nothing by itself,
-// and the reason a run was cancelled is exactly what the reader is after.
+// failedConclusions are the check-run conclusions that mean a human has to look.
 var failedConclusions = set.Of("failure", "timed_out", "action_required", "cancelled", "stale")
 
 // checkRunFailed reports whether a completed check run needs explaining.
@@ -118,17 +96,7 @@ func (e *repoTools) statusRead(ctx context.Context, in repoReadArgs) agentic.Too
 	return agentic.ToolResult{Content: text + tokenExpiryDetail(res, time.Now())}
 }
 
-// ciStatusReport renders one commit's full CI report — both mechanisms, with
-// every failing check run explained. It is shared with workspace_read
-// what=checks, which asks the same question about the attached PR's head, so
-// the two can never drift into reporting CI differently.
-//
-// The returned GHResponse is the combined-status response, carried back only so
-// the caller can append its token-expiry note.
-// CIStatusReport renders a commit's CI state -- legacy commit statuses and
-// Actions check runs together, every failing check explained. A host reporting
-// a working copy's own CI calls this, so what it shows and what
-// repo_read what=status shows are one rendering rather than two.
+// CIStatusReport renders a commit's CI state: legacy statuses and check runs explained.
 func (e *GitHub) CIStatusReport(ctx context.Context, org, repo, ref string) (string, GHResponse, error) {
 	return (&repoTools{gh: e}).ciStatusReport(ctx, org, repo, ref)
 }
@@ -164,11 +132,7 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 		}
 	}
 
-	// A token accepted for `actions` and refused for `checks` is the ordinary
-	// case for a fine-grained PAT, and the two APIs describe the same runs. So
-	// when the check runs cannot be read, ask the Actions API instead: "CI is
-	// red" without a reason is the report that leaves the reader exactly where
-	// they started.
+	// When check runs cannot be read, ask the Actions API instead of leaving CI unexplained.
 	var actions, actionsNote string
 	if checksNote != "" {
 		sha := combined.SHA
@@ -182,9 +146,7 @@ func (e *repoTools) ciStatusReport(ctx context.Context, org, repo, ref string) (
 	return formatStatus(org, repo, ref, combined, checks, checksNote, actions, actionsNote, details, undetailed), statusRes, nil
 }
 
-// errStr is an error whose text is exactly the message given: the failure
-// describers already produce the sentence the model should read, and wrapping
-// it would only prefix it with the plumbing's own words.
+// errStr is an error whose text is exactly the message given.
 type errStr string
 
 func (e errStr) Error() string { return string(e) }
@@ -263,11 +225,7 @@ func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghChe
 		}
 	}
 
-	// The Checks API and the Actions API describe the same runs behind two
-	// permissions, and a host holding only one of them is ordinary. So which
-	// endpoint answered is plumbing: the report shows the runs from whichever
-	// did, and a permission is named only when NEITHER could answer and the
-	// reader is genuinely left without a CI verdict.
+	// The Checks API and the Actions API describe the same runs, so which answered is plumbing.
 	if checksNote != "" && actionsNote == "" {
 		fmt.Fprintf(&b, "\nWorkflow runs:\n%s\n", actions)
 		return finishStatus(&b, org, repo, checks, undetailed)

@@ -19,11 +19,7 @@ import (
 // retries the same request once. Params are thus still sent by default; only
 // one is dropped, and only after the upstream said no.
 
-// rejectParamPatterns matches the common OpenAI-compatible phrasings for a
-// rejected/unsupported request parameter, each capturing the parameter name.
-// The name capture is permissive (it stops at whitespace, a closing quote, or
-// common trailing punctuation) because the surrounding quoting differs per
-// provider; the captured token is cleaned by trimParamName afterwards.
+// rejectParamPatterns matches common OpenAI-compatible phrasings for a rejected/unsupported parameter, capturing the parameter name.
 var rejectParamPatterns = []*regexp.Regexp{
 	// xAI: Model grok-build-0.1 does not support parameter reasoningEffort.
 	regexp.MustCompile(`(?i)does not support parameter\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
@@ -35,11 +31,7 @@ var rejectParamPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)unrecognized request argument:?\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
 }
 
-// rejectedParamName extracts the name of a rejected/unsupported request
-// parameter from an upstream error text, returning ("", false) when no known
-// phrasing matches. It is intentionally targeted: an unparseable error means
-// no retry (there is no name to strip), so the original error surfaces
-// unchanged.
+// rejectedParamName extracts a rejected/unsupported parameter name from an error text; unparseable means no retry.
 func rejectedParamName(errBody string) (string, bool) {
 	for _, re := range rejectParamPatterns {
 		if m := re.FindStringSubmatch(errBody); m != nil {
@@ -51,16 +43,12 @@ func rejectedParamName(errBody string) (string, bool) {
 	return "", false
 }
 
-// trimParamName strips the whitespace, surrounding quotes, and trailing
-// sentence punctuation an error message may wrap a parameter name in
-// (e.g. `"reasoningEffort".` -> reasoningEffort).
+// trimParamName strips whitespace, surrounding quotes, and trailing punctuation an error may wrap a parameter name in.
 func trimParamName(s string) string {
 	return strings.Trim(s, " \t\"'`.,:;)")
 }
 
-// normalizeParamName lowercases a name and removes underscores so an
-// upstream's camelCased report (reasoningEffort) matches a snake_case key
-// (reasoning_effort). Both forms normalize to "reasoningeffort".
+// normalizeParamName lowercases and removes underscores so camelCase and snake_case forms match.
 func normalizeParamName(name string) string {
 	return strings.ReplaceAll(strings.ToLower(name), "_", "")
 }
@@ -141,11 +129,7 @@ func (s *paramStripper) withoutStripped(extra map[string]any) map[string]any {
 	return out
 }
 
-// matchRejectedKey parses the rejected parameter name out of errStr and, if
-// it matches (by normalized form) a key actually present in extra, returns
-// that key. It returns ("", false) when the error names no parameter or the
-// named parameter is not in extra — in both cases the caller must NOT retry
-// (there is nothing to change, so retrying would loop or be pointless).
+// matchRejectedKey returns the key in extra matching the rejected name, or ("", false) when there is nothing to strip.
 func matchRejectedKey(extra map[string]any, errStr string) (string, bool) {
 	name, ok := rejectedParamName(errStr)
 	if !ok {

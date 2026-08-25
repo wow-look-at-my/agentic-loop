@@ -22,8 +22,7 @@ func TestRepoFileWriteAllTokensLackWriteAccess(t *testing.T) {
 	})
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Content, "failed with every configured GitHub token")
-	// Every call 404s, the repository probe included, so no credential can see
-	// it at all -- the one case where blaming the credentials is established.
+	// Every call 404s so no credential can see the repo at all.
 	assert.Contains(t, res.Content, "none of them can read octo/hello at all")
 }
 
@@ -67,8 +66,7 @@ func TestAuthFailureRankPrefersWhatExplains(t *testing.T) {
 		assert.Equal(t, missing, MoreInformativeAuthFailure(missing, weaker), "%d must not displace a missing object", weaker.status)
 		assert.Equal(t, missing, MoreInformativeAuthFailure(weaker, missing), "a missing object must win from either side")
 	}
-	// A 401 only says the credential was rejected; a 403 says it was
-	// recognized and denied, which is a real signal about access.
+	// A 401 says the credential was rejected; a 403 says it was recognized and denied.
 	assert.Equal(t, denied, MoreInformativeAuthFailure(denied, bad))
 	assert.Equal(t, denied, MoreInformativeAuthFailure(bad, denied))
 	// Nothing to compare against yet: the first failure is the best so far.
@@ -78,9 +76,7 @@ func TestAuthFailureRankPrefersWhatExplains(t *testing.T) {
 }
 
 func TestCommitReadNamesTheWholeSHA(t *testing.T) {
-	// A 404 on the branch point makes that sha the thing the reader has to go
-	// and look up, so it is reported whole rather than clipped to ten
-	// characters by the message that reports it.
+	// A 404 on the branch point makes that sha the thing the reader has to look up.
 	err := ClassifyObjectRead("read the base commit "+authTestBaseTip, "commit "+authTestBaseTip,
 		GHResponse{status: 404, body: []byte(`{"message":"Not Found"}`)})
 	var auth GitHubAuthError

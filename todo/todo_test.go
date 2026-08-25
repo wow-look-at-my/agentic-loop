@@ -13,8 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// recordingTodos captures what the executor hands the host. Writing to the
-// real shipped tools, each mutation persists the whole post-mutation list.
+// recordingTodos captures what the executor hands the host.
 type recordingTodos struct {
 	got   [][]Todo
 	fails error
@@ -260,9 +259,7 @@ func TestAnUnknownIdIsRefused(t *testing.T) {
 func TestAnAmbiguousIdIsRefused(t *testing.T) {
 	rec := &recordingTodos{}
 	exec := NewTodoTools(TodoConfig{Write: rec.write})
-	// The store is the library's internal, shared state; reach it through the
-	// tools' Execute indirectly is impossible for a duplicate, so exercise the
-	// shipped resolver directly on a hand-built damaged store.
+	// The store is internal; exercise the shipped resolver on a hand-built damaged store.
 	edit, ok := exec.Find(TodoEditToolName)
 	require.True(t, ok)
 	tt := edit.(*todoTool)
@@ -365,8 +362,7 @@ func TestAHostThatCouldNotStoreTheListIsAFailure(t *testing.T) {
 	res := run(t, byName[TodoAddToolName], `{"title":"t"}`)
 	assert.True(t, res.IsError)
 	assert.Equal(t, "could not save the task list: disk on fire", res.Content)
-	// The failed add is not recorded as stored: the host got the error, and the
-	// tool answered the failure.
+	// The failed add is not recorded as stored; the tool answered the failure.
 	assert.NotEmpty(t, rec.got)
 }
 

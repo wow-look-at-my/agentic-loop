@@ -36,10 +36,7 @@ const (
 		"This MUTATES the repository — the user is asked to approve every call — and requires a GitHub PAT with write access. " +
 		"Commit the changes first (e.g. with repo_file_write), then open the PR."
 
-	// noModelWriteTokensMsg is the recoverable teaching error for a
-	// model-initiated write when the user has PATs configured but has flagged
-	// none of them for model writes. User-initiated writes (the files-pane
-	// workspace push) are unaffected — they use every enabled token.
+	// noModelWriteTokensMsg is the teaching error when no PAT is flagged model-writable.
 	noModelWriteTokensMsg = `No GitHub credential permits model-initiated writes. Ask the user to enable "model can write" on a GitHub token in Settings -> github.`
 )
 
@@ -54,12 +51,7 @@ var repoPRCreateSchema = agentic.InferSchema[repoPRCreateArgs]()
 type GitHubAuthError struct {
 	status int
 	what   string
-	// object names the one git object this step READ, when the step was a
-	// lookup of a specific commit or ref rather than a mutation. A 404 on such
-	// a step means EITHER that the credential cannot see the repository OR
-	// that the object is not in it, and nothing about the response
-	// distinguishes them -- so the rotation records which it was and the two
-	// are told apart after every credential has been tried, never during.
+	// object names the one git object this step READ, when it read one.
 	object string
 }
 
@@ -80,9 +72,7 @@ func ClassifyObjectRead(what, object string, res GHResponse) error {
 	return err
 }
 
-// GitHubFatalError marks a write-flow failure no other credential can fix (bad
-// arguments, a missing base branch, validation errors, conflicts); its message
-// goes back to the model as a recoverable tool error.
+// GitHubFatalError marks a write-flow failure no other credential can fix.
 type GitHubFatalError struct{ msg string }
 
 func (f GitHubFatalError) Error() string { return f.msg }
@@ -100,13 +90,7 @@ func ClassifyWriteStatus(what string, res GHResponse) error {
 	return GitHubFatalError{msg: fmt.Sprintf("could not %s: GitHub returned status %d", what, res.status)}
 }
 
-// writeTokenOrder is the credential order for mutating calls, drawn ONLY from
-// the client's write list (e.gh.writeTokens — never the read list): the cached
-// winner for cacheKey first — when it is a real token PRESENT IN the write
-// list; the "" (public/no-auth) cache sentinel and any winner outside the
-// write list (e.g. a user-only token recorded by a read or a user push) are
-// skipped, and the write list rotates normally — then every write-capable
-// token. Unlike reads, writes never append an unauthenticated attempt.
+// writeTokenOrder is the credential order for mutating calls, from the write list only.
 func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()
@@ -246,8 +230,7 @@ func (e *repoTools) fileWrite(ctx context.Context, args json.RawMessage) agentic
 	if err := requireOrgRepo(RepoFileWriteToolName, in.Org, in.Repo); err != nil {
 		return agentic.ToolResult{Content: err.Error(), IsError: true}
 	}
-	// Workspace mode: writes to the conversation's workspace repository go
-	// through workspace_edit (staged locally, pushed only by the user).
+	// Workspace mode: writes to the workspace repository go through workspace_edit.
 	if r := e.block(in.Org, in.Repo); r != nil {
 		return *r
 	}
@@ -257,9 +240,7 @@ func (e *repoTools) fileWrite(ctx context.Context, args json.RawMessage) agentic
 	if in.Branch == "" || in.Path == "" || in.Message == "" {
 		return agentic.ToolResult{Content: `repo_file_write requires non-empty "branch", "path", and "message" (plus "content"), e.g. {"org":"octocat","repo":"hello-world","branch":"docs","path":"README.md","content":"...","message":"update readme"}`, IsError: true}
 	}
-	// branchCreated survives across credential attempts: if one token created
-	// the branch but could not commit, the token that finally succeeds still
-	// reports the creation.
+	// branchCreated survives across credential attempts.
 	branchCreated := false
 	createdFrom := ""
 	return e.runWrite(ctx, RepoFileWriteToolName, RepoCacheKey(in.Org, in.Repo), func(token string) (string, error) {
@@ -286,16 +267,12 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 	}
 	repoURL := e.repoURL(in.Org, in.Repo)
 
-	// Does the branch exist? The repo probe above succeeded with this token, so
-	// a 404 here means the branch really is missing (not an access problem).
+	// Does the branch exist? A 404 here means it is really missing.
 	res, err := e.gh.doGet(ctx, repoURL+"/git/ref/"+EscapeSegments("heads/"+in.Branch), token, "application/vnd.github+json")
 	if err != nil {
 		return "", err
 	}
-	// checkRef is where the new file's absence is verified: the branch itself,
-	// or — when the branch is yet to be created — the ref it will start from
-	// (whose tree the new branch inherits). needBranch defers the branch
-	// creation until after the check, so a refusal mutates nothing.
+	// checkRef is where the new file's absence is verified; needBranch defers creation.
 	checkRef := in.Branch
 	needBranch := false
 	branchBaseSHA := ""
@@ -323,8 +300,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 		return "", ClassifyWriteStatus("look up branch "+in.Branch, res)
 	}
 
-	// CREATE-ONLY gate: the path must not exist on the ref the content would
-	// come from (2xx = it does; 404 = genuinely new).
+	// CREATE-ONLY gate: the path must not exist on the ref the content would come from.
 	ContentsURL := repoURL + "/contents/" + EscapeSegments(in.Path)
 	fres, err := e.gh.doGet(ctx, ContentsURL+"?ref="+url.QueryEscape(checkRef), token, "application/vnd.github+json")
 	if err != nil {
@@ -404,8 +380,7 @@ type repoPRCreateArgs struct {
 	Head  string `json:"head" jsonschema:"Branch carrying the changes (must already exist)."`
 	Base  string `json:"base,omitempty" jsonschema:"Branch to merge into. Defaults to the repository's default branch."`
 	Body  string `json:"body,omitempty" jsonschema:"Optional pull request description (markdown)."`
-	// Draft is a pointer so an omitted argument keeps the default (true) rather
-	// than reading as an explicit false.
+	// Draft is a pointer so an omitted argument keeps the default (true).
 	Draft *bool `json:"draft,omitempty" jsonschema:"Open as a draft pull request. Defaults to true."`
 }
 
@@ -472,7 +447,5 @@ func (e *repoTools) tryPRCreate(ctx context.Context, token string, in repoPRCrea
 	return fmt.Sprintf("created %s #%d in %s/%s: %s\n%s -> %s\n%s", kind, pr.Number, in.Org, in.Repo, in.Title, in.Head, base, pr.HTMLURL), nil
 }
 
-// NewGitHubFatalError is a write failure that must NOT be retried with another
-// credential: the request was understood and refused on its merits, so trying
-// the next token only repeats it.
+// NewGitHubFatalError is a write failure that must NOT be retried with another credential.
 func NewGitHubFatalError(msg string) error { return GitHubFatalError{msg: msg} }
