@@ -47,3 +47,11 @@ func assistantComp(content string) *commonai.Completion {
 		StopReason: commonai.StopEndTurn,
 	}
 }
+
+// emptyComp is a scripted assistant turn with no text, tool call, or thinking.
+func emptyComp() *commonai.Completion {
+	return &commonai.Completion{
+		Message:    commonai.Message{Role: commonai.RoleAssistant},
+		StopReason: commonai.StopEndTurn,
+	}
+}

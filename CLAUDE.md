@@ -146,6 +146,11 @@ side of that line it falls on — do not put it on both.
   one callers forget to enable. The provider is also the only layer that
   knows whether a call streamed anything, which is what makes re-sending
   safe. That is why it is a knob the loop passes along and never reads.
+- **A genuinely empty completion (no text, tool call, or thinking) is retried
+  too**, on the same `RetryPolicy`, `err == nil` and all — see
+  `extras.completionIsEmpty`. `Run`'s `noOutputPlaceholder` fallback is the
+  last resort after every attempt still comes back empty, not the first line
+  of defense. Depth: USAGE.md's "Retry and error classification".
 - **A tool is an individual thing, and nothing groups them.** `Tool` is
   `Decl`/`Execute`, and a run's toolset is a flat `Tools`
   slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
