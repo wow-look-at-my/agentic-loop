@@ -722,30 +722,33 @@ requested tools, feed the results back, repeat. Key behaviors:
 
 #### Delivering a message into a running loop
 
-A run is not a closed box. Two queues carry a message from anywhere in your
-program into the transcript the model is working on: `Config.SystemMessages`
-for automated notices (a CI status change, a stop-hook nudge, a sub-agent
-report) and `Config.UserMessages` for what the user typed while the model was
-busy. Both are `*MessageQueue`, safe for concurrent producers.
+A run is not a closed box. One queue, `Config.Messages` (`*MessageQueue`,
+safe for concurrent producers), carries a message from anywhere in your
+program into the transcript the model is working on. It holds two kinds,
+told apart by the value's own type rather than by which field you set:
+`SystemMessage` for an automated notice (a CI status change, a stop-hook
+nudge, a sub-agent report) and `UserMessage` for what the user typed while
+the model was busy. Both implement `QueuedMessage` and wrap a `Message`.
 
 ```go
-sys := &agentic.MessageQueue{}
+q := &agentic.MessageQueue{}
 go func() {
-    if !sys.Queue(agentic.Message{Role: agentic.RoleUser, Kind: "ci_status_change",
-        Content: "[CI status changed] checks went red on abc1234 ..."}) {
+    notice := agentic.SystemMessage{Message: agentic.Message{Role: agentic.RoleUser,
+        Kind: "ci_status_change", Content: "[CI status changed] checks went red on abc1234 ..."}}
+    if !q.Queue(notice) {
         startANewRun(notice) // the run ended; nothing else will deliver it
     }
 }()
-res, err := agentic.Run(ctx, agentic.Config{Provider: p, SystemMessages: sys, ...}, req)
+res, err := agentic.Run(ctx, agentic.Config{Provider: p, Messages: q, ...}, req)
 ```
 
-- **A queued message always reaches the model.** Both queues are drained at
-  the top of every turn, system first, and a message queued when the model
-  would otherwise have finished **starts another turn** — every time, not once
-  per run. There is nothing to poll and no window in which a notice is quietly
-  dropped: a turn boundary is either coming or is created.
-- **`Queue` reports whether the queue took the message.** Run closes both
-  queues as it returns, so `false` means the run has ended and no other run
+- **A queued message always reaches the model.** The queue is drained at
+  the top of every turn, system messages first, and a message queued when the
+  model would otherwise have finished **starts another turn** — every time, not
+  once per run. There is nothing to poll and no window in which a notice is
+  quietly dropped: a turn boundary is either coming or is created.
+- **`Queue` reports whether the queue took the message.** Run closes the
+  queue as it returns, so `false` means the run has ended and no other run
   will show that message to anyone. That is the signal to start a new run
   with it — the alternative, a hopeful `true`, is how a CI notice ends up
   sitting in a queue nothing reads. A nil queue is closed by the same logic.
