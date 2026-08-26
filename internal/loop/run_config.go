@@ -66,9 +66,9 @@ type Config struct {
 	// KeepAlive keeps subscribed event callbacks from being garbage-collected.
 	KeepAlive any
 
-	// SystemMessages/UserMessages deliver messages INTO the run; a queued message reaches the model.
-	SystemMessages *MessageQueue
-	UserMessages   *MessageQueue
+	// Messages delivers system notices and user messages INTO the run; a
+	// queued message reaches the model. One queue, both kinds.
+	Messages *MessageQueue
 
 	// Subagents is the registry an asynchronous run_subagent reports into; nil = none.
 	Subagents *SubagentRuns
