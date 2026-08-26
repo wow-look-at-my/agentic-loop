@@ -98,13 +98,18 @@ func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
 
 // NewAnthropicProvider builds the Provider for the Anthropic Messages API. It
 // fails fast -- with a permanent (never-retried) error -- on an empty BaseURL.
+// A thinking block whose signature the API rejects is stripped and the call
+// retried automatically -- see commonai.NewThinkingSignatureRepair.
 func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 	p, err := commonai.NewAnthropicProvider(commonai.AnthropicConfig{
 		ProviderConfig: cfg.core(),
 		Version:        cfg.Version,
 		DisableCaching: cfg.DisableCaching,
 	})
-	return finish(p, cfg.Retry, err)
+	if err != nil {
+		return nil, err
+	}
+	return finish(commonai.NewThinkingSignatureRepair(p), cfg.Retry, err)
 }
 
 // finish turns a dialect implementation into the Provider a caller holds: retry behavior plus folded usage.
