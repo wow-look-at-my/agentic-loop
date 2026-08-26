@@ -151,6 +151,11 @@ side of that line it falls on — do not put it on both.
   `extras.completionIsEmpty`. `Run`'s `noOutputPlaceholder` fallback is the
   last resort after every attempt still comes back empty, not the first line
   of defense. Depth: USAGE.md's "Retry and error classification".
+- **A rejected thinking-block signature is a permanent 400, not a transient
+  one** — `NewAnthropicProvider` wraps every call in
+  `core.NewThinkingSignatureRepair`, which strips the one signature Anthropic
+  named and retries once, else the same messages 400 forever regardless of
+  model or attempt count. Depth: USAGE.md's "Retry and error classification".
 - **A tool is an individual thing, and nothing groups them.** `Tool` is
   `Decl`/`Execute`, and a run's toolset is a flat `Tools`
   slice `Run` indexes by advertised name. There is no `ToolExecutor`, no

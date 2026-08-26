@@ -838,6 +838,19 @@ placeholder is `internal/loop/run_config.go`'s `noOutputPlaceholder`). A
 tool-call-only or thinking-only completion is not empty and is never
 retried on this account.
 
+**A rejected thinking-block signature is repaired, not just retried.**
+`NewAnthropicProvider` wraps every call in `NewThinkingSignatureRepair`
+(`core/thinkingrepair.go`): when Anthropic 400s a replayed thinking block
+with `messages.N.content.M: Invalid \`signature\` in \`thinking\` block`,
+that one block's signature is cleared -- `anAssistantContent` already drops
+a signature-less block -- and the call retried once. Unlike a transient
+retry, the rejection is *permanent* for the unmodified request: resending
+the same messages fails identically forever, which is what made a
+conversation with one poisoned block unrecoverable regardless of model or
+attempt count. The stripped signature is remembered for the life of the
+provider, so a later turn in the same conversation strips it up front
+instead of paying for a failing round trip again.
+
 ### Rate limiting
 
 `ProviderConfig.RateLimiter`, when set, throttles the provider's outgoing
