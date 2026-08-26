@@ -13,22 +13,22 @@ func TestRunOnStopInjectsAndContinues(t *testing.T) {
 		{comp: assistantComp("first")},
 		{comp: assistantComp("second")},
 	}}
-	sys := &MessageQueue{}
+	q := &MessageQueue{}
 	events := Events{}
 	// A host re-arms while its policy says to; the loop asks every time, the host decides when to stop.
 	asked := 0
 	stopCb := func(ev StopEvent) error {
 		asked++
 		if asked == 1 {
-			sys.Queue(Message{Role: RoleUser, Content: "push staged work"})
+			q.Queue(SystemMessage{Message{Role: RoleUser, Content: "push staged work"}})
 		}
 		return nil
 	}
 	events.OnStop.Subscribe(&stopCb)
 	cfg := Config{
-		Provider:       provider,
-		Events:         &events,
-		SystemMessages: sys,
+		Provider: provider,
+		Events:   &events,
+		Messages: q,
 	}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
@@ -50,18 +50,18 @@ func TestRunOnStopIsAskedAtEveryBoundary(t *testing.T) {
 		{comp: assistantComp("second")},
 		{comp: assistantComp("third")},
 	}}
-	sys := &MessageQueue{}
+	q := &MessageQueue{}
 	events := Events{}
 	asked := 0
 	stopCb := func(ev StopEvent) error {
 		asked++
 		if asked < 3 {
-			sys.Queue(Message{Role: RoleUser, Content: "not done yet"})
+			q.Queue(SystemMessage{Message{Role: RoleUser, Content: "not done yet"}})
 		}
 		return nil
 	}
 	events.OnStop.Subscribe(&stopCb)
-	cfg := Config{Provider: provider, Events: &events, SystemMessages: sys}
+	cfg := Config{Provider: provider, Events: &events, Messages: q}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, 3, asked)

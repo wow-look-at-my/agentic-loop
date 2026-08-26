@@ -205,16 +205,20 @@ side of that line it falls on — do not put it on both.
   loop calls `Compact`, replaces the transcript, resets the deduper, and
   fires `Events.OnCompaction`. Zero disables; a server reporting no usage
   never triggers; a compaction failure is non-fatal. Depth: `USAGE.md`.
-- **A message a queue ACCEPTS reaches the model.** `SystemMessages` and
-  `UserMessages` are drained at the top of every turn, system first, and a
-  message queued when the model would otherwise finish starts another turn —
-  every time. `Events.OnStop` is asked at every stop boundary for the same
-  reason a turn cap is a regression: a count cannot tell a host re-arming
-  with a reason from one spinning, and the cap fired at the worst moment.
-  `Queue` returns whether the queue took it, `Run`
-  closes both queues as it returns (so a racing producer starts a new run
-  instead), and whatever a failed, cancelled or capped run never delivered
-  comes back in `Result.Undelivered`. Depth: `USAGE.md`.
+- **A message a queue ACCEPTS reaches the model.** `Config.Messages` is ONE
+  `*MessageQueue`, holding both `SystemMessage` and `UserMessage` values (each
+  wrapping a `Message`, both implementing `QueuedMessage`) — the value's own
+  type says which kind it is, so a host cannot wire one kind through and
+  forget the other the way two separate queue fields let it. It is drained at
+  the top of every turn, system messages first, and a message queued when the
+  model would otherwise finish starts another turn — every time.
+  `Events.OnStop` is asked at every stop boundary for the same reason a turn
+  cap is a regression: a count cannot tell a host re-arming with a reason
+  from one spinning, and the cap fired at the worst moment. `Queue` returns
+  whether the queue took it, `Run` closes the queue as it returns (so a
+  racing producer starts a new run instead), and whatever a failed, cancelled
+  or capped run never delivered comes back in `Result.Undelivered`. Depth:
+  `USAGE.md`.
 - **Every entry point that makes a model call surfaces its `*Completion`.**
   Never a `Usage`, never a bare string: only `Completion.UsageReported`
   separates "reported zeros" from "reported nothing", and a projection drops

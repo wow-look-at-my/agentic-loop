@@ -28,9 +28,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	copy(transcript, req.Messages)
 
 	res := &Result{}
-	// Both queues belong to this run; closing them tells a racing producer its message missed.
+	// The queue belongs to this run; closing it tells a racing producer its message missed.
 	defer func() {
-		if left := closeQueues(cfg.SystemMessages, cfg.UserMessages); len(left) > 0 && res != nil {
+		if left := cfg.Messages.Close(); len(left) > 0 && res != nil {
 			res.Undelivered = left
 		}
 	}()
@@ -75,8 +75,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					Kind:    SubagentReportKind,
 					Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
 				}
-				if cfg.SystemMessages != nil {
-					cfg.SystemMessages.Queue(delivery)
+				if cfg.Messages != nil {
+					cfg.Messages.Queue(SystemMessage{delivery})
 				} else {
 					cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
 					transcript = append(transcript, delivery)
@@ -84,7 +84,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			}
 		}
 		// Drain queued messages: system first, then user.
-		for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
+		for _, msg := range cfg.Messages.Drain() {
 			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
 			transcript = append(transcript, msg)
 		}
@@ -335,8 +335,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 						Kind:    SubagentReportKind,
 						Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), lost),
 					}
-					if cfg.SystemMessages != nil {
-						cfg.SystemMessages.Queue(delivery)
+					if cfg.Messages != nil {
+						cfg.Messages.Queue(SystemMessage{delivery})
 					} else {
 						cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: delivery})
 						transcript = append(transcript, delivery)
@@ -347,7 +347,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
 						transcript = append(transcript, answered)
 					}
-					for _, msg := range DrainBoth(cfg.SystemMessages, cfg.UserMessages) {
+					for _, msg := range cfg.Messages.Drain() {
 						cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
 						transcript = append(transcript, msg)
 					}
@@ -381,12 +381,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 						finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: answered, Status: "complete"})
 						transcript = append(transcript, answered)
 					}
-					if cfg.SystemMessages != nil {
-						cfg.SystemMessages.Queue(Message{
+					if cfg.Messages != nil {
+						cfg.Messages.Queue(SystemMessage{Message{
 							Role:    RoleUser,
 							Kind:    SubagentReportKind,
 							Content: FormatSubagentDelivery(reports, cfg.Subagents.Running(), 0),
-						})
+						}})
 					} else {
 						transcript = append(transcript, Message{
 							Role:    RoleUser,
@@ -409,7 +409,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// it arrived while the model was working and the answer could not
 			// have accounted for it. Keep the answer and take another turn,
 			// which drains the queue at the top.
-			if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
+			if cfg.Messages.Pending() && moreTurnsAllowed(turn) {
 				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: final, Status: "complete"})
 				transcript = append(transcript, final)
 				continue
@@ -422,7 +422,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		// queued. Deliver that instead of spending a wrap-up call on a turn
 		// with nothing to wrap up: the queued message is newer than anything
 		// the model could synthesize here, and the next turn drains it.
-		if Pending(cfg.SystemMessages, cfg.UserMessages) && moreTurnsAllowed(turn) {
+		if cfg.Messages.Pending() && moreTurnsAllowed(turn) {
 			stalled := assistant
 			stalled.ToolCalls = nil
 			stalled.Content = fallbackOutput(assistant)
