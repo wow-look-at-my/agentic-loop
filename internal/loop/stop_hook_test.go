@@ -26,9 +26,9 @@ func TestRunOnStopInjectsAndContinues(t *testing.T) {
 	}
 	events.OnStop.Subscribe(&stopCb)
 	cfg := Config{
-		Provider:       provider,
-		Events:         &events,
-		Messages:       q,
+		Provider: provider,
+		Events:   &events,
+		Messages: q,
 	}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
