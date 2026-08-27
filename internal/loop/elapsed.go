@@ -17,9 +17,8 @@ const (
 	elapsedInstant    = "<1sec"
 )
 
-// ElapsedTime, on Config, states the current time and the gap since the previous
-// request on EVERY model call. The notice rides that request only: a stored one
-// lies on replay.
+// ElapsedTime, on Config, states the clock and the gap since the previous
+// request on EVERY model call. The notice rides that request: a stored one lies.
 type ElapsedTime struct {
 	// Since is when the previous request was made; zero states the time alone.
 	Since time.Time

@@ -53,8 +53,7 @@ func TestFormatElapsedNoticeLeadsWithTheClock(t *testing.T) {
 }
 
 func TestFormatElapsedNoticeStatesTheTimeAloneWithNothingToMeasure(t *testing.T) {
-	// Nothing has been asked yet, and a clock that went backwards has no gap to
-	// report either. The current time is still worth stating.
+	// Nothing asked yet, and a backwards clock has no gap either.
 	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026", FormatElapsedNotice(noon, time.Time{}))
 	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026", FormatElapsedNotice(noon, noon.Add(time.Hour)))
 }
