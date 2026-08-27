@@ -115,10 +115,12 @@ func (s *Server) answer(ctx context.Context, w io.Writer, data []byte) bool {
 		}
 		stream.begin(comp.Message.Role)
 	}
-	stream.finish(comp, callErr)
+	// Record BEFORE closing the document: a caller told the turn is done reads
+	// the conversation next, and must not find the answer missing from it.
 	if id != "" && comp != nil {
 		_, _ = s.store.Append(id, comp.Message)
 	}
+	stream.finish(comp, callErr)
 	return true
 }
 

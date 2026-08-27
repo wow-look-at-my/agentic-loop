@@ -1058,6 +1058,57 @@ the loop cannot know the context is full. A compaction failure (the model
 returned an empty summary) is non-fatal — the loop continues with the
 un-compacted transcript.
 
+### Telling the model how much time has passed
+
+A model reads a transcript with no clock in it. The turn it is answering may
+have arrived four seconds after the last one or four days after it, and
+nothing in the messages says which. `Config.ElapsedTime` puts that fact in
+front of it on every model call:
+
+```go
+res, err := agentic.Run(ctx, agentic.Config{
+	Provider: provider,
+	// Since seeds the first call: when this conversation last made a request.
+	ElapsedTime: &agentic.ElapsedTime{Since: conv.LastRequestAt},
+}, req)
+```
+
+Each call then carries one extra `RoleUser` message at the end, `Kind:
+ElapsedKind`, reading:
+
+```
+[automated notice -- time since the previous request in this conversation: 2 hours 14 minutes; this is not a message from the user]
+```
+
+- **It rides the request, never the transcript.** The notice is appended to
+  the messages for that one call and is not in `Result.Messages`, fires no
+  `OnSystemMessage`, and is never handed to a host to persist. A stored "2
+  hours have passed" is false the moment the thread is replayed — and it would
+  be replayed on every later turn, telling the model something that was true
+  once about a gap that is now days old.
+- **Every model call, including the tool loop.** The gap between two turns of
+  a tool loop is seconds, and saying so is the point: it is how the model
+  learns what its own tool calls cost in wall-clock time. The stall wrap-up
+  call carries one too.
+- **`Since` is the seed, and the loop keeps its own clock after that.** Zero
+  means the run opens the conversation and the first call says nothing —
+  there is nothing to measure from, and inventing a gap would be worse than
+  omitting one. Every later call measures from the previous call in this run.
+- **The gap renders as its two largest non-zero units** — `3 days 4 hours`,
+  `2 hours 14 minutes`, `45 seconds` — and anything under a second is
+  `less than a second` rather than `0 seconds`, which reads as a broken clock.
+  `FormatElapsed` and `FormatElapsedNotice` are exported for a host that wants
+  the same wording elsewhere.
+- **Helper calls are not conversation turns**, so `Compact`, `OneShot` and the
+  optional tools' own summarizing calls carry no notice and do not move the
+  clock: a compaction the host never asked about must not read as a request the
+  user made.
+- **`Now` overrides the clock** for tests; nil is `time.Now`.
+
+The same effect is reachable by hand through `Events.OnTurnBegin`, which can
+append to that call's `Request.Messages` — this option is that, with the
+wording, the per-call discipline and the cross-run seed already decided.
+
 ## Searching stored conversations
 
 `search` indexes conversations so they can be found by word (FTS5) and, when an

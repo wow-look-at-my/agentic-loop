@@ -15,9 +15,8 @@ const (
 	elapsedInstant      = "less than a second"
 )
 
-// ElapsedTime, on Config, states how long has passed since the previous request
-// on EVERY model call. The notice is per-call and never joins the transcript: a
-// stored "2 hours have passed" is false the moment the thread is replayed.
+// ElapsedTime, on Config, states the gap since the previous request on EVERY
+// model call. The notice rides that request only: a stored one lies on replay.
 type ElapsedTime struct {
 	// Since is when the previous request was made; zero says nothing on the run's first call.
 	Since time.Time
