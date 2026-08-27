@@ -85,12 +85,13 @@ type SystemMessageEvent struct {
 	ID  *MessageID
 }
 
-// CompactionEvent is the param to OnCompaction; the host replaces its transcript with Messages.
+// CompactionEvent is the param to OnCompaction; the host may set ID to the row it stored.
 type CompactionEvent struct {
 	event.Args
 	Summary    string
 	Messages   []Message
 	Completion *Completion
+	ID         *MessageID
 }
 
 // Events are the loop's callbacks; all optional, and a returned error aborts the run.
@@ -166,7 +167,10 @@ func (e *Events) emitSystemMessage(ev SystemMessageEvent) {
 	_ = e.OnSystemMessage.Invoke(ev)
 }
 
-// emitCompaction notifies the host the loop auto-compacted; replaces transcript, resets deduper.
-func (e *Events) emitCompaction(ev CompactionEvent) {
+// emitCompaction reports the compaction; the returned row id keeps the next turn attached.
+func (e *Events) emitCompaction(ev CompactionEvent) MessageID {
+	var id MessageID
+	ev.ID = &id
 	_ = e.OnCompaction.Invoke(ev)
+	return id
 }

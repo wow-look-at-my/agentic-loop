@@ -967,13 +967,13 @@ cr, err := agentic.Compact(ctx, provider, agentic.Request{
 	System:   "You are compacting a conversation ...", // your summarizer brief
 	Messages: history,
 })
-// cr.Messages is the replacement round:
-//   user(agentic.CompactRequestText), assistant(cr.Summary)
+// cr.Messages is the replacement:
+//   user(Kind: agentic.CompactionKind, agentic.CompactionHandoffPrefix + cr.Summary)
 ```
 
 `Compact` sends the whole history with the summarize instruction as the
 trailing user message and no tools; you replace your history with the
-returned two-message round. `CompactResult.Completion` is that call's whole
+returned message. `CompactResult.Completion` is that call's whole
 completion — compaction reads the entire history, so it is one of the most
 expensive calls a session makes and charging it needs more than a `Usage`
 value could say. `OneShot(ctx, p, req, timeout) (*Completion, error)` is the
@@ -1012,13 +1012,42 @@ res, err := agentic.Run(ctx, agentic.Config{
 ```
 
 `Request.AutoCompact` is the fraction (0..1) of `Config.ContextWindow` at
-which the loop compacts. Zero (the default) disables the feature. After each
-turn whose `Usage.PromptTokens` reaches `AutoCompact * ContextWindow`, the
-loop calls `Compact` internally, replaces the transcript with the two-message
-summary round, resets the output deduper (its `[unchanged]` markers
-referenced outputs now gone from context), and notifies the host through
-`Events.OnCompaction` so it can replace its durable tree. The compaction
-call's cost is in the event's `Completion`.
+which the loop compacts. Zero (the default) disables the feature. Once a turn
+reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the
+loop calls `Compact` internally, replaces the transcript with the summary,
+resets the output deduper (its `[unchanged]` markers referenced outputs now
+gone from context), and notifies the host through `Events.OnCompaction`. The
+compaction call's cost is in the event's `Completion`.
+
+**It fires at the turn boundary, never inside one.** The check runs at the top
+of the next turn, after the previous turn's tool calls have run and their
+results are recorded, so no call is summarized away while the model is still
+owed an answer for it. Firing it mid-turn dropped the calls the model had just
+asked for and left a host storing an assistant row nothing ever answered —
+which every later turn then replayed, and which an OpenAI-dialect endpoint
+rejects. It also runs *before* the message queue drains, so a message queued
+while the model was talking is delivered after the summary, not folded into it.
+
+**The replacement never ends on `CompactRequestText`.** That string is a live
+instruction. Leaving it as the newest message told the model its current task
+was to summarize the conversation, so it answered with a summary instead of
+continuing the work — and did it again on the user's next question. The
+replacement is one user message, `Kind: CompactionKind`, whose content is
+`CompactionHandoffPrefix + summary`: the summary as context, framed explicitly
+as not a request.
+
+**A host that stores the summary should say where.** Set `*ev.ID` in the
+`OnCompaction` handler to the row id it persisted the summary under; the loop
+stamps that id onto the replacement message, so the assistant row minted for
+the next turn hangs off the summary instead of detaching from the tree. A host
+that stores nothing leaves it empty and nothing else changes.
+
+**Persisting it is the host's job, and skipping it is expensive.** The loop's
+transcript is in-memory and lives for one `Run`. A host that rebuilds the next
+turn's thread from durable storage, without recording the compaction, is back
+over the threshold immediately and compacts again — every turn, forever, each
+one paying a full-context summarization call. Store the summary and start the
+model's next thread from it.
 
 `AutoCompact` lives on `Request` because a session IS a stored request — the
 fraction is a property of the conversation, not of the model call, and it

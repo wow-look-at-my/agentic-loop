@@ -12,6 +12,9 @@ const DefaultAutoCompact = 0.8
 // SubagentReportKind is the Kind set on subagent delivery messages the loop injects.
 const SubagentReportKind = "subagent_report"
 
+// CompactionKind marks the summary that replaces a compacted transcript.
+const CompactionKind = "compaction"
+
 // wrapUpInstruction forces a stalled model to write its answer from what it gathered.
 const wrapUpInstruction = "Stop researching and write your final answer now, using only the information already gathered above. " +
 	"Do not call any tools and do not keep thinking -- output the complete, self-contained report that directly answers the task."
