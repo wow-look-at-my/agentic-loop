@@ -218,6 +218,15 @@ side of that line it falls on — do not put it on both.
   stored so the next assistant row still hangs off the tree. A host that does
   not persist it recompacts every turn at full-context price, forever.
   Depth: `USAGE.md`.
+- **The time notice rides the REQUEST, never the transcript.**
+  `Config.ElapsedTime` states the wall clock and the gap since the previous
+  request on every model call -- `Current time is 3:14 AM on 8/26/2026, 1d 23hrs
+  have passed` (`ElapsedTime.Since` seeds the run's first one; zero states the
+  time alone rather than inventing a gap). It is appended to that one call's messages and is
+  absent from `Result.Messages`, from `OnSystemMessage`, and from anything a
+  host persists: a stored "2 hours" is false on the next replay, and it would
+  be replayed on every later turn. Helper calls (`Compact`, `OneShot`) carry no
+  notice and do not move the clock. Depth: `USAGE.md`.
 - **A message a queue ACCEPTS reaches the model.** `Config.Messages` is ONE
   `*MessageQueue`, holding both `SystemMessage` and `UserMessage` values (each
   wrapping a `Message`, both implementing `QueuedMessage`) — the value's own

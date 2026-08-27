@@ -82,6 +82,9 @@ type Config struct {
 	// ContextWindow is the model's context window size; zero disables auto-compaction.
 	ContextWindow int
 
+	// ElapsedTime, when set, states how long has passed since the previous request on every call.
+	ElapsedTime *ElapsedTime
+
 	// turnHook, when non-nil, is invoked with the 1-based turn number as each turn begins.
 	TurnHook func(turn int)
 
