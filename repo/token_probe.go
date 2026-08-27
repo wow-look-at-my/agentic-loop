@@ -24,6 +24,9 @@ type TokenTestResult struct {
 	Orgs           []TokenTestOrg  `json:"orgs,omitempty"`
 	OrgsError      string          `json:"orgs_error,omitempty"`     // GET /user/orgs failed; Orgs may still be non-empty from repo owners
 	OrgsTruncated  bool            `json:"orgs_truncated,omitempty"` // more organizations exist past orgSweepMaxOrgs
+	// RateLimit is this token's core-quota standing, read off the /user probe's
+	// own response headers rather than asked for separately.
+	RateLimit RateLimitStatus `json:"rate_limit,omitempty"`
 }
 
 // TokenTestRepo is one repository visible to the tested token, with the
@@ -53,13 +56,19 @@ type TokenTestOrg struct {
 // (empty apiBase defaults to https://api.github.com) so a caller outside this
 // package's tool wiring — a Settings API handler — can use it without
 // building a client over the user's whole token list.
-func TestToken(ctx context.Context, apiBase, token string, httpClient *http.Client) TokenTestResult {
+func TestToken(ctx context.Context, apiBase, token string, httpClient *http.Client) (result TokenTestResult) {
 	e := NewGitHub(GitHubConfig{HTTPClient: httpClient, APIBaseURL: apiBase})
 	now := time.Now()
 	res, err := e.doGet(ctx, e.base+"/user", token, "application/vnd.github+json")
 	if err != nil {
 		return TokenTestResult{Error: "could not reach GitHub: " + err.Error()}
 	}
+	// The probe's own answer states the quota, however the probe turned out.
+	defer func() {
+		if s, ok := ReadRateLimit(res.header, now); ok {
+			result.RateLimit = s
+		}
+	}()
 	if rl, limited := classifyRateLimit(res, now); limited {
 		kind := "rate limit"
 		if rl.secondary {
