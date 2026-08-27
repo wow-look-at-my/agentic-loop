@@ -361,6 +361,8 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 	if err != nil {
 		return GHResponse{}, err
 	}
+	// Every response states the quota, so nothing asks. see rate_limit_headers.go
+	e.observeRateLimit(token, resp.Header)
 	return GHResponse{
 		status:    resp.StatusCode,
 		body:      data,

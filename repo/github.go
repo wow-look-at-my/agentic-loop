@@ -61,6 +61,8 @@ type GitHubConfig struct {
 	// NoAnonymous drops the unauthenticated attempt from every read order.
 	NoAnonymous bool
 	Cache       RepoKeyCache
+	// OnRateLimit hears every response's core-quota headers. see rate_limit_headers.go
+	OnRateLimit func(RateLimitObservation)
 }
 
 // GitHub is the credential-rotating GitHub REST client: commits, pull
@@ -76,6 +78,7 @@ type GitHub struct {
 	noAnonymous bool
 	cache       RepoKeyCache
 	vfs         *VFSMux
+	onRateLimit func(RateLimitObservation)
 }
 
 // NewGitHub builds the client; the only constructor, so all callers share one cache.
@@ -96,6 +99,7 @@ func NewGitHub(cfg GitHubConfig) *GitHub {
 		noAnonymous: cfg.NoAnonymous,
 		cache:       cfg.Cache,
 		vfs:         cfg.VFS,
+		onRateLimit: cfg.OnRateLimit,
 	}
 }
 

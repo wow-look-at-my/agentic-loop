@@ -270,6 +270,16 @@ side of that line it falls on — do not put it on both.
   exhausts its credentials re-reads the repository before blaming them: a
   404 on a named object with the repository readable means the OBJECT is
   gone. Writes use `WriteTokens` only and never fall through to anonymous.
+- **A credential's rate limit is READ OFF its responses, never asked for.**
+  Every GitHub response carries `x-ratelimit-*`, so a probe is a second
+  request asking what the first already answered -- there is no
+  `RateLimit()` and adding one back is a regression.
+  `GitHubConfig.OnRateLimit` hears each response, named with the credential
+  that spent it; `TokenTestResult.RateLimit` rides the `/user` probe's own
+  answer, pass or fail. Only the **core** resource counts (search spends a
+  budget of 30 under the same header names), and `ObservedAt` dates the
+  numbers, since a credential nothing has used has none rather than zero.
+  Depth: `USAGE.md`.
 - **A file tool's rendering IS the tool.** A cap that bites is announced
   (truncated listing, `find_files` at its limit, `grep` at `MaxHits`) and an
   empty `grep` states that every line in scope was read, because a partial
