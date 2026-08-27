@@ -55,6 +55,8 @@ type GitHubConfig struct {
 	// NoAnonymous drops the unauthenticated attempt from every read order.
 	NoAnonymous bool
 	Cache       RepoKeyCache
+	// OnRateLimit hears every response's core-quota headers. see rate_limit_headers.go
+	OnRateLimit func(RateLimitObservation)
 }
 
 // GitHub is the credential-rotating GitHub REST client behind the repo tools.
@@ -65,6 +67,7 @@ type GitHub struct {
 	writeTokens []GitHubToken
 	noAnonymous bool
 	cache       RepoKeyCache
+	onRateLimit func(RateLimitObservation)
 }
 
 // NewGitHub builds the client; the only constructor, so all callers share one cache.
@@ -84,6 +87,7 @@ func NewGitHub(cfg GitHubConfig) *GitHub {
 		writeTokens: cfg.WriteTokens,
 		noAnonymous: cfg.NoAnonymous,
 		cache:       cfg.Cache,
+		onRateLimit: cfg.OnRateLimit,
 	}
 }
 
