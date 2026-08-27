@@ -116,7 +116,7 @@ func (s *Server) answer(ctx context.Context, w io.Writer, data []byte) bool {
 		stream.begin(comp.Message.Role)
 	}
 	// Record BEFORE closing the document: a caller told the turn is done reads
-	// the conversation next, and must not find the answer missing from it.
+	// the conversation next, and must not find the answer missing.
 	if id != "" && comp != nil {
 		_, _ = s.store.Append(id, comp.Message)
 	}
