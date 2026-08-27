@@ -1247,6 +1247,19 @@ Two properties run through all of it:
   fails it reports the MOST INFORMATIVE one** — never the anonymous attempt's
   401, whose only content is that no credential was sent. That is how a spent
   rate limit stopped reading as a permanent auth problem.
+- **A credential's remaining quota is READ OFF its responses, never asked
+  for.** Every GitHub response states it in `x-ratelimit-limit` /
+  `-remaining` / `-used` / `-reset`, so `GET /rate_limit` would be a second
+  request asking what the first one already answered. Set
+  `GitHubConfig.OnRateLimit` to hear each response's standing, named with the
+  credential that spent it (or `Anonymous` for the unauthenticated bucket);
+  `TokenTestResult.RateLimit` carries what the `/user` probe's own answer
+  reported, pass or fail. Only the **core** resource is reported: a code
+  search spends a separate budget of 30, which GitHub names in
+  `x-ratelimit-resource`, and folding the two together states a quota the
+  reader does not have. `RateLimitStatus.ObservedAt` dates the numbers — they
+  are as old as the last call made with that credential, and a credential
+  nothing has used yet has none rather than zero.
 - **`what=status` answers "why is CI red" from whichever API the credential can
   read.** The Checks API (`/commits/{sha}/check-runs`) needs the `checks`
   permission, which a GitHub App installation can hold and a fine-grained

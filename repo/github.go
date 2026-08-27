@@ -55,8 +55,7 @@ type GitHubConfig struct {
 	// NoAnonymous drops the unauthenticated attempt from every read order.
 	NoAnonymous bool
 	Cache       RepoKeyCache
-	// OnRateLimit hears every response's core-quota headers, so a host tracks
-	// each credential's standing without asking GitHub a second time.
+	// OnRateLimit hears every response's core-quota headers. see rate_limit_headers.go
 	OnRateLimit func(RateLimitObservation)
 }
 

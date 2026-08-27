@@ -24,8 +24,7 @@ type TokenTestResult struct {
 	Orgs           []TokenTestOrg  `json:"orgs,omitempty"`
 	OrgsError      string          `json:"orgs_error,omitempty"`     // GET /user/orgs failed; Orgs may still be non-empty from repo owners
 	OrgsTruncated  bool            `json:"orgs_truncated,omitempty"` // more organizations exist past orgSweepMaxOrgs
-	// RateLimit is this token's core-quota standing, read off the /user probe's
-	// own response headers rather than asked for separately.
+	// RateLimit is read off the /user probe's own headers, never asked for.
 	RateLimit RateLimitStatus `json:"rate_limit,omitempty"`
 }
 

@@ -18,14 +18,13 @@ type RateLimitStatus struct {
 	Remaining int       `json:"remaining,omitempty"`
 	Used      int       `json:"used,omitempty"`
 	ResetAt   time.Time `json:"reset_at,omitempty"`
-	// ObservedAt is when the response carrying these numbers came back. A
-	// reader needs it: unlike a probe's answer, this is as old as the last
-	// call made with that credential. see USAGE.md
+	// ObservedAt dates the numbers: this is as old as the last call made with
+	// the credential, not current by construction. see USAGE.md
 	ObservedAt time.Time `json:"observed_at,omitempty"`
 }
 
 // RateLimitObservation is one credential's standing as one response reported
-// it. Anonymous marks the unauthenticated bucket, whose CredentialID is empty.
+// it. Anonymous is the unauthenticated bucket, whose CredentialID is empty.
 type RateLimitObservation struct {
 	CredentialID   string
 	CredentialName string
@@ -84,9 +83,7 @@ func (e *GitHub) observeRateLimit(token string, h http.Header) {
 	if !obs.Anonymous {
 		t, found := e.tokenByValue(token)
 		if !found {
-			// A token this client was not configured with spends a bucket
-			// nothing can name, and an empty id would read as the anonymous one.
-			return
+			return // an empty id here would read as the anonymous bucket
 		}
 		obs.CredentialID, obs.CredentialName = t.ID, t.Name
 	}
