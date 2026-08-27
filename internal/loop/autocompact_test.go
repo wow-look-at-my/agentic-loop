@@ -64,10 +64,10 @@ func TestShouldCompactNilCompletion(t *testing.T) {
 }
 
 func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
-	// Turn 1: the model answers with tool calls, reporting prompt tokens at
-	// the threshold. The loop compacts before executing the tools.
-	// Turn 2 (the compaction call): returns a summary.
-	// Turn 3 (after compaction): the model answers cleanly.
+	// Turn 1: the model asks for a tool, reporting prompt tokens at the
+	// threshold. The tool RUNS, and the loop compacts at the turn boundary.
+	// The summarize call: returns a summary.
+	// Turn 2 (after compaction): the model answers cleanly.
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: usageComp("here is my answer", 8000,
 			ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
@@ -101,22 +101,90 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, compacted, "compaction fired")
-	require.Len(t, compactionMessages, 2, "the replacement round is two messages")
+	require.Len(t, compactionMessages, 1, "the replacement is ONE handoff message")
 	assert.Equal(t, RoleUser, compactionMessages[0].Role)
-	assert.Equal(t, CompactRequestText, compactionMessages[0].Content)
-	assert.Equal(t, RoleAssistant, compactionMessages[1].Role)
-	assert.Equal(t, "this is the summary", compactionMessages[1].Content)
+	assert.Equal(t, CompactionKind, compactionMessages[0].Kind)
+	assert.Equal(t, CompactionHandoffPrefix+"this is the summary", compactionMessages[0].Content)
 
-	// The transcript is the compacted round plus the post-compaction answer.
-	require.Len(t, res.Messages, 3)
-	assert.Equal(t, CompactRequestText, res.Messages[0].Content)
-	assert.Equal(t, "this is the summary", res.Messages[1].Content)
-	assert.Equal(t, "final answer after compaction", res.Messages[2].Content)
+	// The transcript is the summary plus the post-compaction answer.
+	require.Len(t, res.Messages, 2)
+	assert.Contains(t, res.Messages[0].Content, "this is the summary")
+	assert.Equal(t, "final answer after compaction", res.Messages[1].Content)
 
 	// Two numbered turns (the summarize call does not increment res.Turns).
 	assert.Equal(t, 2, res.Turns)
-	// The first turn's tool calls were NOT executed (compaction replaced the transcript first).
-	assert.Empty(t, exec.executed, "the stale tool calls were not executed")
+	// Compacting before the batch left the host a row nothing ever answered.
+	require.Len(t, exec.executed, 1, "the turn that crossed the threshold still ran its tools")
+	assert.Equal(t, "alpha", exec.executed[0].Name)
+}
+
+// A compacted turn keeps the tool result the model asked for: the summary is
+// taken after the batch, so nothing is summarized around an unanswered call.
+func TestRunAutoCompactSummarizesAfterTheToolResults(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: usageComp("working", 8000, ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+		{comp: assistantComp("the summary")},
+		{comp: assistantComp("done")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll,
+		Events: &Events{}, ContextWindow: 10000}
+	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+
+	require.Len(t, provider.reqs, 3)
+	summarized := provider.reqs[1].Messages
+	require.NotEmpty(t, summarized)
+	assert.Equal(t, CompactRequestText, summarized[len(summarized)-1].Content)
+
+	var sawCall, sawResult bool
+	for _, m := range summarized {
+		if len(m.ToolCalls) > 0 && m.ToolCalls[0].ID == "c1" {
+			sawCall = true
+		}
+		if m.Role == RoleTool && m.ToolCallID == "c1" {
+			sawResult = true
+		}
+	}
+	assert.True(t, sawCall, "the summarized transcript includes the turn's tool call")
+	assert.True(t, sawResult, "and the result answering it")
+}
+
+// The host's stored row id lands on the summary, so the assistant row minted
+// after compaction hangs off it instead of detaching from the message tree.
+func TestRunAutoCompactAttachesTheNextTurnToTheStoredSummary(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: usageComp("working", 8000, ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+		{comp: assistantComp("the summary")},
+		{comp: assistantComp("done")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
+	events := Events{}
+	compactionCb := func(ev CompactionEvent) error {
+		*ev.ID = "stored-summary-row"
+		return nil
+	}
+	events.OnCompaction.Subscribe(&compactionCb)
+	var parents []MessageID
+	mintCb := func(ev AssistantMessageEvent) error {
+		parents = append(parents, ev.ParentID)
+		return nil
+	}
+	events.OnAssistantMessage.Subscribe(&mintCb)
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll,
+		Events: &events, ContextWindow: 10000}
+	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	res, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Messages)
+	assert.Equal(t, "stored-summary-row", res.Messages[0].ID,
+		"the summary carries the id the host stored it under")
+	require.Len(t, parents, 2)
+	assert.Equal(t, MessageID("stored-summary-row"), parents[1],
+		"the turn after compaction hangs off the stored summary, not off nothing")
 }
 
 func TestRunAutoCompactBelowThresholdDoesNotCompact(t *testing.T) {

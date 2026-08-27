@@ -25,6 +25,13 @@ func OneShot(ctx context.Context, p Provider, req Request, timeout time.Duration
 // CompactRequestText triggers compaction; sent as the summarize call's trailing user message.
 const CompactRequestText = "Summarize this entire conversation in detail for a future instance of yourself to pick up. Output only the summary."
 
+// CompactionHandoffPrefix heads the summary in the replacement transcript. The
+// replacement must never end on CompactRequestText: that is a live instruction,
+// and a model reading it as the newest ask answers with another summary.
+const CompactionHandoffPrefix = "The conversation so far exceeded the context window and was summarized. " +
+	"This summary replaces the earlier messages; treat it as what you already know, not as a request. " +
+	"Continue the work it describes.\n\n"
+
 // CompactResult is the outcome of a Compact call: summary, replacement round, and Completion.
 type CompactResult struct {
 	Summary    string
@@ -54,8 +61,7 @@ func Compact(ctx context.Context, p Provider, req Request) (*CompactResult, erro
 	return &CompactResult{
 		Summary: summary,
 		Messages: []Message{
-			{Role: RoleUser, Content: CompactRequestText},
-			{Role: RoleAssistant, Content: summary},
+			{Role: RoleUser, Kind: CompactionKind, Content: CompactionHandoffPrefix + summary},
 		},
 		Completion: comp,
 	}, nil

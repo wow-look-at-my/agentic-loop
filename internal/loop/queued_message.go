@@ -1,22 +1,17 @@
 package loop
 
-// QueuedMessage is a message queued for delivery into a running loop. Its
-// two implementations, SystemMessage and UserMessage, are what tell
-// MessageQueue which kind it is holding -- so one queue carries both kinds
-// instead of a caller having to wire two separate MessageQueue instances
-// through by hand and keep them both in sync.
+// QueuedMessage is a message queued for delivery into a running loop. Its two
+// implementations, SystemMessage and UserMessage, tell MessageQueue which kind
+// it holds, so ONE queue carries both and no caller can wire up half of it.
 type QueuedMessage interface {
-	// queuedMessage returns the wrapped Message. Unexported: QueuedMessage
-	// has exactly two implementations, both in this package.
+	// queuedMessage returns the wrapped Message; unexported keeps the set closed.
 	queuedMessage() Message
-	// isSystemMessage reports whether this is a SystemMessage, which is what
-	// lets Drain put every system message ahead of every user message queued
-	// in the same window.
+	// isSystemMessage is how Drain puts system messages ahead of user ones.
 	isSystemMessage() bool
 }
 
-// SystemMessage is an automated notice -- a CI transition, a workspace
-// toggle, a stop-hook nudge, a sub-agent report -- queued for delivery.
+// SystemMessage is an automated notice queued for delivery: a CI transition,
+// a workspace toggle, a stop-hook nudge, a sub-agent report.
 type SystemMessage struct{ Message }
 
 func (m SystemMessage) queuedMessage() Message { return m.Message }

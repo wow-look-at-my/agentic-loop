@@ -37,6 +37,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call fingerprint.
 	lastBatch := ""
 	repeats := 0
+	// lastComp is the newest completion, whose PromptTokens decide compaction.
+	var lastComp *Completion
 	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
 	currentAssistantID := MessageID("")
 	finalizeAssistant := func(ev FinalizeAssistantEvent) {
@@ -65,6 +67,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	for turn := 0; ; turn++ {
 		if cfg.MaxTurns > 0 && turn >= cfg.MaxTurns {
 			break
+		}
+		// Turn boundary ONLY, before the drain: mid-turn compaction dropped the
+		// turn's tool calls. Depth: USAGE.md, auto-compaction.
+		if next, ok := compactHere(ctx, &cfg, req, transcript, lastComp, res, deduper); ok {
+			transcript = next
+			lastComp = nil
 		}
 		// Sub-agent delivery: deliver ready reports at the top of the turn so the model sees them.
 		if turn > 0 && cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
@@ -162,34 +170,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			assistant.ID = string(assistantID)
 		}
 		calls := assistant.ToolCalls
-
-		// Auto-compaction: compact when prompt tokens reach the configured context fraction.
-		if shouldCompact(req, cfg, comp) {
-			cr, cerr := Compact(ctx, cfg.Provider, Request{
-				Model:    req.Model,
-				System:   req.System,
-				Messages: transcript,
-			})
-			if cerr == nil {
-				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: assistant, Status: "complete"})
-				transcript = cr.Messages
-				res.Messages = transcript
-				if cr.Completion != nil {
-					res.Usages = append(res.Usages, cr.Completion.Usage)
-				}
-				if deduper != nil {
-					deduper.Reset()
-				}
-				cfg.Events.emitCompaction(CompactionEvent{
-					Summary:    cr.Summary,
-					Messages:   cr.Messages,
-					Completion: cr.Completion,
-				})
-				// Compacted round ends on assistant; next iteration starts clean with the summary.
-				continue
-			}
-			// Compaction failed: proceed with the un-compacted transcript; the error is swallowed.
-		}
+		lastComp = comp
 
 		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
