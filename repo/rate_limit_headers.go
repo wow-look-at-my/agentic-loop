@@ -18,13 +18,12 @@ type RateLimitStatus struct {
 	Remaining int       `json:"remaining,omitempty"`
 	Used      int       `json:"used,omitempty"`
 	ResetAt   time.Time `json:"reset_at,omitempty"`
-	// ObservedAt dates the numbers: this is as old as the last call made with
-	// the credential, not current by construction. see USAGE.md
+	// ObservedAt dates the numbers, which are not current by construction.
 	ObservedAt time.Time `json:"observed_at,omitempty"`
 }
 
-// RateLimitObservation is one credential's standing as one response reported
-// it. Anonymous is the unauthenticated bucket, whose CredentialID is empty.
+// RateLimitObservation is one response's report. Anonymous is the
+// unauthenticated bucket, whose CredentialID is empty.
 type RateLimitObservation struct {
 	CredentialID   string
 	CredentialName string
