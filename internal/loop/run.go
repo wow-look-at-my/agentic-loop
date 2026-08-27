@@ -27,6 +27,9 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	transcript := make([]Message, len(req.Messages), len(req.Messages)+8)
 	copy(transcript, req.Messages)
 
+	// Elapsed-time notices ride each request only; nil config, nil tracker, no notice.
+	elapsed := newElapsedTracker(cfg.ElapsedTime)
+
 	res := &Result{}
 	// The queue belongs to this run; closing it tells a racing producer its message missed.
 	defer func() {
@@ -141,7 +144,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Messages = transcript
 			return res, aerr
 		}
-		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res)
+		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res, elapsed)
 		if err != nil {
 			// A cancelled/timed-out call is never an "error"; a stopped stream finalizes cancelled.
 			status := "cancelled"
@@ -425,7 +428,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
 			copy(wrapMsgs, transcript)
 			wrapMsgs = append(wrapMsgs, wrapMsg)
-			comp2, err2 := runModelCall(ctx, &cfg, req, turn+2, wrapMsgs, nil, res)
+			comp2, err2 := runModelCall(ctx, &cfg, req, turn+2, wrapMsgs, nil, res, elapsed)
 			if err2 == nil {
 				if s := strings.TrimSpace(comp2.Message.Content); s != "" {
 					final := comp2.Message

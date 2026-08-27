@@ -8,10 +8,10 @@ import (
 // runModelCall executes one model call, counting it as one turn (internal retries included).
 func runModelCall(
 	ctx context.Context, cfg *Config,
-	req Request, turn int, msgs []Message, tools []ToolDecl, res *Result,
+	req Request, turn int, msgs []Message, tools []ToolDecl, res *Result, el *elapsedTracker,
 ) (*Completion, error) {
 	r := req
-	r.Messages = msgs
+	r.Messages = elapsedMessages(msgs, el.mark())
 	r.Tools = tools
 	if cberr := cfg.Events.emitTurnBegin(TurnBeginEvent{Turn: turn, Req: &r}); cberr != nil {
 		// The call never happened; nothing to count or record.
