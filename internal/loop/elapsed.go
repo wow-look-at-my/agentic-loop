@@ -1,24 +1,27 @@
 package loop
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
 
-// ElapsedKind marks the elapsed-time notice, for a host reading the per-call Request.
+// ElapsedKind marks the time notice, for a host reading the per-call Request.
 const ElapsedKind = "elapsed_time"
 
-// The notice wraps the rendered gap; the header keeps the model from reading it as the user.
+// The notice's shape: the wall clock, then the gap when there is one to state.
 const (
-	elapsedNoticeHeader = "[automated notice -- time since the previous request in this conversation: "
-	elapsedNoticeTail   = "; this is not a message from the user]"
-	elapsedInstant      = "less than a second"
+	elapsedNoticeHead = "Current time is "
+	elapsedNoticeTail = " have passed"
+	elapsedTimeLayout = "3:04 PM on 1/2/2006"
+	elapsedInstant    = "<1sec"
 )
 
-// ElapsedTime, on Config, states the gap since the previous request on EVERY
-// model call. The notice rides that request only: a stored one lies on replay.
+// ElapsedTime, on Config, states the current time and the gap since the previous
+// request on EVERY model call. The notice rides that request only: a stored one
+// lies on replay.
 type ElapsedTime struct {
-	// Since is when the previous request was made; zero says nothing on the run's first call.
+	// Since is when the previous request was made; zero states the time alone.
 	Since time.Time
 
 	// Now is the clock; nil is time.Now.
@@ -43,8 +46,7 @@ func newElapsedTracker(e *ElapsedTime) *elapsedTracker {
 	return &elapsedTracker{now: now, prev: e.Since}
 }
 
-// mark stamps this call and returns its notice, or "" with no previous call to
-// measure from. A clock that went backwards reports zero, never a negative age.
+// mark stamps this call and returns its notice.
 func (t *elapsedTracker) mark() string {
 	if t == nil {
 		return ""
@@ -52,19 +54,18 @@ func (t *elapsedTracker) mark() string {
 	at := t.now()
 	prev := t.prev
 	t.prev = at
-	if prev.IsZero() {
-		return ""
-	}
-	d := at.Sub(prev)
-	if d < 0 {
-		d = 0
-	}
-	return FormatElapsedNotice(d)
+	return FormatElapsedNotice(at, prev)
 }
 
-// FormatElapsedNotice renders one gap as the text the model reads.
-func FormatElapsedNotice(d time.Duration) string {
-	return elapsedNoticeHeader + FormatElapsed(d) + elapsedNoticeTail
+// FormatElapsedNotice renders the notice the model reads: the wall clock in
+// now's own zone, and the gap when there is a previous request to measure from.
+// A zero since, or a clock that went backwards, states the time alone.
+func FormatElapsedNotice(now, since time.Time) string {
+	head := elapsedNoticeHead + now.Format(elapsedTimeLayout)
+	if since.IsZero() || !now.After(since) {
+		return head
+	}
+	return head + ", " + FormatElapsed(now.Sub(since)) + elapsedNoticeTail
 }
 
 // elapsedUnits are the units a gap is rendered in, largest first.
@@ -73,15 +74,14 @@ var elapsedUnits = []struct {
 	one  string
 	many string
 }{
-	{24 * time.Hour, "day", "days"},
-	{time.Hour, "hour", "hours"},
-	{time.Minute, "minute", "minutes"},
-	{time.Second, "second", "seconds"},
+	{24 * time.Hour, "d", "d"},
+	{time.Hour, "hr", "hrs"},
+	{time.Minute, "min", "mins"},
+	{time.Second, "sec", "secs"},
 }
 
-// FormatElapsed renders a gap as its two largest non-zero units, e.g. "2 hours
-// 14 minutes". Under a second is named rather than rounded to "0 seconds",
-// which reads as a broken clock.
+// FormatElapsed renders a gap as its two largest non-zero units, e.g. "1d 23hrs".
+// Under a second reads "<1sec" rather than "0secs", which looks like a stopped clock.
 func FormatElapsed(d time.Duration) string {
 	if d < time.Second {
 		return elapsedInstant
@@ -93,7 +93,11 @@ func FormatElapsed(d time.Duration) string {
 			continue
 		}
 		d -= time.Duration(n) * u.size
-		parts = append(parts, plural(int(n), u.one, u.many))
+		name := u.many
+		if n == 1 {
+			name = u.one
+		}
+		parts = append(parts, strconv.FormatInt(n, 10)+name)
 		if len(parts) == 2 {
 			break
 		}

@@ -22,32 +22,41 @@ func stepClock(times ...time.Time) func() time.Time {
 	}
 }
 
-func TestFormatElapsedRendersTwoUnits(t *testing.T) {
+// noon is the instant the notices in these tests are rendered at.
+var noon = time.Date(2026, 8, 26, 3, 14, 0, 0, time.UTC)
+
+func TestFormatElapsedIsTwoUnitsAndTerse(t *testing.T) {
 	cases := []struct {
 		d    time.Duration
 		want string
 	}{
-		{500 * time.Millisecond, "less than a second"},
-		{time.Second, "1 second"},
-		{45 * time.Second, "45 seconds"},
-		{time.Minute, "1 minute"},
-		{90 * time.Second, "1 minute 30 seconds"},
-		{2*time.Hour + 14*time.Minute, "2 hours 14 minutes"},
-		{2*time.Hour + 14*time.Minute + 9*time.Second, "2 hours 14 minutes"},
-		{25 * time.Hour, "1 day 1 hour"},
-		{72 * time.Hour, "3 days"},
-		{3*24*time.Hour + 20*time.Second, "3 days 20 seconds"},
+		{500 * time.Millisecond, "<1sec"},
+		{time.Second, "1sec"},
+		{45 * time.Second, "45secs"},
+		{time.Minute, "1min"},
+		{90 * time.Second, "1min 30secs"},
+		{2*time.Hour + 14*time.Minute, "2hrs 14mins"},
+		{2*time.Hour + 14*time.Minute + 9*time.Second, "2hrs 14mins"},
+		{25 * time.Hour, "1d 1hr"},
+		{47 * time.Hour, "1d 23hrs"},
+		{72 * time.Hour, "3d"},
+		{3*24*time.Hour + 20*time.Second, "3d 20secs"},
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, FormatElapsed(c.d), c.d.String())
 	}
 }
 
-func TestFormatElapsedNoticeSaysItIsNotTheUser(t *testing.T) {
-	assert.Equal(t,
-		"[automated notice -- time since the previous request in this conversation:"+
-			" 2 hours 14 minutes; this is not a message from the user]",
-		FormatElapsedNotice(2*time.Hour+14*time.Minute))
+func TestFormatElapsedNoticeLeadsWithTheClock(t *testing.T) {
+	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026, 1d 23hrs have passed",
+		FormatElapsedNotice(noon, noon.Add(-47*time.Hour)))
+}
+
+func TestFormatElapsedNoticeStatesTheTimeAloneWithNothingToMeasure(t *testing.T) {
+	// Nothing has been asked yet, and a clock that went backwards has no gap to
+	// report either. The current time is still worth stating.
+	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026", FormatElapsedNotice(noon, time.Time{}))
+	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026", FormatElapsedNotice(noon, noon.Add(time.Hour)))
 }
 
 func TestRunWithoutElapsedTimeSaysNothing(t *testing.T) {
@@ -61,7 +70,6 @@ func TestRunWithoutElapsedTimeSaysNothing(t *testing.T) {
 }
 
 func TestRunElapsedNoticeRidesEveryCall(t *testing.T) {
-	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 		{comp: assistantComp("done")},
@@ -72,8 +80,8 @@ func TestRunElapsedNoticeRidesEveryCall(t *testing.T) {
 		Tools:    exec.registry(),
 		Approver: allowAll,
 		ElapsedTime: &ElapsedTime{
-			Since: base.Add(-2 * time.Hour),
-			Now:   stepClock(base, base.Add(30*time.Second)),
+			Since: noon.Add(-2 * time.Hour),
+			Now:   stepClock(noon, noon.Add(30*time.Second)),
 		},
 	}
 	res, err := Run(context.Background(), cfg, Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
@@ -82,13 +90,14 @@ func TestRunElapsedNoticeRidesEveryCall(t *testing.T) {
 	require.Len(t, provider.reqs, 2)
 	first := provider.reqs[0].Messages
 	require.Len(t, first, 2)
-	assert.Equal(t, Message{Role: RoleUser, Kind: ElapsedKind, Content: FormatElapsedNotice(2 * time.Hour)}, first[1])
+	assert.Equal(t, Message{Role: RoleUser, Kind: ElapsedKind,
+		Content: "Current time is 3:14 AM on 8/26/2026, 2hrs have passed"}, first[1])
 
 	// The second call measures from the FIRST call, not from Since.
 	second := provider.reqs[1].Messages
 	require.NotEmpty(t, second)
-	assert.Equal(t, Message{Role: RoleUser, Kind: ElapsedKind, Content: FormatElapsedNotice(30 * time.Second)},
-		second[len(second)-1])
+	assert.Equal(t, Message{Role: RoleUser, Kind: ElapsedKind,
+		Content: "Current time is 3:14 AM on 8/26/2026, 30secs have passed"}, second[len(second)-1])
 
 	// The notice is per-call: the durable transcript never holds one.
 	for _, m := range res.Messages {
@@ -100,8 +109,7 @@ func TestRunElapsedNoticeRidesEveryCall(t *testing.T) {
 	}
 }
 
-func TestRunElapsedSaysNothingOnAnUnseededFirstCall(t *testing.T) {
-	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+func TestRunElapsedStatesTheTimeOnAnUnseededFirstCall(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
 		{comp: assistantComp("done")},
@@ -111,21 +119,20 @@ func TestRunElapsedSaysNothingOnAnUnseededFirstCall(t *testing.T) {
 		Provider:    provider,
 		Tools:       exec.registry(),
 		Approver:    allowAll,
-		ElapsedTime: &ElapsedTime{Now: stepClock(base, base.Add(5*time.Second))},
+		ElapsedTime: &ElapsedTime{Now: stepClock(noon, noon.Add(5*time.Second))},
 	}
 	_, err := Run(context.Background(), cfg, Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, provider.reqs, 2)
-	assert.Len(t, provider.reqs[0].Messages, 1, "nothing to measure from yet")
-	second := provider.reqs[1].Messages
-	assert.Equal(t, FormatElapsedNotice(5*time.Second), second[len(second)-1].Content)
-}
+	firstMsgs := provider.reqs[0].Messages
+	require.Len(t, firstMsgs, 2)
+	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026", firstMsgs[1].Content,
+		"nothing to measure from yet, so no gap is invented")
 
-func TestElapsedTrackerReportsZeroWhenTheClockGoesBackwards(t *testing.T) {
-	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
-	tr := newElapsedTracker(&ElapsedTime{Since: base, Now: stepClock(base.Add(-time.Hour))})
-	assert.Equal(t, FormatElapsedNotice(0), tr.mark())
+	second := provider.reqs[1].Messages
+	assert.Equal(t, "Current time is 3:14 AM on 8/26/2026, 5secs have passed",
+		second[len(second)-1].Content)
 }
 
 func TestElapsedTrackerIsNilWhenTheOptionIsOff(t *testing.T) {

@@ -1058,12 +1058,12 @@ the loop cannot know the context is full. A compaction failure (the model
 returned an empty summary) is non-fatal — the loop continues with the
 un-compacted transcript.
 
-### Telling the model how much time has passed
+### Telling the model what time it is, and how much has passed
 
-A model reads a transcript with no clock in it. The turn it is answering may
-have arrived four seconds after the last one or four days after it, and
-nothing in the messages says which. `Config.ElapsedTime` puts that fact in
-front of it on every model call:
+A model reads a transcript with no clock in it. It cannot tell what time it is,
+and the turn it is answering may have arrived four seconds after the last one
+or four days after it, with nothing in the messages saying which.
+`Config.ElapsedTime` puts both facts in front of it on every model call:
 
 ```go
 res, err := agentic.Run(ctx, agentic.Config{
@@ -1077,7 +1077,7 @@ Each call then carries one extra `RoleUser` message at the end, `Kind:
 ElapsedKind`, reading:
 
 ```
-[automated notice -- time since the previous request in this conversation: 2 hours 14 minutes; this is not a message from the user]
+Current time is 3:14 AM on 8/26/2026, 1d 23hrs have passed
 ```
 
 - **It rides the request, never the transcript.** The notice is appended to
@@ -1091,14 +1091,18 @@ ElapsedKind`, reading:
   learns what its own tool calls cost in wall-clock time. The stall wrap-up
   call carries one too.
 - **`Since` is the seed, and the loop keeps its own clock after that.** Zero
-  means the run opens the conversation and the first call says nothing —
-  there is nothing to measure from, and inventing a gap would be worse than
-  omitting one. Every later call measures from the previous call in this run.
-- **The gap renders as its two largest non-zero units** — `3 days 4 hours`,
-  `2 hours 14 minutes`, `45 seconds` — and anything under a second is
-  `less than a second` rather than `0 seconds`, which reads as a broken clock.
-  `FormatElapsed` and `FormatElapsedNotice` are exported for a host that wants
-  the same wording elsewhere.
+  means the run opens the conversation, so the notice is the time alone: there
+  is nothing to measure from, and inventing a gap would be worse than omitting
+  one. Every later call measures from the previous call in this run. A clock
+  that went backwards states the time alone for the same reason.
+- **The wall clock is rendered in the zone `Now` returns** — `time.Now` is
+  local, so the model reads the server's time. Hand it a clock in another
+  zone to change that.
+- **The gap renders as its two largest non-zero units** — `3d 4hrs`,
+  `2hrs 14mins`, `45secs` — and anything under a second is `<1sec` rather than
+  `0secs`, which looks like a stopped clock. `FormatElapsed` and
+  `FormatElapsedNotice` are exported for a host that wants the same wording
+  elsewhere.
 - **Helper calls are not conversation turns**, so `Compact`, `OneShot` and the
   optional tools' own summarizing calls carry no notice and do not move the
   clock: a compaction the host never asked about must not read as a request the
