@@ -35,15 +35,36 @@ func TestCompact(t *testing.T) {
 		"the request text rides as the trailing user message")
 
 	assert.Equal(t, "the detailed recap", res.Summary, "trimmed")
-	require.Len(t, res.Messages, 2)
-	assert.Equal(t, Message{Role: RoleUser, Content: CompactRequestText}, res.Messages[0])
-	assert.Equal(t, Message{Role: RoleAssistant, Content: "the detailed recap"}, res.Messages[1])
+	require.Len(t, res.Messages, 1, "the replacement is ONE handoff message")
+	assert.Equal(t, Message{
+		Role:    RoleUser,
+		Kind:    CompactionKind,
+		Content: CompactionHandoffPrefix + "the detailed recap",
+	}, res.Messages[0])
 	require.NotNil(t, res.Completion, "the summarize call's whole completion, not a projection of it")
 	assert.Equal(t, 15, res.Completion.Usage.TotalTokens)
 
 	// The caller's request was not mutated.
 	require.Len(t, req.Messages, 2)
 	require.Len(t, req.Tools, 1)
+}
+
+// The replacement transcript must not leave CompactRequestText standing as the
+// newest instruction: a model that reads it answers with another summary instead
+// of continuing, which is what the summary exists to let it do.
+func TestCompactReplacementCarriesNoLiveSummarizeInstruction(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("recap")}}}
+	res, err := Compact(context.Background(), provider, Request{Model: "m",
+		Messages: []Message{{Role: RoleUser, Content: "do the work"}}})
+	require.NoError(t, err)
+
+	for i, m := range res.Messages {
+		assert.NotContains(t, m.Content, CompactRequestText,
+			"replacement message %d repeats the summarize instruction to the model", i)
+	}
+	last := res.Messages[len(res.Messages)-1]
+	assert.Equal(t, RoleUser, last.Role, "the summary IS the newest message, so it must read as context")
+	assert.Contains(t, last.Content, "not as a request")
 }
 
 func TestCompactEmptySummary(t *testing.T) {

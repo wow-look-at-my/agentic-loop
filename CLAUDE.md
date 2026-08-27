@@ -205,6 +205,19 @@ side of that line it falls on — do not put it on both.
   loop calls `Compact`, replaces the transcript, resets the deduper, and
   fires `Events.OnCompaction`. Zero disables; a server reporting no usage
   never triggers; a compaction failure is non-fatal. Depth: `USAGE.md`.
+- **Compaction fires at the TURN BOUNDARY, and its replacement is never an
+  instruction.** Two things it did wrong, both of which reached a user.
+  Firing mid-turn discarded the tool calls the model had just made, leaving
+  the host an assistant row nothing answered — replayed on every later turn,
+  and 400ed by an OpenAI-dialect endpoint. And the replacement ended on
+  `CompactRequestText`, a live instruction, so the model's newest ask was
+  "summarize this conversation" and it answered with a summary instead of
+  continuing — twice, displacing the user's actual question the second time.
+  The replacement is now ONE user message, `Kind: CompactionKind`, carrying
+  `CompactionHandoffPrefix + summary`; `*ev.ID` lets a host name the row it
+  stored so the next assistant row still hangs off the tree. A host that does
+  not persist it recompacts every turn at full-context price, forever.
+  Depth: `USAGE.md`.
 - **A message a queue ACCEPTS reaches the model.** `Config.Messages` is ONE
   `*MessageQueue`, holding both `SystemMessage` and `UserMessage` values (each
   wrapping a `Message`, both implementing `QueuedMessage`) — the value's own
