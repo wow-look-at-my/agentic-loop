@@ -32,10 +32,12 @@ const MaxCondition = 4000
 // Persisting it is the HOST's, and there is deliberately no Encode/Decode here:
 // a library that ships a storage format decides what a row in somebody else's
 // database holds, which is backwards. The fields are plain and exported so a
-// host can map them onto its own columns, key-value rows, or file.
+// host can map them onto its own columns, key-value rows, or file. The json
+// tags are what a host maps BY, so an unset SetAt is omitzero rather than the
+// year 1 a zero time otherwise writes into a column that means "no goal".
 type State struct {
 	Condition string    `json:"condition"`
-	SetAt     time.Time `json:"set_at"`
+	SetAt     time.Time `json:"set_at,omitzero"`
 	// Scope is the host's own opaque marker for where the goal started.
 	Scope string `json:"scope,omitempty"`
 	// Iterations is how many stops have been evaluated so far.
