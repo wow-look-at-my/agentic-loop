@@ -94,7 +94,7 @@ func TestNoticesAreContract(t *testing.T) {
 	assert.Equal(t,
 		"goal set: \"tests pass\"\n"+
 			"The turn will not end until this holds. /goal clear to stop, /goal to amend.\n"+
-			"No spend or time bound. Spend so far is shown with each goal notice.",
+			"No spend or time bound: it runs until the condition holds, or until you clear it.",
 		goal.SetNotice("tests pass"))
 
 	assert.Equal(t,

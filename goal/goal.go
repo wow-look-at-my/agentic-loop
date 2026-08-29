@@ -104,7 +104,7 @@ func Parse(arg string) (Command, error) {
 func SetNotice(condition string) string {
 	return "goal set: " + quote(condition) + "\n" +
 		"The turn will not end until this holds. /goal clear to stop, /goal to amend.\n" +
-		"No spend or time bound. Spend so far is shown with each goal notice."
+		"No spend or time bound: it runs until the condition holds, or until you clear it."
 }
 
 // Briefing is what the MODEL is told once, when the goal is set. It is a notice
