@@ -19,6 +19,12 @@ import (
 	"time"
 )
 
+// NoticeKind marks a stored goal notice: never in a prompt, never in a window.
+const NoticeKind = "goal_notice"
+
+// BriefingKind marks the stored Briefing: the one goal message the model reads.
+const BriefingKind = "goal_briefing"
+
 // MaxCondition caps a condition at 4000 characters: it must read at a glance.
 const MaxCondition = 4000
 

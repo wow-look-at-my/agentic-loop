@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wow-look-at-my/agentic-loop/goal"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 func TestParseShowSetAndClear(t *testing.T) {
@@ -48,6 +49,16 @@ func TestParseCountsTheCapInCharactersNotBytes(t *testing.T) {
 	_, err = goal.Parse(within + "é")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "limited to 4000 characters")
+}
+
+func TestTheThreeMessageKindsAreDistinct(t *testing.T) {
+	kinds := []string{goal.DirectiveKind, goal.NoticeKind, goal.BriefingKind}
+	seen := set.New[string]()
+	for _, k := range kinds {
+		assert.NotEmpty(t, k)
+		assert.False(t, seen.Contains(k), "a host switches on these, so no two may collide")
+		seen.Add(k)
+	}
 }
 
 func TestDecodeEmptyIsNoGoalAndCorruptIsAnError(t *testing.T) {

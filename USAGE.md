@@ -1160,6 +1160,9 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Events: &events,
 - **`Window` must exclude private reasoning and goal mode's own notices.** An
   evaluator that reads its own previous verdicts anchors on them, which turns one
   wrong judgment into every later one.
+- **`goal.NoticeKind` and `goal.BriefingKind`** name the other two stored rows: a
+  host that keeps notices in the transcript must exclude that kind from the
+  prompt and from the window.
 - **`State.Scope` is the host's own opaque marker** for where the goal started, so
   the whole state is one JSON blob (`Encode`/`Decode`).
 
