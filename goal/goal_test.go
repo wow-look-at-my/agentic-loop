@@ -1,6 +1,7 @@
 package goal_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -61,32 +62,22 @@ func TestTheThreeMessageKindsAreDistinct(t *testing.T) {
 	}
 }
 
-func TestDecodeEmptyIsNoGoalAndCorruptIsAnError(t *testing.T) {
-	state, err := goal.Decode(nil)
-	require.NoError(t, err)
-	assert.Nil(t, state)
-
-	_, err = goal.Decode([]byte("{not json"))
-	require.Error(t, err)
-
-	_, err = goal.Decode([]byte(`{"condition":"  "}`))
-	require.Error(t, err, "a stored goal with no condition is reported, never read as absent")
-}
-
-func TestEncodeDecodeRoundTripsTheCounters(t *testing.T) {
-	in := &goal.State{
-		Condition:  "tests pass",
-		SetAt:      time.Date(2026, 8, 26, 3, 14, 0, 0, time.UTC),
-		Scope:      "msg_42",
-		Iterations: 5,
-		LastReason: "two of four still fail",
-		ReasonRun:  2,
+// TestStateCarriesNoStorageFormat: persisting the state is the host's, and a
+// method here would decide what a row in the host's database holds. Every field
+// is exported and plain so a host can map it onto whatever it stores in.
+func TestStateCarriesNoStorageFormat(t *testing.T) {
+	rt := reflect.TypeOf(goal.State{})
+	assert.Zero(t, reflect.PointerTo(rt).NumMethod(), "State declares no methods, Encode included")
+	for i := range rt.NumField() {
+		f := rt.Field(i)
+		require.True(t, f.IsExported(), "%s is unexported, so no host can store it", f.Name)
+		switch f.Type.Kind() {
+		case reflect.String, reflect.Int, reflect.Bool:
+		default:
+			require.Equal(t, reflect.TypeOf(time.Time{}), f.Type,
+				"%s is a %s: a host would need this library's encoding to store it", f.Name, f.Type)
+		}
 	}
-	raw, err := in.Encode()
-	require.NoError(t, err)
-	out, err := goal.Decode(raw)
-	require.NoError(t, err)
-	assert.Equal(t, in, out)
 }
 
 // The notices are contract: a host shows these words to its user.
