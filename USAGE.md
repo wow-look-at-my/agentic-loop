@@ -1113,6 +1113,65 @@ The same effect is reachable by hand through `Events.OnTurnBegin`, which can
 append to that call's `Request.Messages` — this option is that, with the
 wording, the per-call discipline and the cross-run seed already decided.
 
+## Goal mode (optional, package `goal`)
+
+A stopping condition the user states in words, and a stop policy that refuses to
+end a run until it holds. The package is the whole policy — the parse, the
+counters, the evaluator prompt, the verdict and every notice, each pinned by a
+test. A host supplies three seams and nothing else.
+
+```go
+state := &goal.State{Condition: "the four auth tests pass", SetAt: time.Now(), Scope: lastMessageID}
+
+listener := &goal.StopListener{
+    Evaluator: &goal.Evaluator{
+        State:  state,
+        Window: func() ([]goal.Entry, error) { return goal.EntriesFromMessages(rowsSince(state.Scope)), nil },
+        Judge:  goal.OneShotJudge(provider, agentic.Request{Model: model}),
+    },
+    Report: func(v goal.Verdicts) { recordNotice(v); persist(state) },
+}
+events := agentic.Events{}
+listener.Attach(ctx, &events, queue)
+
+res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Events: &events, Messages: queue, Tools: tools}, req)
+```
+
+- **`Attach` subscribes to `Events.OnStop`**, and a blocked stop queues the
+  directive as a `SystemMessage` of `goal.DirectiveKind`, which takes the loop
+  round again IN PLACE. A fresh run would replay the transcript from the top and
+  pay for it, and the model would read the directive as the opening of a new
+  conversation rather than as the answer to the stop it just tried. `ctx` is the
+  RUN's context, which is what makes cancellation win; `msgs` must be the queue
+  the run was configured with.
+- **The verdict is one of five outcomes.** `Blocked` refuses the stop; `Met` and
+  `Failed` clear the goal; `Permitted` and `Suspended` let the run end. `Report`
+  hears every one of them, on the run's own goroutine, because a queued directive
+  says only what the MODEL is told — the host still records the notice, persists
+  the counters, clears a goal that is met, and bills the evaluator's own call
+  (`Verdicts.Completion`).
+- **Goal mode fails open.** A provider that will not answer suspends the goal
+  loudly and permits the stop; a cancelled run is permitted with no model call at
+  all. Ending a run one iteration early is one keystroke from being resumed, and
+  the alternative is a wedged session.
+- **Three identical reasons end the goal.** That is the evidence `ErrStuck` uses
+  one layer down, and it earns the same answer — a verdict, not a budget, so it
+  clears rather than pauses.
+- **`Window` must exclude private reasoning and goal mode's own notices.** An
+  evaluator that reads its own previous verdicts anchors on them, which turns one
+  wrong judgment into every later one.
+- **`goal.NoticeKind` and `goal.BriefingKind`** name the other two stored rows: a
+  host that keeps notices in the transcript must exclude that kind from the
+  prompt and from the window.
+- **`State.Scope` is the host's own opaque marker** for where the goal started, so
+  the whole state is one JSON blob (`Encode`/`Decode`).
+- **`SetNotice`'s third line names the BOUND**, and only the host knows what it
+  caps or where it shows a running total, so the host passes it (`goal.NoBound`
+  is the default for a host that caps nothing).
+
+Depth, including every notice and why the directive ends where it does:
+`docs/goal.md`.
+
 ## Searching stored conversations
 
 `search` indexes conversations so they can be found by word (FTS5) and, when an

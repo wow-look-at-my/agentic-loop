@@ -7,9 +7,9 @@ Notes for Claude working in this repository.
 `agentic-loop` — a reusable agentic-loop library for OpenAI-compatible and
 Anthropic chat APIs. Package `agentic` is the module root
 (`github.com/wow-look-at-my/agentic-loop`). Sibling packages are `vfs`,
-`repo`, `subagent`, `webfetch`, `todo`, and `resources`. The loop package
-does not import the optional packages. There is no TypeScript port and none
-is planned.
+`repo`, `subagent`, `webfetch`, `todo`, `goal`, and `resources`. The loop
+package does not import the optional packages. There is no TypeScript port and
+none is planned.
 
 Where the semantics came from (the Go library is an extraction, not a
 redesign — check these when a behavior question comes up):
@@ -241,6 +241,18 @@ side of that line it falls on — do not put it on both.
   racing producer starts a new run instead), and whatever a failed, cancelled
   or capped run never delivered comes back in `Result.Undelivered`. Depth:
   `USAGE.md`.
+- **Goal mode is a POLICY here, and the host owns three seams.** `goal` is the
+  condition, the counters, the evaluator prompt, the verdict and every notice —
+  all contract, all pinned. The host owns only where the state is stored, where
+  the transcript comes from (`Window`) and how a call is made (`Judge`). It
+  **fails open**: a provider that will not answer suspends the goal and permits
+  the stop, and a cancelled run is permitted with no call at all — the
+  alternative is a wedged session. `StopListener.Attach` subscribes to
+  `Events.OnStop` and queues the directive, re-arming the run IN PLACE; a fresh
+  run would replay the transcript at full price and read the directive as a new
+  conversation. The window must never carry private reasoning or goal mode's own
+  notices, or the evaluator anchors on its own past verdicts. Depth:
+  `docs/goal.md`.
 - **Every entry point that makes a model call surfaces its `*Completion`.**
   Never a `Usage`, never a bare string: only `Completion.UsageReported`
   separates "reported zeros" from "reported nothing", and a projection drops
@@ -373,6 +385,8 @@ side of that line it falls on — do not put it on both.
   event vocabulary.
 - `docs/module-layout.md` — why this is one module, and what the seven-module
   split cost before it was collapsed.
+- `docs/goal.md` — goal mode: the three seams, what the evaluator must never
+  read, the five outcomes, and why a blocked stop re-arms in place.
 - `docs/search.md` — the conversation index: the Source seam, why the vectors
   are scanned in Go, what that costs measured, and how lag is reported.
 - `docs/nul-char.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
