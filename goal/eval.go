@@ -14,13 +14,11 @@ import (
 // EvalTimeout bounds one evaluator call.
 const EvalTimeout = 30 * time.Second
 
-// EvalMaxTokens is the evaluator's answer budget. Anthropic requires one and
-// the call fails fast without it.
+// EvalMaxTokens is the evaluator's budget; Anthropic requires one.
 const EvalMaxTokens = 512
 
-// evalToolResultCap, evalHead and evalTail truncate a tool result inside the
-// window: 1200 runes of head, 800 of tail. Evidence of a test run lives at both
-// ends and nowhere in the middle.
+// A tool result in the window keeps its head and tail: the evidence of a test
+// run lives at both ends and nowhere in the middle.
 const (
 	evalToolResultCap = 2000
 	evalHead          = 1200
@@ -62,11 +60,10 @@ type Verdict struct {
 	Reason     string `json:"reason"`
 }
 
-// ParseVerdict reads one verdict out of a model's reply.
-//
-// An empty reason is a parse failure, not a verdict with nothing to say: the
-// reason is the whole of what the user and the model are told, and a block
-// carrying no reason is a refusal nobody can act on.
+// ParseVerdict reads one verdict out of a model's reply. An empty reason is a
+// parse failure rather than a verdict with nothing to say: the reason is the
+// whole of what the user and the model are told, and a block carrying none is a
+// refusal nobody can act on.
 func ParseVerdict(text string) (Verdict, error) {
 	var v Verdict
 	body := strings.TrimSpace(unfence(text))
@@ -100,14 +97,12 @@ func unfence(text string) string {
 // EvalTokens caps the rendered window. Oldest turns are dropped first.
 const EvalTokens = 40000
 
-// OmittedMarker is the window's first line when anything was dropped. It is a
-// line rather than nothing: an evaluator judging a truncated transcript has to
-// know it is truncated, or "no evidence of a test run" means two different
-// things it cannot tell apart.
+// OmittedMarker heads a window that dropped something: an evaluator judging a
+// truncated transcript has to know it is truncated, or "no evidence of a test
+// run" means two different things it cannot tell apart.
 const OmittedMarker = "[earlier turns omitted]"
 
-// EntryKind is what one transcript entry is. A host maps its own event or
-// message rows onto these, which is the whole of what the window needs to know.
+// EntryKind is what one transcript entry is; a host maps its own rows onto these.
 type EntryKind uint8
 
 const (
@@ -125,12 +120,9 @@ const (
 	EntryError
 )
 
-// Entry is one line of the evaluator's window.
-//
-// Two things a host must NOT map to an entry, and each exclusion is
-// load-bearing. Private reasoning is not evidence that work happened. Neither is
-// a notice goal mode itself wrote: an evaluator that reads its own previous
-// verdicts anchors on them, which turns one wrong judgment into every later one.
+// Entry is one line of the evaluator's window. Two things a host must NOT map
+// onto one -- private reasoning, and any notice goal mode itself wrote. Why:
+// docs/goal.md.
 type Entry struct {
 	Kind EntryKind
 	Text string
@@ -196,8 +188,7 @@ func RenderWindow(entries []Entry, maxTokens int) string {
 	return body
 }
 
-// estimateTokens is the chars/4 estimator. It is an estimate and is named one:
-// nothing here pretends to tokenize.
+// estimateTokens is the chars/4 estimator; nothing here pretends to tokenize.
 func estimateTokens(s string) int { return len(s)/4 + 1 }
 
 // renderEntry renders one entry, or reports that it carries nothing.
@@ -235,11 +226,9 @@ func truncateMiddle(s string) string {
 		string(r[len(r)-evalTail:])
 }
 
-// Judge makes one bounded, tool-less model call. It is a function rather than an
-// interface because it is one call with one shape, and a host supplies it from
-// the session's own provider -- see OneShotJudge for the ordinary way to build
-// one. It returns the whole *Completion: a goal run's spend is the only thing
-// between an uncapped run and a surprise, and these calls are part of it.
+// Judge makes one bounded, tool-less model call and returns the whole
+// *Completion: a goal run's spend is the only thing between an uncapped run and
+// a surprise, and these calls are part of it.
 type Judge func(ctx context.Context, system, user string) (*agentic.Completion, error)
 
 // OneShotJudge is the ordinary Judge: one bounded, tool-less call on the host's
@@ -257,25 +246,19 @@ func OneShotJudge(p agentic.Provider, req agentic.Request) Judge {
 	}
 }
 
-// Outcome is what one evaluation decided. It is the policy's answer, not the
-// transcript's: the host turns it into notices and a re-armed turn.
+// Outcome is what one evaluation decided; the host turns it into notices.
 type Outcome uint8
 
 const (
-	// Permitted means the run may end and the goal stays as it is. It is the
-	// answer to a cancelled run, and to a goal that was already suspended.
+	// Permitted means the run may end and the goal stays as it is.
 	Permitted Outcome = iota
-	// Blocked means the stop was refused: Reason is the evaluator's, and
-	// Directive is what the model is told.
+	// Blocked means the stop was refused; Directive is what the model is told.
 	Blocked
-	// Met means the condition holds. The goal clears itself.
+	// Met means the condition holds, so the goal clears.
 	Met
-	// Failed means the condition can never hold, or the evaluator has said the
-	// same thing three times running. The goal clears.
+	// Failed means the condition can never hold, so the goal clears.
 	Failed
-	// Suspended means the evaluator could not answer. The stop is PERMITTED --
-	// goal mode fails open, because ending a turn one iteration early is one
-	// keystroke from being resumed and the alternative is a wedged session.
+	// Suspended means the evaluator could not answer; the stop is PERMITTED.
 	Suspended
 )
 
@@ -297,10 +280,8 @@ func (o Outcome) String() string {
 	}
 }
 
-// repetitionLimit is how many consecutive byte-identical reasons end a goal. The
-// evaluator has now told us the same thing about the same non-progress three
-// times; that is the evidence ErrStuck uses one layer down and it earns the same
-// answer. It is a verdict, not a budget, so it CLEARS the goal.
+// repetitionLimit is how many identical reasons end a goal; it is a VERDICT
+// rather than a budget, so reaching it clears the goal. Why: docs/goal.md.
 const repetitionLimit = 3
 
 // Verdicts is what one evaluation produced, for the host to record.
@@ -308,18 +289,14 @@ type Verdicts struct {
 	Outcome   Outcome
 	Reason    string
 	Directive string
-	// Completion is the evaluator call's own usage and cost, or nil when no call
-	// was made (a cancelled run, an already-suspended goal).
+	// Completion is the evaluator call's own numbers, nil when no call was made.
 	Completion *agentic.Completion
 }
 
-// Evaluator decides whether a run may stop. The host supplies the state, the
-// window and the model call; everything the decision is made of is here.
-//
-// Evaluate mutates the state's counters, so the caller owns the serialization:
-// one goroutine evaluates a given state at a time.
+// Evaluator decides whether a run may stop. Evaluate mutates the state's
+// counters, so the caller serializes: one goroutine per state at a time.
 type Evaluator struct {
-	// State is the goal being evaluated. A nil state permits the stop.
+	// State is the goal being evaluated; nil permits the stop.
 	State *State
 	// Window returns the goal-scoped entries, oldest first.
 	Window func() ([]Entry, error)
@@ -328,8 +305,8 @@ type Evaluator struct {
 }
 
 // Evaluate makes the decision. It never returns an error: a provider that would
-// not answer is a failure of this policy, and this policy's stated failure
-// direction is open -- so it suspends itself loudly and lets the run end.
+// not answer is a failure of this policy, whose stated failure direction is open
+// -- so it suspends itself loudly and lets the run end.
 func (e *Evaluator) Evaluate(ctx context.Context) Verdicts {
 	// Cancellation always wins, and it wins WITHOUT a model call. A goal a user
 	// cannot interrupt is a wedged session.
@@ -392,11 +369,10 @@ func (e *Evaluator) Evaluate(ctx context.Context) Verdicts {
 	}
 }
 
-// ask makes the evaluator call, with one retry on an unusable answer.
-//
-// The retry is the identical request, because the failure it is for is a model
-// that wrapped its object in prose -- not a request that was wrong. A second
-// failure suspends, and the message names which of the two failures it was.
+// ask makes the evaluator call, with one retry on an unusable answer. The retry
+// sends the identical request: the failure it is for is a model that wrapped its
+// object in prose, not a request that was wrong. A second failure suspends, and
+// the message names which of the two failures it was.
 func (e *Evaluator) ask(ctx context.Context, window string) (Verdict, *agentic.Completion, error) {
 	user := EvalUser(e.State.Condition, window)
 
@@ -427,9 +403,8 @@ func (e *Evaluator) ask(ctx context.Context, window string) (Verdict, *agentic.C
 	return Verdict{}, last, fmt.Errorf("evaluator call failed (%v) — /goal to retry", callErr)
 }
 
-// suspend records the failure on the state and returns the open-failing outcome.
-// The goal is kept, counters and all: a failure to evaluate is not a verdict on
-// the condition.
+// suspend records the failure and fails open. The goal is kept, counters and
+// all: a failure to evaluate is not a verdict on the condition.
 func (e *Evaluator) suspend(why string) Verdicts {
 	e.State.Suspended, e.State.SuspendWhy = true, why
 	return Verdicts{Outcome: Suspended, Reason: why}

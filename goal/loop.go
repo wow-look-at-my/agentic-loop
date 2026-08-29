@@ -6,35 +6,24 @@ import (
 	agentic "github.com/wow-look-at-my/agentic-loop"
 )
 
-// DirectiveKind is the Message.Kind a blocked stop's directive carries, so a
-// host can store and render it as what it is rather than as a user turn.
+// DirectiveKind is the Message.Kind a blocked stop's directive carries.
 const DirectiveKind = "goal_directive"
 
-// StopListener is goal mode wired to a run: it is asked at every stop boundary,
-// and a blocked stop queues the directive, which takes the loop round again.
-//
-// Re-arming in place is the point. A fresh run would replay the transcript from
-// the top and pay for it, and the model would read the directive as the opening
-// of a new conversation rather than as the answer to the stop it just tried.
+// StopListener is goal mode wired to a run: asked at every stop boundary, and a
+// blocked stop queues the directive, which takes the loop round again IN PLACE.
+// Depth: docs/goal.md.
 type StopListener struct {
-	// Evaluator decides. Its State is the goal, and a nil State permits the stop.
+	// Evaluator decides; a nil State permits the stop.
 	Evaluator *Evaluator
-	// Report receives every verdict, on the run's own goroutine, before the loop
-	// moves on. It is how the host records the notice, persists the counters and
-	// clears a goal that is met -- a queued directive says only what the MODEL is
-	// told, and the session has to record the rest.
+	// Report hears every verdict, on the run's goroutine, before the loop moves on.
 	Report func(Verdicts)
-	// cb is held so the subscription outlives Attach: Subscribe takes a pointer
-	// to the callback and does not own it.
+	// cb is held because Subscribe takes a pointer and does not own the callback.
 	cb func(agentic.StopEvent) error
 }
 
-// Attach subscribes the listener to a run's stop boundary.
-//
-// ctx is the RUN's context, which is what makes cancellation win: a user who
-// stopped the run gets the stop permitted without a model call. msgs must be the
-// queue the run was configured with, or a blocked stop queues into nothing and
-// the run ends anyway.
+// Attach subscribes the listener to a run's stop boundary. ctx is the RUN's
+// context, which is what makes cancellation win, and msgs must be the queue the
+// run was configured with, or a blocked stop queues into nothing.
 func (l *StopListener) Attach(ctx context.Context, events *agentic.Events, msgs *agentic.MessageQueue) {
 	l.cb = func(agentic.StopEvent) error {
 		l.evaluate(ctx, msgs)
@@ -43,11 +32,9 @@ func (l *StopListener) Attach(ctx context.Context, events *agentic.Events, msgs 
 	events.OnStop.Subscribe(&l.cb)
 }
 
-// evaluate runs the policy and queues the directive when the stop is refused.
-//
-// It never returns an error. An error out of an OnStop listener aborts the run
-// and loses the answer the model just wrote; goal mode's failure direction is
-// open, and a policy that cannot evaluate says so through Report.
+// evaluate runs the policy and queues the directive when the stop is refused. It
+// never fails the run: an error out of an OnStop listener loses the answer the
+// model just wrote, and goal mode's failure direction is open.
 func (l *StopListener) evaluate(ctx context.Context, msgs *agentic.MessageQueue) {
 	if l.Evaluator == nil {
 		return

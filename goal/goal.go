@@ -5,11 +5,11 @@
 // shows these words to its user and sends the directive to its model, so two
 // hosts running goal mode behave the same. Do not "improve" them.
 //
-// The host owns three things this package deliberately does not: where the
-// state is stored, where the transcript comes from (Window), and how a model
-// call is made (Judge). Everything else -- the parse, the counters, the
-// evaluator prompt, the verdict, the notices -- is here, so a second host
-// cannot get a different answer from the same condition.
+// The host owns three seams and nothing else: where the state is stored, where
+// the transcript comes from (Evaluator.Window), and how a model call is made
+// (Evaluator.Judge). Everything else -- the parse, the counters, the evaluator
+// prompt, the verdict, the notices -- is here, so a second host cannot get a
+// different answer from the same condition. Depth: docs/goal.md.
 package goal
 
 import (
@@ -19,28 +19,21 @@ import (
 	"time"
 )
 
-// MaxCondition caps a condition at 4000 characters. It is not a token budget:
-// the condition is the whole subject of the evaluator's user turn and it must
-// be readable at a glance.
+// MaxCondition caps a condition at 4000 characters: it must read at a glance.
 const MaxCondition = 4000
 
-// State is the active goal. The counters are the bound: iterations for what the
-// user sees, and the last reason with its run length for the repetition verdict.
+// State is the active goal; the counters are its bound. See docs/goal.md.
 type State struct {
 	Condition string    `json:"condition"`
 	SetAt     time.Time `json:"set_at"`
-	// Scope is the host's own marker for where the goal started -- a run id, a
-	// message id, whatever names the point the transcript window opens at. It is
-	// opaque here and is carried so a host stores one blob rather than two.
+	// Scope is the host's own opaque marker for where the goal started.
 	Scope string `json:"scope,omitempty"`
 	// Iterations is how many stops have been evaluated so far.
 	Iterations int `json:"iterations"`
-	// LastReason is the previous block's reason, and ReasonRun is how many
-	// consecutive blocks carried it.
+	// LastReason is the previous block's reason; ReasonRun counts it running.
 	LastReason string `json:"last_reason,omitempty"`
 	ReasonRun  int    `json:"reason_run,omitempty"`
-	// Suspended is set by an honest failure to evaluate. A suspended goal blocks
-	// nothing and is not cleared: the counters are still the user's.
+	// Suspended is set by an honest failure to evaluate; it blocks nothing.
 	Suspended  bool   `json:"suspended,omitempty"`
 	SuspendWhy string `json:"suspend_why,omitempty"`
 }
@@ -48,10 +41,9 @@ type State struct {
 // Encode marshals the state for a host's key-value store.
 func (s *State) Encode() ([]byte, error) { return json.Marshal(s) }
 
-// Decode reads a state back. An empty blob is no goal, which is not an error.
-//
-// A stored goal with no condition is reported rather than read as "no goal":
-// silently treating it as absent hides a store that is corrupt.
+// Decode reads a state back; an empty blob is no goal, which is not an error. A
+// stored goal with no condition is reported rather than read as absent: treating
+// it as no goal hides a store that is corrupt.
 func Decode(raw []byte) (*State, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -84,9 +76,10 @@ type Command struct {
 	Condition string // set only when Kind is Set
 }
 
-// Parse reads the argument of `/goal`. arg is everything after the command
-// word, verbatim -- newlines included, because a pasted checklist is a
-// legitimate condition and must not be flattened.
+// Parse reads the argument of `/goal`: everything after the command word,
+// verbatim. Newlines survive, because a pasted checklist is a legitimate
+// condition. The cap counts characters, the unit the notices quote and a pane
+// wraps; len() would refuse a shorter condition for containing an accent.
 func Parse(arg string) (Command, error) {
 	condition := strings.TrimSpace(arg)
 	switch {
@@ -95,8 +88,6 @@ func Parse(arg string) (Command, error) {
 	case condition == "clear":
 		return Command{Kind: Clear}, nil
 	}
-	// Counted in characters, because that is the unit the message quotes and the
-	// unit a pane wraps; len() would refuse a shorter condition for an accent.
 	if n := len([]rune(condition)); n > MaxCondition {
 		return Command{}, fmt.Errorf("goal condition is limited to %d characters (got %d)", MaxCondition, n)
 	}
@@ -120,12 +111,11 @@ func Briefing(condition string) string {
 		"going. It clears itself the moment it holds."
 }
 
-// Directive is the model-facing form of a blocked stop.
-//
-// The last paragraph is what makes a queued interjection safe: a mid-run message
-// arrives as an ordinary user message and never edits the condition, so the
-// conflict surfaces as a visible stop with both texts quoted rather than as a
-// run grinding against an instruction the user believes they changed.
+// Directive is the model-facing form of a blocked stop. Its last paragraph is
+// what makes a queued interjection safe: a mid-run message never edits the
+// condition, so a conflict surfaces as a visible stop with both texts quoted
+// rather than as a run grinding against an instruction the user believes they
+// changed. Depth: docs/goal.md.
 func Directive(condition, reason string) string {
 	return "[goal not met] " + reason + "\n\n" +
 		"The goal condition is still: " + condition + "\n\n" +
@@ -160,8 +150,7 @@ func MetNotice(s *State, reason, spend string, elapsed time.Duration) string {
 		"  → " + reason
 }
 
-// FailedNotice is what the user sees when the evaluator calls the condition
-// impossible, or when it has said the same thing three times running.
+// FailedNotice is what the user sees when the condition can never hold.
 func FailedNotice(s *State, reason, spend string, elapsed time.Duration) string {
 	head := fmt.Sprintf("goal failed after %d iterations", s.Iterations)
 	if spend != "" {
@@ -179,8 +168,8 @@ func ClearedNotice(s *State, spend string, elapsed time.Duration) string {
 	return out + " · " + Elapsed(elapsed)
 }
 
-// ShowNotice answers a bare `/goal`: the condition and its counters. It says how
-// to amend the goal, because a user who typed `/goal` was asking to edit it.
+// ShowNotice answers a bare `/goal`: the condition, its counters, and how to
+// amend it -- a user who typed `/goal` was asking to edit the goal.
 func ShowNotice(s *State, spend string, elapsed time.Duration) string {
 	if s == nil {
 		return "no goal is set — try: /goal all tests pass and go vet is clean"
@@ -197,8 +186,7 @@ func ShowNotice(s *State, spend string, elapsed time.Duration) string {
 	return out + "\n  /goal <condition> to replace it, /goal clear to remove it."
 }
 
-// SuspendNotice is an honest failure: the stop is permitted, the goal is kept,
-// and the user is told what went wrong.
+// SuspendNotice is an honest failure: the stop is permitted, the goal is kept.
 func SuspendNotice(why string) string { return "goal suspended: " + why }
 
 // Elapsed renders a duration the way a goal notice does: "8m41s", "22m", "6s".
@@ -224,6 +212,5 @@ func Elapsed(d time.Duration) string {
 	}
 }
 
-// quote wraps a condition in double quotes for a notice. A multi-line condition
-// keeps its newlines: flattening it would misquote what the user typed.
+// quote wraps a condition for a notice; a multi-line one keeps its newlines.
 func quote(s string) string { return `"` + s + `"` }
