@@ -162,8 +162,7 @@ func RenderWindow(entries []Entry, maxTokens int) string {
 		}
 	}
 	if len(rendered) == 0 {
-		// A goal set before any work is a real state, and saying so beats handing
-		// the evaluator a blank string to interpret.
+		// Saying so beats handing the evaluator a blank string to interpret.
 		return "(no transcript yet: no work has been recorded since the goal was set)"
 	}
 
@@ -221,8 +220,7 @@ func truncateMiddle(s string) string {
 		string(r[len(r)-evalTail:])
 }
 
-// Judge makes one bounded, tool-less call; it returns the whole *Completion
-// because the evaluator's own calls are part of what the goal spent.
+// Judge makes one bounded, tool-less call; the *Completion is what it spent.
 type Judge func(ctx context.Context, system, user string) (*agentic.Completion, error)
 
 // OneShotJudge is the ordinary Judge: one bounded, tool-less call on the host's
