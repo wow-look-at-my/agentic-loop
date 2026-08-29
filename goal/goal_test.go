@@ -95,7 +95,14 @@ func TestNoticesAreContract(t *testing.T) {
 		"goal set: \"tests pass\"\n"+
 			"The turn will not end until this holds. /goal clear to stop, /goal to amend.\n"+
 			"No spend or time bound: it runs until the condition holds, or until you clear it.",
-		goal.SetNotice("tests pass"))
+		goal.SetNotice("tests pass", ""))
+
+	assert.Equal(t,
+		"goal set: \"tests pass\"\n"+
+			"The turn will not end until this holds. /goal clear to stop, /goal to amend.\n"+
+			"Bound: $5.00. It suspends the goal rather than clearing it.",
+		goal.SetNotice("tests pass", "Bound: $5.00. It suspends the goal rather than clearing it."),
+		"the third line names the bound, which only the host knows")
 
 	assert.Equal(t,
 		"goal 3 · not met: two of four still fail · $0.12 · 8m41s",

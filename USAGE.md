@@ -1165,6 +1165,9 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Events: &events,
   prompt and from the window.
 - **`State.Scope` is the host's own opaque marker** for where the goal started, so
   the whole state is one JSON blob (`Encode`/`Decode`).
+- **`SetNotice`'s third line names the BOUND**, and only the host knows what it
+  caps or where it shows a running total, so the host passes it (`goal.NoBound`
+  is the default for a host that caps nothing).
 
 Depth, including every notice and why the directive ends where it does:
 `docs/goal.md`.

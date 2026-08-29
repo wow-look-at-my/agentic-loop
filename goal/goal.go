@@ -100,11 +100,18 @@ func Parse(arg string) (Command, error) {
 	return Command{Kind: Set, Condition: condition}, nil
 }
 
-// SetNotice is what the user is shown when a goal is set.
-func SetNotice(condition string) string {
+// NoBound is SetNotice's third line for a host that caps nothing.
+const NoBound = "No spend or time bound: it runs until the condition holds, or until you clear it."
+
+// SetNotice is what a user is shown when a goal is set. Its third line NAMES
+// THE BOUND, which only the host knows; empty is NoBound.
+func SetNotice(condition, bound string) string {
+	if bound == "" {
+		bound = NoBound
+	}
 	return "goal set: " + quote(condition) + "\n" +
 		"The turn will not end until this holds. /goal clear to stop, /goal to amend.\n" +
-		"No spend or time bound: it runs until the condition holds, or until you clear it."
+		bound
 }
 
 // Briefing is what the MODEL is told once, when the goal is set. It is a notice
