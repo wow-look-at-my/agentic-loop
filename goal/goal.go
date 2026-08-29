@@ -29,6 +29,11 @@ const BriefingKind = "goal_briefing"
 const MaxCondition = 4000
 
 // State is the active goal; the counters are its bound. See docs/goal.md.
+//
+// Persisting it is the HOST's, and there is deliberately no Encode/Decode here:
+// a library that ships a storage format decides what a row in somebody else's
+// database holds, which is backwards. The fields are plain and exported so a
+// host can map them onto its own columns, key-value rows, or file.
 type State struct {
 	Condition string    `json:"condition"`
 	SetAt     time.Time `json:"set_at"`
@@ -42,26 +47,6 @@ type State struct {
 	// Suspended is set by an honest failure to evaluate; it blocks nothing.
 	Suspended  bool   `json:"suspended,omitempty"`
 	SuspendWhy string `json:"suspend_why,omitempty"`
-}
-
-// Encode marshals the state for a host's key-value store.
-func (s *State) Encode() ([]byte, error) { return json.Marshal(s) }
-
-// Decode reads a state back; an empty blob is no goal, which is not an error. A
-// stored goal with no condition is reported rather than read as absent: treating
-// it as no goal hides a store that is corrupt.
-func Decode(raw []byte) (*State, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	var s State
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return nil, fmt.Errorf("goal: stored state: %w", err)
-	}
-	if strings.TrimSpace(s.Condition) == "" {
-		return nil, fmt.Errorf("goal: stored state has no condition")
-	}
-	return &s, nil
 }
 
 // Kind is what a parsed `/goal` invocation asks for.
