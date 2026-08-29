@@ -97,9 +97,7 @@ func unfence(text string) string {
 // EvalTokens caps the rendered window. Oldest turns are dropped first.
 const EvalTokens = 40000
 
-// OmittedMarker heads a window that dropped something: an evaluator judging a
-// truncated transcript has to know it is truncated, or "no evidence of a test
-// run" means two different things it cannot tell apart.
+// OmittedMarker heads a window that dropped something. Why: docs/goal.md.
 const OmittedMarker = "[earlier turns omitted]"
 
 // EntryKind is what one transcript entry is; a host maps its own rows onto these.
@@ -120,9 +118,8 @@ const (
 	EntryError
 )
 
-// Entry is one line of the evaluator's window. Two things a host must NOT map
-// onto one -- private reasoning, and any notice goal mode itself wrote. Why:
-// docs/goal.md.
+// Entry is one line of the window; two things never map onto one -- private
+// reasoning, and goal mode's own notices (docs/goal.md).
 type Entry struct {
 	Kind EntryKind
 	Text string
@@ -165,14 +162,12 @@ func RenderWindow(entries []Entry, maxTokens int) string {
 		}
 	}
 	if len(rendered) == 0 {
-		// An empty window is a real state -- a goal set before any work -- and the
-		// evaluator has to be told so, or it judges a blank string and reports
-		// whatever a blank string suggests.
+		// A goal set before any work is a real state, and saying so beats handing
+		// the evaluator a blank string to interpret.
 		return "(no transcript yet: no work has been recorded since the goal was set)"
 	}
 
-	// Newest first while filling, so what survives a small budget is the most
-	// recent evidence, which is what the condition is asked about.
+	// Newest first while filling: a small budget keeps the most recent evidence.
 	keep, budget := 0, maxTokens
 	for i := len(rendered) - 1; i >= 0; i-- {
 		budget -= estimateTokens(rendered[i])
@@ -226,9 +221,8 @@ func truncateMiddle(s string) string {
 		string(r[len(r)-evalTail:])
 }
 
-// Judge makes one bounded, tool-less model call and returns the whole
-// *Completion: a goal run's spend is the only thing between an uncapped run and
-// a surprise, and these calls are part of it.
+// Judge makes one bounded, tool-less call; it returns the whole *Completion
+// because the evaluator's own calls are part of what the goal spent.
 type Judge func(ctx context.Context, system, user string) (*agentic.Completion, error)
 
 // OneShotJudge is the ordinary Judge: one bounded, tool-less call on the host's
@@ -237,8 +231,7 @@ func OneShotJudge(p agentic.Provider, req agentic.Request) Judge {
 	return func(ctx context.Context, system, user string) (*agentic.Completion, error) {
 		r := req
 		r.System = system
-		// SystemParts outranks System when set, so the host's own prompt would
-		// silently replace the evaluator's.
+		// SystemParts outranks System, so the host's prompt would replace this one.
 		r.SystemParts = nil
 		r.MaxTokens = EvalMaxTokens
 		r.Messages = []agentic.Message{{Role: agentic.RoleUser, Content: user}}
@@ -280,8 +273,7 @@ func (o Outcome) String() string {
 	}
 }
 
-// repetitionLimit is how many identical reasons end a goal; it is a VERDICT
-// rather than a budget, so reaching it clears the goal. Why: docs/goal.md.
+// repetitionLimit identical reasons is a VERDICT, not a budget: docs/goal.md.
 const repetitionLimit = 3
 
 // Verdicts is what one evaluation produced, for the host to record.
@@ -330,9 +322,8 @@ func (e *Evaluator) Evaluate(ctx context.Context) Verdicts {
 
 	verdict, comp, err := e.ask(ctx, RenderWindow(window, EvalTokens))
 	if err != nil {
-		// A run cancelled while the evaluator was mid-call is a cancellation, not
-		// an evaluator failure: suspending the goal over the user's own stop would
-		// make them re-arm it to get back to where they were.
+		// Cancelled mid-call is a cancellation, not an evaluator failure:
+		// suspending over the user's own stop makes them re-arm the goal.
 		if ctx.Err() != nil {
 			return Verdicts{Outcome: Permitted, Reason: "the run was cancelled", Completion: comp}
 		}

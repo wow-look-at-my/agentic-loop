@@ -127,10 +127,9 @@ func Directive(condition, reason string) string {
 		"with which part of the condition, and stop."
 }
 
-// BlockNotice is the one line a blocked stop puts in the transcript. Spend is
-// omitted rather than shown as zero when nothing priced the run: a goal-scoped
-// total that silently excludes an unpriced call is the one wrong number nobody
-// checks.
+// BlockNotice is the one line a blocked stop puts in the transcript. An
+// unpriced run omits spend rather than reporting zero: a total that silently
+// excludes an unpriced call is the one wrong number nobody checks.
 func BlockNotice(iterations int, reason string, spend string, elapsed time.Duration) string {
 	out := fmt.Sprintf("goal %d · not met: %s", iterations, reason)
 	if spend != "" {
