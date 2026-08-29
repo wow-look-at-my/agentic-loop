@@ -13,7 +13,6 @@
 package goal
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
