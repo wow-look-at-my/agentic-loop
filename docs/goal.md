@@ -10,10 +10,14 @@ running goal mode behave the same way. Do not "improve" them.
 
 ## The three seams
 
-- **State persistence.** `State.Encode`/`Decode` produce one JSON blob. Where it
-  lives — a session key-value store, a conversation row — is the host's. Goal
-  state survives a restart, counters included: a goal that spent its budget
-  before a crash does not get a fresh one for free.
+- **State persistence.** `State` is a plain struct of exported scalars and one
+  `time.Time`, and this package ships no encoding for it: how it is stored — a
+  key-value row, one column per field, a file — is entirely the host's. A
+  library that shipped an `Encode`/`Decode` pair would be deciding what a row in
+  somebody else's database holds, and nothing there could query into it or
+  notice a field this package added. Goal state must survive a restart, counters
+  included: a goal that spent its budget before a crash does not get a fresh one
+  for free.
 - **`Evaluator.Window`.** The host maps its own transcript rows onto `[]Entry`.
   `EntriesFromMessages` does it for a host whose store IS `[]agentic.Message`.
 - **`Evaluator.Judge`.** One bounded, tool-less model call.  `OneShotJudge`

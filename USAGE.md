@@ -1163,8 +1163,12 @@ res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Events: &events,
 - **`goal.NoticeKind` and `goal.BriefingKind`** name the other two stored rows: a
   host that keeps notices in the transcript must exclude that kind from the
   prompt and from the window.
-- **`State.Scope` is the host's own opaque marker** for where the goal started, so
-  the whole state is one JSON blob (`Encode`/`Decode`).
+- **`State.Scope` is the host's own opaque marker** for where the goal started —
+  a message id, a run number, whatever that host counts in.
+- **`State` carries no storage format**, deliberately: every field is an
+  exported scalar or a `time.Time`, and the host maps them onto whatever it
+  stores in. Shipping an `Encode`/`Decode` pair here would decide what a row in
+  the host's database holds.
 - **`SetNotice`'s third line names the BOUND**, and only the host knows what it
   caps or where it shows a running total, so the host passes it (`goal.NoBound`
   is the default for a host that caps nothing).
