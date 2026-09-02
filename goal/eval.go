@@ -386,7 +386,10 @@ func (e *Evaluator) ask(ctx context.Context, window string) (Verdict, *agentic.C
 		parseErr = err
 	}
 
-	if parseErr != nil {
+	switch {
+	case parseErr != nil && callErr != nil:
+		return Verdict{}, last, fmt.Errorf("evaluator call failed (%v) and its other answer was unparseable (%v) — /goal to retry", callErr, parseErr)
+	case parseErr != nil:
 		return Verdict{}, last, errors.New("evaluator returned unparseable output twice")
 	}
 	return Verdict{}, last, fmt.Errorf("evaluator call failed (%v) — /goal to retry", callErr)

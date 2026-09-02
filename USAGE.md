@@ -1368,7 +1368,11 @@ Two properties run through all of it:
   public repository works with no credential at all), and **when every attempt
   fails it reports the MOST INFORMATIVE one** — never the anonymous attempt's
   401, whose only content is that no credential was sent. That is how a spent
-  rate limit stopped reading as a permanent auth problem.
+  rate limit stopped reading as a permanent auth problem. The cache holds
+  tokens only: an anonymous win is never remembered, and a stored empty id is
+  ignored, so the anonymous attempt runs last or (under `NoAnonymous`) not at
+  all — a token added after a public repository was first read is tried
+  first, not shadowed by a preference for no credential.
 - **A credential's remaining quota is READ OFF its responses, never asked
   for.** Every GitHub response states it in `x-ratelimit-limit` /
   `-remaining` / `-used` / `-reset`, so `GET /rate_limit` would be a second
