@@ -111,9 +111,11 @@ type Credential struct {
 	Token string
 }
 
-// Remember records which credential reached a repository, so the next call starts with it.
+// Remember records which credential reached a repository, so the next call
+// starts with it. An anonymous win (empty credentialID) is not remembered: a
+// token added later must not be shadowed by a stored preference for no token.
 func (e *GitHub) Remember(cacheKey, credentialID string) {
-	if e.cache != nil && cacheKey != "" {
+	if e.cache != nil && cacheKey != "" && credentialID != "" {
 		e.cache.Put(cacheKey, credentialID)
 	}
 }

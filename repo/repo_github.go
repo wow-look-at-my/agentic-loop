@@ -87,9 +87,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 		}
 		// With NoRedirect a 3xx is the answer, not a failure: the resource lives at the Location.
 		if res.status >= 200 && res.status < 300 || (opt.NoRedirect && res.status >= 300 && res.status < 400) {
-			if e.cache != nil && cacheKey != "" {
-				e.cache.Put(cacheKey, att.id)
-			}
+			e.Remember(cacheKey, att.id)
 			return res, nil
 		}
 		res.authed = att.token != ""
@@ -120,6 +118,10 @@ type tokenAttempt struct {
 // dropped so each distinct credential is tried once. Writes use
 // writeTokenOrder (repo_write.go) instead, which never falls through to
 // unauthenticated.
+//
+// The anonymous attempt is never promoted by the cache: it runs last or not at
+// all. A cache that put it first sent every later read of that repository to
+// the server's own IP bucket while the tokens sat unused.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()
@@ -130,10 +132,8 @@ func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 		order = append(order, tokenAttempt{id: id, name: name, token: token})
 	}
 	if e.cache != nil && cacheKey != "" {
-		if id, ok := e.cache.Get(cacheKey); ok {
-			if id == "" {
-				add("", "", "")
-			} else if t, found := e.tokenByID(id); found {
+		if id, ok := e.cache.Get(cacheKey); ok && id != "" {
+			if t, found := e.tokenByID(id); found {
 				add(id, t.Name, t.Token)
 			}
 		}
@@ -192,9 +192,7 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 				continue
 			}
 			if res.status >= 200 && res.status < 300 {
-				if e.cache != nil {
-					e.cache.Put(cacheKey, att.id)
-				}
+				e.Remember(cacheKey, att.id)
 				repos, truncated, perr := e.collectOwnerRepos(ctx, owner, isUser, att.token, res.body)
 				return repos, truncated, GHResponse{status: res.status}, perr
 			}

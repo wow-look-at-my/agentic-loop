@@ -715,7 +715,11 @@ requested tools, feed the results back, repeat. Key behaviors:
   thinking-only turn, or a run its ctx cut short) and tools were in play,
   one extra tool-less wrap-up turn forces the model to synthesize its answer
   from what it gathered; failing that, the final content falls back to the
-  accumulated reasoning, then to a clear placeholder.
+  accumulated reasoning, then to a clear placeholder. Whichever text wins is
+  the turn's answer like any other: it is finalized onto the row
+  `OnAssistantMessage` minted for the turn (one mint, one finalize), and it
+  is a stop boundary, so `OnStop` is asked and a queued message takes
+  another turn.
 - **Result.Usages** holds one entry per model call, in order — deliberately
   **not summed**: successive prompts overlap (each turn re-sends the growing
   transcript), so summing would double-count the shared prefix.
