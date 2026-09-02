@@ -468,7 +468,9 @@ Concretely:
 `.github/workflows/ci.yml` runs the org go-toolchain action at the
 repository root. Org constraints:
 
-- The workflow trigger stays `on: push:` only.
+- The workflow trigger stays `on: push:` only, with `branches: ['**']` under
+  it: the toolchain's guard fails a bare push trigger, since that also fires
+  on every tag autorelease creates.
 - The required status check is named exactly **`all-builds`**, but it is
   posted by the org's required-builds-manager app (which aggregates this
   repo's builds) — never by a job. Never name a workflow job `all-builds`:

@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    # Branch pushes only: a bare push trigger also fires on every tag autorelease creates.
+    branches: ['**']
 
 # go-toolchain's autorelease needs actions/contents/deployments write access; without it a passing build still fails.
 permissions:
