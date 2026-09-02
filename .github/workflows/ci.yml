@@ -3,7 +3,7 @@ name: CI
 on:
   push:
 
-# go-toolchain@v1's autorelease needs actions/contents/deployments write access; without it a passing build still fails.
+# go-toolchain's autorelease needs actions/contents/deployments write access; without it a passing build still fails.
 permissions:
   id-token: write
   contents: write
@@ -17,4 +17,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my/go-toolchain@v1
+      - uses: wow-look-at-my/go-toolchain@master
