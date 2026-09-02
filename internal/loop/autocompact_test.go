@@ -64,10 +64,10 @@ func TestShouldCompactNilCompletion(t *testing.T) {
 }
 
 func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
-	// Turn 1: the model asks for a tool, reporting prompt tokens at the
+	// Turn: the model asks for a tool, reporting prompt tokens at the
 	// threshold. The tool RUNS, and the loop compacts at the turn boundary.
 	// The summarize call: returns a summary.
-	// Turn 2 (after compaction): the model answers cleanly.
+	// Turn (after compaction): the model answers cleanly.
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: usageComp("here is my answer", 8000,
 			ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
@@ -111,7 +111,7 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 	assert.Contains(t, res.Messages[0].Content, "this is the summary")
 	assert.Equal(t, "final answer after compaction", res.Messages[1].Content)
 
-	// Two numbered turns (the summarize call does not increment res.Turns).
+	// numbered turns (the summarize call does not increment res.Turns).
 	assert.Equal(t, 2, res.Turns)
 	// Compacting before the batch left the host a row nothing ever answered.
 	require.Len(t, exec.executed, 1, "the turn that crossed the threshold still ran its tools")
@@ -189,7 +189,7 @@ func TestRunAutoCompactAttachesTheNextTurnToTheStoredSummary(t *testing.T) {
 
 func TestRunAutoCompactBelowThresholdDoesNotCompact(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: usageComp("answer", 1000)}, // well below 8000
+		{comp: usageComp("answer", 1000)}, // well below
 	}}
 	var compacted bool
 	events := Events{}
@@ -272,7 +272,7 @@ func TestRunAutoCompactWithoutContextWindowDoesNothing(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
-		// ContextWindow is 0 (unset)
+		// ContextWindow is (unset)
 	}
 	req := Request{Model: "m", AutoCompact: 0.8,
 		Messages: []Message{{Role: RoleUser, Content: "go"}}}

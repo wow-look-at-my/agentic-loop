@@ -63,7 +63,7 @@ func TestOutputDeduperDifferentToolSameContentDoesNotCollapse(t *testing.T) {
 	assert.False(t, deduped)
 	assert.Equal(t, "same bytes", content, "the tool is part of the dedup key")
 
-	// ... and the original tool still collapses on its own repeat.
+	//... and the original tool still collapses on its own repeat.
 	_, deduped = d.Collapse(ToolDecl{Name: "list_dir", Readonly: true}, ToolResult{Content: "same bytes"})
 	assert.True(t, deduped)
 }
@@ -104,7 +104,7 @@ func TestOutputDeduperResetIsIdempotent(t *testing.T) {
 
 func TestOutputDeduperBoundedEviction(t *testing.T) {
 	d := NewOutputDeduper()
-	// Insert one distinct output per tool name, far past the cap.
+	// Insert distinct output per tool name, far past the cap.
 	over := maxDedupEntries + 32
 	for i := 0; i < over; i++ {
 		name := "tool_" + strconv.Itoa(i)
@@ -119,7 +119,7 @@ func TestOutputDeduperBoundedEviction(t *testing.T) {
 	content, deduped := d.Collapse(ToolDecl{Name: "tool_0", Readonly: true}, ToolResult{Content: "payload 0"})
 	assert.False(t, deduped, "the evicted oldest entry is a fresh occurrence again")
 	assert.Equal(t, "payload 0", content)
-	// ...while a key inserted after the eviction window still collapses.
+	//...while a key inserted after the eviction window still collapses.
 	_, deduped = d.Collapse(ToolDecl{Name: "tool_" + strconv.Itoa(over-1), Readonly: true}, ToolResult{Content: "payload " + strconv.Itoa(over-1)})
 	assert.True(t, deduped, "a recent key survives eviction and still collapses")
 }

@@ -112,7 +112,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 			return 0, ""
 		}
 	})
-	// The header GitHub really sends on a Checks API 403.
+	// The header GitHub really sends on a Checks API.
 	g.headers = func(c ghCall) http.Header {
 		h := http.Header{}
 		if strings.HasSuffix(c.Path, "/check-runs") {
@@ -135,7 +135,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	assert.NotContains(t, res.Content, "step 1 failed")
 }
 
-// Neither API answered, so the reader has no CI verdict — that is the one case
+// Neither API answered, so the reader has no CI verdict — that is the case
 // where both failures are reported instead of a result.
 func TestRepoStatusReportsBothFailuresWhenNeitherAPIAnswers(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {

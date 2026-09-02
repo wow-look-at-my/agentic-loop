@@ -10,10 +10,10 @@ import (
 // anWireMessages maps the neutral transcript onto Messages API messages,
 // building fresh wire structures every call (the caller's Messages are never
 // touched). Assistant messages become content-block arrays with thinking
-// blocks replayed FIRST (required, or tool-use continuations 400 — signatures
+// blocks replayed (required, or tool-use continuations — signatures
 // and redacted payloads replayed verbatim), then the text, then tool_use
 // blocks whose input is the PARSED argument object. Consecutive RoleTool
-// messages fold into ONE user message of tool_result blocks. Everything else
+// messages fold into user message of tool_result blocks. Everything else
 // (user, and any stray system message — Request.System is the system channel
 // on this dialect) rides as a user message with string content.
 func anWireMessages(msgs []Message) ([]map[string]any, error) {
@@ -56,7 +56,7 @@ func anWireMessages(msgs []Message) ([]map[string]any, error) {
 // only text, and the block array when it carries an image. The source keeps
 // the form it was supplied in -- base64 for inline bytes, url for a reference
 // -- because converting between them means either fetching a URL the caller
-// did not ask this library to fetch, or inventing one for bytes.
+// did not ask this library to fetch, or inventing for bytes.
 func anUserContent(m Message) (any, error) {
 	if !hasImage(m) {
 		return m.Content, nil
@@ -79,7 +79,7 @@ func anUserContent(m Message) (any, error) {
 	return blocks, nil
 }
 
-// anImageSource is the Messages API's source object for one image.
+// anImageSource is the Messages API's source object for image.
 func anImageSource(i ImagePart) (map[string]any, error) {
 	switch {
 	case i.Src != "":
@@ -96,7 +96,7 @@ func anImageSource(i ImagePart) (map[string]any, error) {
 }
 
 // anAssistantContent builds an assistant message's content blocks in replay
-// order: thinking first, then text, then tool_use. It returns nil for a turn
+// order: thinking, then text, then tool_use. It returns nil for a turn
 // that produces no block at all -- no text, no tool call, and no replayable
 // thinking. The caller drops such a turn.
 func anAssistantContent(m Message) any {

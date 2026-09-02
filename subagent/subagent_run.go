@@ -11,14 +11,14 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// Running one sub-agent: the launch (asynchronous when a registry is
+// Running sub-agent: the launch (asynchronous when a registry is
 // configured), the nested Run, and the toolset it is given.
 
-// Execute runs one sub-agent. Every misuse — a bad share_context selection,
+// Execute runs sub-agent. Every misuse — a bad share_context selection,
 // an allowed_tools name that resolves to nothing — is a recoverable error
 // tool result that teaches the valid shape, never a Go error.
 func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
-	// A body nobody can parse is the one failure still answered synchronously.
+	// A body nobody can parse is the failure still answered synchronously.
 	var in subagentArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return agentic.ToolResult{Content: "invalid run_subagent arguments: " + err.Error(), IsError: true}, nil
@@ -37,12 +37,12 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (agent
 	return agentic.ToolResult{Content: SubagentLaunchReceipt(in.Description)}, nil
 }
 
-// launched runs one asynchronously started sub-agent to completion and records
+// launched runs asynchronously started sub-agent to completion and records
 // its outcome. It never returns anything to its caller -- the registry is the
 // only path back -- so every exit has to record something: a lost report would
 // leave the loop waiting on a promise nothing will keep. That includes a
 // panic, which on this goroutine would otherwise take the whole process down
-// rather than one turn.
+// rather than turn.
 func (e *subagentTool) launched(ctx context.Context, callID string, in subagentArgs) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -61,7 +61,7 @@ func (e *subagentTool) launched(ctx context.Context, callID string, in subagentA
 	e.cfg.Runs.Complete(callID, res.Content, res.IsError, spent)
 }
 
-// run executes one sub-agent to completion. Every misuse — a bad
+// run executes sub-agent to completion. Every misuse — a bad
 // share_context selection, an allowed_tools name that resolves to nothing — is
 // a recoverable error tool result that teaches the valid shape.
 func (e *subagentTool) run(ctx context.Context, in subagentArgs) agentic.ToolResult {
@@ -76,7 +76,7 @@ func (e *subagentTool) run(ctx context.Context, in subagentArgs) agentic.ToolRes
 	return res
 }
 
-// runGated executes one sub-agent with its concurrency slot already held. It
+// runGated executes sub-agent with its concurrency slot already held. It
 // returns the report AND every usage the run spent -- the nested loop's turns
 // plus the share_context=summary briefing, in order -- because a sub-agent
 // answers its parent in text, so nothing else carries what it cost.
@@ -248,7 +248,7 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 	return cfg
 }
 
-// thinkingText joins a completion's reasoning blocks into one string.
+// thinkingText joins a completion's reasoning blocks into string.
 func thinkingText(blocks []agentic.ThinkingBlock) string {
 	if len(blocks) == 0 {
 		return ""
@@ -287,7 +287,7 @@ func (e *subagentTool) parentContext() []agentic.Message {
 // buildContextBlock renders the parent-conversation context the orchestrator
 // chose to share (share_context). It returns the rendered block (possibly
 // empty when there is nothing to share) or a non-empty errMsg describing a
-// misuse the model should fix. The summary mode makes one bounded model call,
+// misuse the model should fix. The summary mode makes bounded model call,
 // and returns its Completion so the briefing's cost travels with the run that
 // asked for it -- including when the call failed after spending tokens.
 func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (block string, comp *agentic.Completion, errMsg string) {
@@ -352,7 +352,7 @@ func resolveAllowedTools(available, requested []string) (keep []string, errMsg s
 			chosen.Add(req)
 			continue
 		}
-		// Bare-name fallback: match "<server>__<req>" when exactly one tool does.
+		// Bare-name fallback: match "<server>__<req>" when exactly tool does.
 		var hits []string
 		for _, adv := range available {
 			if strings.HasSuffix(adv, "__"+req) {

@@ -89,7 +89,7 @@ func normalizeStopReason(reason string) string {
 	return reason
 }
 
-// oaAssistantMessage assembles one turn's parts: reasoning (text plus, when
+// oaAssistantMessage assembles turn's parts: reasoning (text plus, when
 // captured, the verbatim reasoningDetailsJSON in Signature -- see
 // oaReasoningDetailsJSON), then content, then tool calls.
 func oaAssistantMessage(reasoning, reasoningDetailsJSON, content string, calls []ToolCall) Message {

@@ -12,7 +12,7 @@ type anNonStream struct {
 	Usage      *anUsage           `json:"usage"`
 }
 
-// anNonStreamBlock is one content block of a non-streaming response.
+// anNonStreamBlock is content block of a non-streaming response.
 type anNonStreamBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
@@ -75,7 +75,7 @@ func parseAnthropicNonStream(data []byte) (*Completion, error) {
 	return comp, nil
 }
 
-// intOrZero dereferences a tri-state int pointer, zero when nil.
+// intOrZero dereferences a tri-state int pointer, when nil.
 func intOrZero(p *int) int {
 	if p == nil {
 		return 0

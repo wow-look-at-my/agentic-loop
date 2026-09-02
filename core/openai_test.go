@@ -145,7 +145,7 @@ func TestOpenAIMessageMarshalPin(t *testing.T) {
 	assert.JSONEq(t, `{"role":"tool","content":"","tool_call_id":"call_1"}`, string(b))
 }
 
-// rejectStreamOptionsHandler 400s the first call (no named parameter); retries stream normally.
+// rejectStreamOptionsHandler 400s the call (no named parameter); retries stream normally.
 type rejectStreamOptionsHandler struct {
 	sseHandler
 	bodies [][]byte
@@ -273,7 +273,7 @@ func TestOpenAIStreamDecode(t *testing.T) {
 	require.Len(t, progresses, 1)
 	assert.Equal(t, PromptProgress{Processed: 50, Total: 100, Cache: 20, TimeMS: 123}, progresses[0])
 
-	// Every usage report the upstream sent is kept in order; which one counts is the reader's call.
+	// Every usage report the upstream sent is kept in order; which counts is the reader's call.
 	require.Len(t, comp.Usages, 7)
 	assert.Equal(t, 10, comp.Usages[0].PromptTokens)
 	assert.Equal(t, 0, comp.Usages[0].CompletionTokens)
@@ -285,9 +285,9 @@ func TestOpenAIStreamDecode(t *testing.T) {
 }
 
 // TestOpenAIReasoningDetailsStream reproduces the OpenRouter shape: a
-// reasoning.text item fragmented across two deltas at the same index, then a
+// reasoning.text item fragmented across deltas at the same index, then a
 // reasoning.encrypted item at the next index, both accumulated into the
-// turn's one ThinkingBlock -- its Signature carries the whole captured array,
+// turn's ThinkingBlock -- its Signature carries the whole captured array,
 // verbatim, for replay.
 func TestOpenAIReasoningDetailsStream(t *testing.T) {
 	h := &sseHandler{payloads: []string{
@@ -361,7 +361,7 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 
 // TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server default
 // still sends neither field: a server that never advertised reasoning_details
-// must not see it just because a captured block happens to carry one.
+// must not see it just because a captured block happens to carry.
 func TestOpenAINoReasoningDetailsWithoutReplay(t *testing.T) {
 	details := []oaReasoningDetail{{Type: "reasoning.text", Text: "step one", ID: "rs_1"}}
 	raw, err := json.Marshal(details)
@@ -477,7 +477,7 @@ func TestOpenAIPartialOnCancel(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	// Cancel from the client the moment the first delta lands — deterministic, unlike handler signaling.
+	// Cancel from the client the moment the delta lands — deterministic, unlike handler signaling.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ev := &StreamEvents{OnText: func(string) error { cancel(); return nil }}

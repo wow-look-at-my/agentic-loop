@@ -6,17 +6,17 @@ import (
 	"strings"
 )
 
-// Rates: USD PER TOKEN, not per million; 0 is a real price, absence = no entry.
+// Rates: USD PER TOKEN, not per; is a real price, absence = no entry.
 type Rates struct {
 	Prompt     float64
 	Completion float64
 	CacheRead  float64
 	CacheWrite float64
-	// CacheWrite1h is the one-hour cache-write tier, published but not used by Cost (no tier in the usage tokens).
+	// CacheWrite1h is the -hour cache-write tier, published but not used by Cost (no tier in the usage tokens).
 	CacheWrite1h float64
 }
 
-// Cost prices one model call in USD; cached tokens are already in PromptTokens, so cache terms bill separately.
+// Cost prices model call in USD; cached tokens are already in PromptTokens, so cache terms bill separately.
 func (r Rates) Cost(u Usage) float64 {
 	read, write := cacheCounts(u)
 	uncached := u.PromptTokens - read - write
@@ -52,8 +52,8 @@ func cacheCounts(u Usage) (read, write int) {
 }
 
 // modelListPricing is the pricing block a model list publishes per model. Every
-// field is a string in the wire format — OpenRouter sends "0.000015", not
-// 0.000015 — so each is decoded as one and parsed here.
+// field is a string in the wire format — OpenRouter sends "", not
+// — so each is decoded as and parsed here.
 type modelListPricing struct {
 	Prompt             string          `json:"prompt"`
 	Completion         string          `json:"completion"`
@@ -67,13 +67,13 @@ type modelListPricing struct {
 	CurrencyIrrelevant json.RawMessage `json:"currency"`
 }
 
-// ratesOf converts one pricing block. The second return is false when the block
+// ratesOf converts pricing block. The return is false when the block
 // carried no usable number at all, which keeps an empty `"pricing": {}` out of
 // the map instead of turning it into a free model.
 //
 // Cache rates fall back to the prompt rate when the block omits them, because
 // an omitted cache rate on a provider that charges for cache reads is a low
-// number, and the prompt rate is the one price we know the tokens could have
+// number, and the prompt rate is the price we know the tokens could have
 // cost. A host that wants the exact figure sets it in config.
 func ratesOf(p modelListPricing) (Rates, bool) {
 	var r Rates
@@ -100,10 +100,10 @@ func ratesOf(p modelListPricing) (Rates, bool) {
 	return r, true
 }
 
-// maxPlausiblePerTokenUSD bounds a real per-token price, telling a per-token value from one already per million.
+// maxPlausiblePerTokenUSD bounds a real per-token price, telling a per-token value from already per.
 const maxPlausiblePerTokenUSD = 0.001
 
-// parseRate reads a published rate in USD per token; a value over maxPlausiblePerTokenUSD is per million and rescaled.
+// parseRate reads a published rate in USD per token; a value over maxPlausiblePerTokenUSD is per and rescaled.
 func parseRate(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {

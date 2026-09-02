@@ -52,7 +52,7 @@ var webFetchSchema = json.RawMessage(`{
 
 // WebFetchConfig configures NewWebFetchTool.
 type WebFetchConfig struct {
-	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a 45-second timeout.
+	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a - timeout.
 	HTTPClient *http.Client
 	// UserAgent, when non-empty, is sent as the User-Agent header on the tool's outbound requests.
 	UserAgent string
@@ -228,9 +228,9 @@ const webSummarySystemPrompt = "You summarize cleaned web content for another as
 	"Follow the provided summary instructions. If the content is thin, blocked, or unrelated, say so plainly."
 
 // generateWebSummary asks the model to summarize cleaned fetched content:
-// one bounded (webSummaryModelTimeout), tool-less call with no retry, via
+// bounded (webSummaryModelTimeout), tool-less call with no retry, via
 // OneShot. onCompletion, when non-nil, is handed the call's Completion --
-// including a partial one from a failed call, because those tokens were spent
+// including a partial from a failed call, because those tokens were spent
 // too and a host that is not told about them under-counts what the session
 // cost.
 func generateWebSummary(ctx context.Context, p agentic.Provider, onCompletion func(*agentic.Completion), model, url, cleaned, instructions string, maxTokens int, extra map[string]any) (string, error) {
@@ -354,7 +354,7 @@ func normalizeText(s string) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-// collapseSpaces folds every whitespace run into one space.
+// collapseSpaces folds every whitespace run into space.
 func collapseSpaces(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))

@@ -13,7 +13,7 @@ import (
 
 // These pin that what=status carries the REASON, and what=check_run is the drill-down.
 
-// checkRun builds one check-run fixture.
+// checkRun builds check-run fixture.
 func checkRun(id int, name, conclusion string, extra jsontest.Obj) jsontest.Obj {
 	o := jsontest.Obj{
 		"id": id, "name": name, "status": "completed", "conclusion": conclusion,
@@ -222,7 +222,7 @@ func TestRepoCheckRunWithoutAnIDTeachesWhereIDsComeFrom(t *testing.T) {
 	assert.Contains(t, res.Content, `"what":"status"`)
 }
 
-// what=check_run ignores every argument but org/repo/id, and an ignored one is
+// what=check_run ignores every argument but org/repo/id, and an ignored is
 // rejected rather than dropped (see repo_args.go).
 func TestRepoCheckRunRejectsArgumentsItIgnores(t *testing.T) {
 	ex := repoToolset(GitHubConfig{})

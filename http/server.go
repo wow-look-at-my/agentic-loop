@@ -1,7 +1,7 @@
-// Package httpapi serves the common AI API over HTTP: one stateless endpoint
+// Package httpapi serves the common AI API over HTTP: stateless endpoint
 // that runs a call, and a set of stateful ones that keep the conversation.
 //
-// There is no envelope and no second vocabulary. A request IS a <request>
+// There is no envelope and no vocabulary. A request IS a <request>
 // document, an answer IS the <response> document, and a streamed answer is
 // that same document written progressively down a chunked body -- so `curl`
 // shows the answer appearing, and a consumer in any language parses it with
@@ -27,7 +27,7 @@ const contentType = "application/xml; charset=utf-8"
 type Config struct {
 	// Provider runs the calls and is required; it is the format's own Provider, not the Go client's.
 	Provider commonai.Provider
-	// Store holds conversations for the stateful endpoints; nil serves the stateless one only.
+	// Store holds conversations for the stateful endpoints; nil serves the stateless only.
 	Store session.Store
 }
 
@@ -58,7 +58,7 @@ func NewServer(cfg Config) (*Server, error) {
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
-// handleComplete runs one call and streams the response document back.
+// handleComplete runs call and streams the response document back.
 func (s *Server) handleComplete(w http.ResponseWriter, r *http.Request) {
 	req, err := s.readRequest(r)
 	if err != nil {
@@ -134,7 +134,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 // call over the whole transcript, and appends the answer.
 //
 // The posted document's other fields override the stored defaults for this
-// turn only: a caller raising max-tokens for one question has not changed what
+// turn only: a caller raising max-tokens for question has not changed what
 // the conversation is.
 func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 	if !s.haveStore(w) {
@@ -155,7 +155,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 }
 
 // run makes the call and writes the response document as it arrives. When a
-// store is given, the assistant turn is appended to it once the call is done.
+// store is given, the assistant turn is appended to it the call is done.
 func (s *Server) run(w http.ResponseWriter, r *http.Request, req commonai.Request, store session.Store, id string) {
 	stream := newStreamWriter(w)
 	comp, err := s.provider.Complete(r.Context(), req, stream.events())
@@ -194,7 +194,7 @@ func (s *Server) readRequest(r *http.Request) (commonai.Request, error) {
 }
 
 // haveStore answers the stateful routes when no store was configured. A
-// server without one does not have sessions to serve, and saying so is better
+// server without does not have sessions to serve, and saying so is better
 // than an empty list that reads as "you have none".
 func (s *Server) haveStore(w http.ResponseWriter) bool {
 	if s.store != nil {
@@ -207,7 +207,7 @@ func (s *Server) haveStore(w http.ResponseWriter) bool {
 }
 
 // overlay applies a turn's own fields over the conversation's defaults. Only
-// what the turn actually stated is taken; the transcript is the stored one,
+// what the turn actually stated is taken; the transcript is the stored,
 // which already has the turn's messages appended.
 func overlay(stored, turn commonai.Request) commonai.Request {
 	out := stored
@@ -249,7 +249,7 @@ func statusFor(err error) int {
 	case errors.Is(err, session.ErrNotFound):
 		return http.StatusNotFound
 	case errors.As(err, &apiErr):
-		// The upstream's own status, when it is one a client can act on.
+		// The upstream's own status, when it is a client can act on.
 		if apiErr.Status >= 400 && apiErr.Status < 600 {
 			return apiErr.Status
 		}
@@ -265,5 +265,5 @@ func statusFor(err error) int {
 	return http.StatusInternalServerError
 }
 
-// httpStatusClientClosed is nginx's 499, which has no net/http constant; answering 500 would blame the server.
+// httpStatusClientClosed is nginx's, which has no net/http constant; answering would blame the server.
 const httpStatusClientClosed = 499

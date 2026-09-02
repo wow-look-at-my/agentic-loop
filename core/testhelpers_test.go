@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// firstUsage is the first report a call produced, or a zero Usage when the provider reported none.
+// firstUsage is the report a call produced, or a Usage when the provider reported none.
 func firstUsage(c *Completion) Usage {
 	if c == nil || len(c.Usages) == 0 {
 		return Usage{}
@@ -65,7 +65,7 @@ func anProvider(t *testing.T, baseURL string) Provider {
 	return mustAnthropic(t, AnthropicConfig{ProviderConfig: ProviderConfig{BaseURL: baseURL}})
 }
 
-// scriptStep is one scripted answer: what to emit through the callbacks, and
+// scriptStep is scripted answer: what to emit through the callbacks, and
 // what to return.
 type scriptStep struct {
 	comp *Completion
@@ -74,7 +74,6 @@ type scriptStep struct {
 }
 
 // scriptProvider replays scripted responses and records every request, so a
-// test can drive the layers above without an upstream.
 type scriptProvider struct {
 	steps []scriptStep
 	reqs  []Request

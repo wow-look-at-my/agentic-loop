@@ -50,7 +50,7 @@ type resourceDiffArgs struct {
 // ErrNoResourceChange is what a ResourceChanges reader returns for an id it does not hold.
 var ErrNoResourceChange = errors.New("agentic: no such resource change")
 
-// StoredResourceChange is one recorded change as the reader hands it back: the
+// StoredResourceChange is recorded change as the reader hands it back: the
 // record the watcher wrote, plus the id and the moment it was captured.
 type StoredResourceChange struct {
 	ResourceChangeRecord
@@ -91,7 +91,7 @@ func (e *resourceDiffTool) Decl() agentic.ToolDecl {
 	}
 }
 
-// Execute resolves one change id. Every failure is a recoverable error result
+// Execute resolves change id. Every failure is a recoverable error result
 // that names the ids the model could have used instead.
 func (e *resourceDiffTool) Execute(ctx context.Context, raw json.RawMessage) (agentic.ToolResult, error) {
 	var args resourceDiffArgs
@@ -178,7 +178,6 @@ func RenderResourceChange(c StoredResourceChange, full bool) string {
 }
 
 // contentOrEmpty renders captured content, naming the empty case rather than
-// returning a blank tail the model has to guess about.
 func contentOrEmpty(s string) string {
 	if s == "" {
 		return "(the resource is empty)"

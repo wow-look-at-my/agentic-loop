@@ -8,7 +8,7 @@ import (
 // The stream IS the response document: text deltas write directly into the open <text> element.
 
 // ResponseWriter writes a response document incrementally. Its methods are not
-// safe for concurrent use: one call streams from one goroutine.
+// safe for concurrent use: call streams from goroutine.
 type ResponseWriter struct {
 	x *writer
 	// open is the part element accepting text, so same-kind deltas extend it.
@@ -34,7 +34,7 @@ func NewResponseWriter(w io.Writer, role Role) *ResponseWriter {
 	return rw
 }
 
-// Text appends a content delta, opening a <text> element if one is not already
+// Text appends a content delta, opening a <text> element if is not already
 // open.
 func (rw *ResponseWriter) Text(delta string) error {
 	if delta == "" {
@@ -62,14 +62,14 @@ func (rw *ResponseWriter) Part(p Part) error {
 	return rw.flush()
 }
 
-// Usage writes one provider usage report, exactly as reported.
+// Usage writes provider usage report, exactly as reported.
 func (rw *ResponseWriter) Usage(u Usage) error {
 	rw.closePart()
 	writeUsage(rw.x, u)
 	return rw.flush()
 }
 
-// Timings writes one provider timings snapshot.
+// Timings writes provider timings snapshot.
 func (rw *ResponseWriter) Timings(t Timings) error {
 	rw.closePart()
 	attrs := []attr{
@@ -100,7 +100,7 @@ func (rw *ResponseWriter) Close(stopReason string, streamed bool) error {
 	return rw.flush()
 }
 
-// openPart opens the named part element unless it is already the open one.
+// openPart opens the named part element unless it is already the open.
 func (rw *ResponseWriter) openPart(name string) {
 	if rw.open == name {
 		return
@@ -119,7 +119,7 @@ func (rw *ResponseWriter) closePart() {
 	rw.open = ""
 }
 
-// flush pushes what has been written so far and reports the first error.
+// flush pushes what has been written so far and reports the error.
 func (rw *ResponseWriter) flush() error {
 	if rw.flusher != nil {
 		rw.flusher.Flush()
@@ -127,7 +127,7 @@ func (rw *ResponseWriter) flush() error {
 	return rw.x.err
 }
 
-// writeUsage writes one usage report: the counts the provider sent, the two
+// writeUsage writes usage report: the counts the provider sent, the
 // provider extras worth naming, and its verbatim object as a param tree.
 func writeUsage(x *writer, u Usage) {
 	attrs := []attr{

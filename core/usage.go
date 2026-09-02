@@ -2,7 +2,7 @@ package commonai
 
 import "encoding/json"
 
-// Usage is one provider report; PromptTokens is always the full prompt, cached tokens included.
+// Usage is provider report; PromptTokens is always the full prompt, cached tokens included.
 type Usage struct {
 	PromptTokens     int
 	CompletionTokens int

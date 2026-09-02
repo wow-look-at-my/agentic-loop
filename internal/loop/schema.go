@@ -56,7 +56,7 @@ func EnumSchema[In any](enums map[string][]string) json.RawMessage {
 	return json.RawMessage(b.String())
 }
 
-// prop is one advertised argument.
+// prop is advertised argument.
 type prop struct {
 	name        string
 	jsonType    string

@@ -16,7 +16,6 @@ import (
 )
 
 // scriptProvider answers with whatever the test hands it, so a case can say
-// exactly which events fired before the call ended and how.
 type scriptProvider struct {
 	comp *commonai.Completion
 	err  error
@@ -34,7 +33,7 @@ func (p *scriptProvider) Complete(_ context.Context, req commonai.Request, ev *c
 	return p.comp, p.err
 }
 
-// ask sends one document and reads the whole answer back.
+// ask sends document and reads the whole answer back.
 func ask(t *testing.T, cfg Config, doc []byte) []byte {
 	t.Helper()
 	conn, err := net.Dial("unix", listen(t, cfg))
@@ -49,7 +48,7 @@ func ask(t *testing.T, cfg Config, doc []byte) []byte {
 	return data
 }
 
-// A call that breaks AFTER it produced output says both things in the one
+// A call that breaks AFTER it produced output says both things in the
 // document it had already started -- the partial answer, then why it stopped.
 // There is no status left to fail with: the peer has seen the content.
 func TestFailureAfterOutputRidesInsideTheDocument(t *testing.T) {
@@ -70,7 +69,7 @@ func TestFailureAfterOutputRidesInsideTheDocument(t *testing.T) {
 }
 
 // A completion whose parts no event announced is still written: OnPart is how
-// a part is normally delivered, not the only way one can exist, and a provider
+// a part is normally delivered, not the only way can exist, and a provider
 // that answers without streaming must not lose its content on the way out.
 func TestPartsNoEventAnnouncedAreStillWritten(t *testing.T) {
 	p := &scriptProvider{
@@ -82,7 +81,7 @@ func TestPartsNoEventAnnouncedAreStillWritten(t *testing.T) {
 			Timings:    []commonai.Timings{{PredictedN: 2, PredictedMS: 40}},
 			StopReason: commonai.StopToolUse,
 		},
-		// One text delta, and nothing else: the tool call and usage come from the completion at the end.
+		// text delta, and nothing else: the tool call and usage come from the completion at the end.
 		emit: func(ev *commonai.StreamEvents) error { return ev.OnText("written once") },
 	}
 	data := ask(t, Config{Provider: p}, askDoc(t, "hi"))
@@ -99,7 +98,7 @@ func TestPartsNoEventAnnouncedAreStillWritten(t *testing.T) {
 }
 
 // A streamed call already announced its usage, so the completion's copy is not
-// written a second time.
+// written a time.
 func TestStreamedUsageIsNotWrittenTwice(t *testing.T) {
 	u := commonai.Usage{PromptTokens: 4, CompletionTokens: 1, TotalTokens: 5}
 	p := &scriptProvider{

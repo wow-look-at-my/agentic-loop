@@ -11,11 +11,10 @@ import (
 )
 
 // invalidThinkingSigPattern matches Anthropic's wording for a rejected
-// signature; anAssistantContent drops a signature-less thinking block.
 var invalidThinkingSigPattern = regexp.MustCompile(
 	"(?i)messages\\.(\\d+)\\.content\\.(\\d+):\\s*Invalid `signature` in `thinking` block")
 
-// thinkingSignatureRepair strips a rejected signature and retries once,
+// thinkingSignatureRepair strips a rejected signature and retries,
 // remembering it for the rest of the conversation.
 type thinkingSignatureRepair struct {
 	inner Provider

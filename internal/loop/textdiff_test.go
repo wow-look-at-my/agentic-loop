@@ -138,7 +138,7 @@ func TestUnifiedDiffTable(t *testing.T) {
 }
 
 // Past diffMaxLines per side, no line diff is attempted: the output is a note
-// plus one whole-file replace hunk.
+// plus whole-file replace hunk.
 func TestUnifiedDiffLargeFallback(t *testing.T) {
 	var a, b strings.Builder
 	for i := 0; i < diffMaxLines+1; i++ {
@@ -162,7 +162,7 @@ func TestUnifiedDiffLargeFallback(t *testing.T) {
 // A fully-disjoint middle bigger than the LCS budget falls back to a replace
 // block but still renders a valid single hunk.
 func TestUnifiedDiffLCSBudgetFallback(t *testing.T) {
-	n := 2100 // 2100*2100 > diffMaxCells, both sides < diffMaxLines
+	n := 2100 //* > diffMaxCells, both sides < diffMaxLines
 	var a, b strings.Builder
 	for i := 0; i < n; i++ {
 		fmt.Fprintf(&a, "old %d\n", i)

@@ -25,7 +25,7 @@ type fakeSource struct {
 	blobs    map[string][]byte
 	listErr  error
 	readErr  map[string]bool
-	// cap, when >0, is how many resources this source claims beyond what it lists.
+	// cap, when >, is how many resources this source claims beyond what it lists.
 	claims int
 }
 
@@ -171,7 +171,7 @@ func watcherOver(src ResourceSource, snaps ResourceSnapshots) agentic.ResourceWa
 	return NewResourceWatcher(ResourceWatchConfig{Sources: []ResourceSource{src}, Snapshots: snaps})
 }
 
-// The first pass is a BASELINE: everything is new because the watch is new, not
+// The pass is a BASELINE: everything is new because the watch is new, not
 // because anything moved, and the wording has to say so.
 func TestFirstPassIsABaseline(t *testing.T) {
 	src := newFakeSource("s1", "docs", map[string]string{"file://a": "one\ntwo\n"})
@@ -223,7 +223,7 @@ func TestAChangeIdKeepsAnsweringItsOwnChange(t *testing.T) {
 	assert.Contains(t, poll.Changes[0].Summary, "+1 -0 lines")
 	firstID := poll.Changes[0].ChangeID
 
-	// Move it again; the first id must still answer with the first diff.
+	// Move it again; the id must still answer with the diff.
 	src.set("file://a", "totally different\n")
 	_, err = w.Poll(context.Background())
 	require.NoError(t, err)
@@ -270,12 +270,12 @@ func TestAnUnreachableSourceIsAWarningNotARemoval(t *testing.T) {
 	require.Len(t, poll.Warnings, 1)
 	assert.Contains(t, poll.Warnings[0], "could not be listed")
 
-	// A persistent fault is reported ONCE, not re-announced every turn.
+	// A persistent fault is reported, not re-announced every turn.
 	poll, err = w.Poll(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, poll.Warnings)
 
-	// ... and reported again when it recurs after clearing.
+	//... and reported again when it recurs after clearing.
 	src.listErr = nil
 	_, err = w.Poll(context.Background())
 	require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestAnUnreadableResourceIsAWarning(t *testing.T) {
 }
 
 // A listing cut at the cap is announced: an unwatched resource must never look
-// like a watched one that never changes.
+// like a watched that never changes.
 func TestATruncatedListingIsAnnounced(t *testing.T) {
 	src := newFakeSource("s1", "docs", map[string]string{"file://a": "x", "file://b": "y"})
 	snaps := newMemSnapshots()
@@ -431,7 +431,7 @@ func TestFullAndAddedReturnContent(t *testing.T) {
 }
 
 // The removal diff still has the last known contents: a resource that is gone
-// is exactly the one a model cannot go and read for itself.
+// is exactly the a model cannot go and read for itself.
 func TestARemovalKeepsItsLastContents(t *testing.T) {
 	src := newFakeSource("s1", "docs", map[string]string{"file://a": "kept text\n"})
 	snaps := newMemSnapshots()

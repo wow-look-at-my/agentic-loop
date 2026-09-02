@@ -33,7 +33,7 @@ func (d *OutputDeduper) Reset() {
 	d.seen = make(map[string]int, len(d.seen))
 }
 
-// Collapse returns the content for one result; first occurrence unchanged, repeats get the marker.
+// Collapse returns the content for result; occurrence unchanged, repeats get the marker.
 func (d *OutputDeduper) Collapse(tool ToolDecl, result ToolResult) (content string, deduped bool) {
 	if !tool.Readonly || tool.Name == "" || result.IsError {
 		return result.Content, false

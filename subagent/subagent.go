@@ -20,9 +20,9 @@ const DefaultSubagentSystemPrompt = "You are a sub-agent launched by another ass
 	"give the concrete findings the calling assistant needs, not a narration of your process. Be concise and factual."
 
 // subagentToolDescription is the model-facing tool description, ported from
-// the source application. One deliberate adaptation: the source enumerated
+// the source application. deliberate adaptation: the source enumerated
 // its own application's read-only tools ("fetch a web page (web_fetch), read
-// GitHub repositories (repo_read: ...), and any read-only MCP tools that are
+// GitHub repositories (repo_read:...), and any read-only MCP tools that are
 // enabled") inside the CAPABILITIES sentence; the library cannot know the
 // host's toolset, so that enumeration is dropped. Everything else is
 // verbatim.
@@ -110,19 +110,19 @@ const (
 	SubagentActivityToolResult = "tool_result" // a sub-agent tool returned
 	SubagentActivityText       = "text"        // the sub-agent's own answer for a turn
 	SubagentActivityThinking   = "thinking"    // its reasoning for a turn
-	// SubagentActivityTurnEnd reports one finished turn's whole *Completion.
+	// SubagentActivityTurnEnd reports finished turn's whole *Completion.
 	SubagentActivityTurnEnd = "turn_end"
 )
 
-// SubagentActivity is one progress step from a running sub-agent. CallID is
+// SubagentActivity is progress step from a running sub-agent. CallID is
 // the parent run_subagent tool call's ID, so a host can attach each step to
 // the right tool block. Detail is a whitespace-flattened preview capped at
-// 160 runes (an argument preview for tool_call, a result preview for
+// runes (an argument preview for tool_call, a result preview for
 // tool_result).
 type SubagentActivity struct {
 	CallID string
-	Kind   string // one of the SubagentActivity* constants
-	Turn   int    // 1-based turn number (every kind but tool_call/tool_result)
+	Kind   string // of the SubagentActivity* constants
+	Turn   int    //-based turn number (every kind but tool_call/tool_result)
 	Tool   string // tool name (tool_call / tool_result)
 	Detail string // arguments preview, result preview, or other short context
 	// Content is Detail's text but WHOLE: the full arguments or output, never capped.
@@ -146,7 +146,7 @@ type SubagentConfig struct {
 	ParentMessages []agentic.Message
 	// Gate bounds concurrent sub-agent execution; nil = no limit.
 	Gate *agentic.Gate
-	// Runs makes run_subagent ASYNCHRONOUS, returning a receipt so several can run at once.
+	// Runs makes run_subagent ASYNCHRONOUS, returning a receipt so several can run at.
 	Runs *agentic.SubagentRuns
 	// SystemPrompt overrides DefaultSubagentSystemPrompt when non-empty.
 	SystemPrompt string
@@ -236,9 +236,9 @@ func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessag
 // allowedToolsDescription is the allowed_tools field description, naming the
 // concrete tools available this turn so the model knows exactly what it can
 // pin the sub-agent to. Tools that are NOT read-only are flagged "(modifies
-// state)" so the model sees that listing one grants a side-effecting tool —
+// state)" so the model sees that listing grants a side-effecting tool —
 // by default the sub-agent only gets read-only tools, and naming a tool here
-// is what makes a non-read-only one available.
+// is what makes a non-read-only available.
 func allowedToolsDescription(tools []agentic.ToolDecl) string {
 	labels := make([]string, len(tools))
 	for i, t := range tools {

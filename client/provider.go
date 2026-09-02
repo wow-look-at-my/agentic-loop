@@ -7,12 +7,12 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/extras"
 )
 
-// Provider executes one streaming call; on mid-stream failure return the partial *Completion with the error.
+// Provider executes streaming call; on mid-stream failure return the partial *Completion with the error.
 type Provider interface {
 	Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error)
 }
 
-// upAdapter presents a format-level provider as a Go-level one, folding usage on the way out.
+// upAdapter presents a format-level provider as a Go-level, folding usage on the way out.
 type upAdapter struct{ inner commonai.Provider }
 
 func (a *upAdapter) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
@@ -28,7 +28,7 @@ func (a *downAdapter) Complete(ctx context.Context, req Request, ev *StreamEvent
 	return unfold(comp), err
 }
 
-// up presents a format-level provider as a Go-level one.
+// up presents a format-level provider as a Go-level.
 func up(p commonai.Provider) Provider {
 	if a, ok := p.(*downAdapter); ok {
 		return a.inner
@@ -36,8 +36,8 @@ func up(p commonai.Provider) Provider {
 	return &upAdapter{inner: p}
 }
 
-// down presents a Go-level provider as a format-level one, unwrapping rather
-// than re-deriving when it was one to begin with.
+// down presents a Go-level provider as a format-level, unwrapping rather
+// than re-deriving when it was to begin with.
 func down(p Provider) commonai.Provider {
 	if a, ok := p.(*upAdapter); ok {
 		return a.inner
@@ -48,7 +48,7 @@ func down(p Provider) commonai.Provider {
 // Unwrap is the format-level Provider behind p, for a caller handing it to something speaking the format's Completion.
 func Unwrap(p Provider) commonai.Provider { return down(p) }
 
-// NewParamStripper retries a failed-before-streaming call once, removing a named parameter from Extra.
+// NewParamStripper retries a failed-before-streaming call, removing a named parameter from Extra.
 func NewParamStripper(p Provider) Provider {
 	return up(commonai.NewParamStripper(down(p)))
 }

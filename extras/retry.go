@@ -9,17 +9,17 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// RetryPolicy is exponential-backoff retry; zero-value fields default to 10 attempts and a 500ms base delay.
+// RetryPolicy is exponential-backoff retry; -value fields default to attempts and a 500ms base delay.
 type RetryPolicy struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
 	Sleep       func(context.Context, time.Duration) error
 }
 
-// defaultAttempts is the attempt cap when a policy sets none: ten, matching Claude Code.
+// defaultAttempts is the attempt cap when a policy sets none:, matching Claude Code.
 const defaultAttempts = 10
 
-// DefaultRetry is the default policy: 10 attempts, 500ms base delay.
+// DefaultRetry is the default policy: attempts, 500ms base delay.
 var DefaultRetry = RetryPolicy{MaxAttempts: defaultAttempts, BaseDelay: 500 * time.Millisecond}
 
 // Attempts returns the effective attempt cap.
@@ -38,7 +38,7 @@ func (p RetryPolicy) base() time.Duration {
 	return 500 * time.Millisecond
 }
 
-// delay is the backoff before retrying after the given 1-based attempt.
+// delay is the backoff before retrying after the given -based attempt.
 func (p RetryPolicy) delay(attempt int) time.Duration {
 	return p.base() << (attempt - 1)
 }
@@ -99,9 +99,9 @@ func completionIsEmpty(comp *commonai.Completion) bool {
 	return true
 }
 
-// retryComplete runs one model call with retry. Two conditions retry: the
+// retryComplete runs model call with retry. conditions retry: the
 // attempt streamed nothing and the error is transient (a nil completion, per
-// the Provider contract -- once a delta reached the caller's sink, re-sending
+// the Provider contract -- a delta reached the caller's sink, re-sending
 // would duplicate it), or the attempt succeeded but came back genuinely empty
 // (no text, no tool call, no thinking). An empty completion is never mid-way
 // through anything -- nothing was emitted to the caller's sink either -- so
@@ -146,7 +146,7 @@ type retryingProvider struct {
 	policy RetryPolicy
 }
 
-// Retrying gives a provider the library's retry; nil policy means DefaultRetry, one attempt returns it unwrapped.
+// Retrying gives a provider the library's retry; nil policy means DefaultRetry, attempt returns it unwrapped.
 func Retrying(inner commonai.Provider, policy *RetryPolicy) commonai.Provider {
 	resolved := DefaultRetry
 	if policy != nil {

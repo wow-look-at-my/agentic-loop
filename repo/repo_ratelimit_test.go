@@ -13,7 +13,7 @@ import (
 
 // Content search no longer touches a rate-limited endpoint at all, but the
 // metadata reads (commits, PRs, issues) still use the API, and the failure that
-// broke the original session can still happen there: a token's real 403 being
+// broke the original session can still happen there: a token's real being
 // overwritten by the anonymous attempt's answer, so a wait measured in seconds
 // reads as a permanent authentication problem.
 func TestRateLimitIsReportedAsTransient(t *testing.T) {
@@ -48,8 +48,8 @@ func TestRateLimitIsReportedAsTransient(t *testing.T) {
 	assert.Contains(t, g.Auths(), "tok")
 }
 
-// The same masking broke every other read: a private repo answered 404 to the
-// anonymous attempt, and that 404 overwrote the token's real answer — telling
+// The same masking broke every other read: a private repo answered to the
+// anonymous attempt, and that overwrote the token's real answer — telling
 // the model a repository it had just read "may not exist".
 func TestPrivateRepoReportsTheTokenFailureNotTheAnonymous404(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}},
@@ -66,7 +66,7 @@ func TestPrivateRepoReportsTheTokenFailureNotTheAnonymous404(t *testing.T) {
 		"an existing repository must never be reported as possibly nonexistent because the anonymous attempt could not see it")
 }
 
-// Three differently-worded queries produced one byte-identical repo-wide commit
+// differently-worded queries produced byte-identical repo-wide commit
 // list, because what=commits never reads "query" — which then tripped the
 // output deduper into telling the model it had repeated itself.
 func TestRepoReadRejectsArgumentsTheReadIgnores(t *testing.T) {

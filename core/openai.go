@@ -28,7 +28,7 @@ type openaiProvider struct {
 // oaReserved are the Extra keys the typed core always overrides.
 var oaReserved = set.Of("messages", "model", "stream", "tools")
 
-// Complete retries without the default stream_options when a pre-stream 400 names no parameter.
+// Complete retries without the default stream_options when a pre-stream names no parameter.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	comp, err := o.complete(ctx, req, ev, true)
 	if comp != nil || err == nil || !o.shouldRetryWithoutStreamOptions(req, err) {
@@ -37,7 +37,7 @@ func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEv
 	return o.complete(ctx, req, ev, false)
 }
 
-// shouldRetryWithoutStreamOptions: true when a pre-stream 400 names no parameter and carried the default.
+// shouldRetryWithoutStreamOptions: true when a pre-stream names no parameter and carried the default.
 func (o *openaiProvider) shouldRetryWithoutStreamOptions(req Request, err error) bool {
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.Status != 400 || ae.ContextOverflow {
@@ -50,9 +50,9 @@ func (o *openaiProvider) shouldRetryWithoutStreamOptions(req Request, err error)
 	return !hasOwn
 }
 
-// complete runs one attempt of the streaming chat completion.
+// complete runs attempt of the streaming chat completion.
 // includeDefaultStreamOptions gates the {"include_usage":true} default (see
-// buildBody); Complete calls this twice only when a first attempt with it set
+// buildBody); Complete calls this only when a attempt with it set
 // is rejected outright.
 func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEvents, includeDefaultStreamOptions bool) (*Completion, error) {
 	body, err := o.buildBody(req, includeDefaultStreamOptions)
@@ -88,7 +88,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return nil, readAPIError(resp)
 	}
 
-	// A non-SSE 200 is a plain JSON response, accepted transparently as a Completion with Streamed false.
+	// A non-SSE is a plain JSON response, accepted transparently as a Completion with Streamed false.
 	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
 		body, rerr := io.ReadAll(resp.Body)
 		if rerr != nil {
@@ -113,7 +113,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 }
 
 // buildBody assembles the JSON request body. Extra passthrough params are
-// merged FIRST so the typed core fields always win; reserved keys in Extra
+// merged so the typed core fields always win; reserved keys in Extra
 // (messages, model, stream, tools) are silently ignored so they cannot break
 // routing. stream is always forced true, tools are sent only when non-empty
 // (no tool_choice is ever sent), and stream_options defaults to
@@ -122,12 +122,12 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 // without it OpenAI and most compatibles omit usage from streamed responses
 // entirely, but a few reject the field outright, which is what
 // includeDefaultStreamOptions=false is for (see Complete's retry). MaxTokens
-// > 0 sets max_tokens (overriding an Extra value); 0 leaves the field to
+// > sets max_tokens (overriding an Extra value); leaves the field to
 // Extra or the provider default. CacheKey, when set, rides as
 // prompt_cache_key, and selfHosted adds cache_prompt:true. promptCache marks
-// the per-request wire copy with the two ephemeral cache breakpoints;
+// the per-request wire copy with the ephemeral cache breakpoints;
 // replayReasoning echoes assistant reasoning back as message.reasoning, plus
-// the verbatim reasoning_details array when one was captured.
+// the verbatim reasoning_details array when was captured.
 func (o *openaiProvider) buildBody(req Request, includeDefaultStreamOptions bool) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.ParamsFor(DialectOpenAI) {

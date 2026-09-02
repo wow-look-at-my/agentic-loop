@@ -362,6 +362,11 @@ side of that line it falls on — do not put it on both.
   normalizes the empty string, and both wire writers apply it again for a
   transcript that came from the host's storage. `omitempty` on `arguments`
   is what made Z.AI 400 the turn — forever, since the call is persisted.
+  **Arguments that are not valid JSON are replayed as `{}` too**
+  (`replayToolArgs`; Anthropic's `parseToolInput` always did): the loop and
+  the tool still see the model's raw text, and the tool result after it says
+  what was wrong, but a backend rejects the raw text on every later turn of
+  the conversation — the same forever-400, from a different field.
 - **The Responses dialect exists for exactly one thing** (`core/responses.go` +
   `core/responses_wire.go`): a reasoning model's chain of thought surviving a
   tool call, which standard chat-completions has no field for (OpenRouter's
@@ -463,11 +468,13 @@ Concretely:
 `.github/workflows/ci.yml` runs the org go-toolchain action at the
 repository root. Org constraints:
 
-- The workflow trigger stays `on: push:` only.
+- The workflow trigger stays `on: push:` only, with `branches: ['**']` under
+  it: the toolchain's guard fails a bare push trigger, since that also fires
+  on every tag autorelease creates.
 - The required status check is named exactly **`all-builds`**, but it is
   posted by the org's required-builds-manager app (which aggregates this
   repo's builds) — never by a job. Never name a workflow job `all-builds`:
-  the guard step inside go-toolchain@v1 hard-fails any run whose workflow
+  the guard step inside go-toolchain@master hard-fails any run whose workflow
   defines a job by that name. The CI job here is `build`.
 - The `permissions` block (`id-token: write`, `contents: write`,
   `actions: read`, `checks: read`, `deployments: write`,

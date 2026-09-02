@@ -22,7 +22,7 @@ type Status struct {
 
 	// Model is the embedding model this status was computed for, or "" if semantic search is off.
 	Model string
-	// EmbeddedMessages is how many messages have vectors under Model; PendingEmbeddings how many need one.
+	// EmbeddedMessages is how many messages have vectors under Model; PendingEmbeddings how many need.
 	EmbeddedMessages  int64
 	PendingEmbeddings int64
 	// TruncatedMessages is how many messages exceeded maxChunksPerMessage; the text half still covers them.
@@ -31,9 +31,9 @@ type Status struct {
 	Dim int64
 }
 
-// Status reports the index's state for one owner and embedding model. model
+// Status reports the index's state for owner and embedding model. model
 // may be "" for a caller with no embedding endpoint; the embedding fields are
-// then left zero rather than computed against a model nobody chose.
+// then left rather than computed against a model nobody chose.
 func (i *Index) Status(ctx context.Context, src Source, owner, model string) (Status, error) {
 	var s Status
 

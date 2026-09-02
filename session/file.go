@@ -11,7 +11,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// File is a Store backed by one <conversation> document per session, in a directory.
+// File is a Store backed by <conversation> document per session, in a directory.
 type File struct {
 	mu  sync.Mutex
 	dir string
@@ -134,7 +134,7 @@ func (f *File) Revisions() (map[string]string, error) {
 	return out, nil
 }
 
-// read loads and validates one conversation document.
+// read loads and validates conversation document.
 func (f *File) read(id string) (commonai.Request, error) {
 	if err := validID(id); err != nil {
 		return commonai.Request{}, err
@@ -159,7 +159,7 @@ func (f *File) read(id string) (commonai.Request, error) {
 	return req, nil
 }
 
-// write stores one conversation document, and validates what it is about to
+// write stores conversation document, and validates what it is about to
 // write: a document this store cannot read back is not worth keeping.
 func (f *File) write(id string, req commonai.Request) error {
 	if err := validID(id); err != nil {

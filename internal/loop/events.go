@@ -45,7 +45,7 @@ type ToolResultEvent struct {
 	Recorded Message
 }
 
-// AssistantMessageEvent is the param to OnAssistantMessage; first listener sets ID.
+// AssistantMessageEvent is the param to OnAssistantMessage; listener sets ID.
 type AssistantMessageEvent struct {
 	event.Args
 	ParentID MessageID
@@ -70,7 +70,7 @@ type ToolMessageEvent struct {
 	IsError           bool
 }
 
-// ResourceNoticeEvent is the param to OnResourceNotice; first listener sets ID.
+// ResourceNoticeEvent is the param to OnResourceNotice; listener sets ID.
 type ResourceNoticeEvent struct {
 	event.Args
 	Content   string
@@ -148,7 +148,7 @@ func (e *Events) emitFinalizeAssistant(ev FinalizeAssistantEvent) {
 	e.OnFinalizeAssistant.Invoke(ev)
 }
 
-// emitToolMessage tells the host to persist one tool result in transcript order.
+// emitToolMessage tells the host to persist tool result in transcript order.
 func (e *Events) emitToolMessage(ev ToolMessageEvent) error {
 	return e.OnToolMessage.Invoke(ev)
 }

@@ -7,13 +7,7 @@ import (
 )
 
 // MessageQueue is a thread-safe FIFO delivering messages into a running
-// loop, backed by one concurrentqueue.Queue holding both automated notices
-// and the user's own messages -- a queued value's own type (SystemMessage or
-// UserMessage) says which kind it is, so nothing here needs two separate
-// queue instances wired through by hand. Draining stable-partitions system
-// messages ahead of user messages queued in the same window.
-//
-// The zero value is an empty, open queue ready to use.
+// loop, backed by concurrentqueue.Queue holding both automated notices
 type MessageQueue struct {
 	items  concurrentqueue.Queue[QueuedMessage]
 	mu     sync.Mutex // guards closed; Queue and Close must agree on it atomically
@@ -34,8 +28,7 @@ func (q *MessageQueue) Queue(msg QueuedMessage) bool {
 	return true
 }
 
-// Drain returns and clears every pending message, system first. A closed
-// queue still drains what it holds; it only stops accepting new messages.
+// Drain returns and clears every pending message, system. A closed
 func (q *MessageQueue) Drain() []Message {
 	if q == nil {
 		return nil
@@ -46,7 +39,7 @@ func (q *MessageQueue) Drain() []Message {
 }
 
 // Close marks the queue closed and returns whatever was queued but never
-// drained, system first.
+// drained, system.
 func (q *MessageQueue) Close() []Message {
 	if q == nil {
 		return nil

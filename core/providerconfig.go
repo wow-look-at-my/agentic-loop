@@ -25,7 +25,7 @@ type OpenAIConfig struct {
 
 	// SelfHosted adds cache_prompt:true to every request; must stay false for hosted OpenAI/Azure.
 	SelfHosted bool
-	// PromptCache emits two ephemeral cache_control breakpoints for Anthropic-fronting gateways; default false.
+	// PromptCache emits ephemeral cache_control breakpoints for Anthropic-fronting gateways; default false.
 	PromptCache bool
 	// ReplayReasoning replays reasoning as message.reasoning/reasoning_details; default false for strict servers.
 	ReplayReasoning bool
@@ -44,9 +44,9 @@ type ResponsesConfig struct {
 type AnthropicConfig struct {
 	ProviderConfig
 
-	// Version sets the anthropic-version header; empty defaults to "2023-06-01".
+	// Version sets the anthropic-version header; empty defaults to "--".
 	Version string
-	// DisableCaching drops the two ephemeral cache_control breakpoints the provider otherwise places.
+	// DisableCaching drops the ephemeral cache_control breakpoints the provider otherwise places.
 	DisableCaching bool
 }
 

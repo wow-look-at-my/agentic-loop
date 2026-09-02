@@ -2,7 +2,7 @@
 // Everything here is an ALIAS or a thin call through, never a copy: a value
 // built as agentic.Message IS a client.Message, so the loop and the wire half
 // hand values to each other without a conversion step and nothing has to be
-// kept in sync between two declarations of the same type.
+// kept in sync between declarations of the same type.
 package loop
 
 import (
@@ -21,7 +21,7 @@ type (
 	Usage         = client.Usage
 )
 
-// The four roles: RoleSystem via Request.System, RoleTool carries tool results.
+// The roles: RoleSystem via Request.System, RoleTool carries tool results.
 const (
 	RoleSystem    = client.RoleSystem
 	RoleUser      = client.RoleUser
@@ -42,7 +42,6 @@ type (
 )
 
 // Normalized stop reasons. A provider maps its own vocabulary onto these, so a
-// caller branches on one set of strings rather than three.
 const (
 	StopEndTurn   = client.StopEndTurn
 	StopToolUse   = client.StopToolUse
@@ -68,7 +67,7 @@ const (
 	DialectResponses = client.DialectResponses
 )
 
-// DefaultRetry is the policy used when a config names none: 10 attempts, 500ms base delay.
+// DefaultRetry is the policy used when a config names none: attempts, 500ms base delay.
 var DefaultRetry = client.DefaultRetry
 
 // Error classification: what kind of failure am I holding, not should I retry.
@@ -92,16 +91,16 @@ func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error) {
 	return client.NewAnthropicProvider(cfg)
 }
 
-// NewParamStripper retries once when a failed call names a rejected parameter, dropping it.
+// NewParamStripper retries when a failed call names a rejected parameter, dropping it.
 func NewParamStripper(p Provider) Provider { return client.NewParamStripper(p) }
 
-// NewRateLimiter permits n request starts per minute; n <= 0 returns nil (no limiting).
+// NewRateLimiter permits n request starts per minute; n <= returns nil (no limiting).
 func NewRateLimiter(n int) *RateLimiter { return client.NewRateLimiter(n) }
 
 // Dialects returns every dialect that can be named, in a stable order.
 func Dialects() []Dialect { return client.Dialects() }
 
-// Rates is one model's USD-per-token charges; ModelList is the endpoint's rates document.
+// Rates is model's USD-per-token charges; ModelList is the endpoint's rates document.
 type (
 	Rates     = client.Rates
 	ModelList = client.ModelList

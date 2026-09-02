@@ -60,7 +60,7 @@ func (h *anSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// newProvider gives a stub Provider the retry behavior a constructed one has.
+// newProvider gives a stub Provider the retry behavior a constructed has.
 func newProvider(p Provider, policy *RetryPolicy) Provider {
 	return client.Retrying(p, policy)
 }

@@ -9,7 +9,7 @@ import (
 // ElapsedKind marks the time notice, for a host reading the per-call Request.
 const ElapsedKind = "elapsed_time"
 
-// The notice's shape: the wall clock, then the gap when there is one to state.
+// The notice's shape: the wall clock, then the gap when there is to state.
 const (
 	elapsedNoticeHead = "Current time is "
 	elapsedNoticeTail = " have passed"
@@ -18,16 +18,16 @@ const (
 )
 
 // ElapsedTime, on Config, states the clock and the gap since the previous
-// request on EVERY model call. The notice rides that request: a stored one lies.
+// request on EVERY model call. The notice rides that request: a stored lies.
 type ElapsedTime struct {
-	// Since is when the previous request was made; zero states the time alone.
+	// Since is when the previous request was made; states the time alone.
 	Since time.Time
 
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
 
-// elapsedTracker is one run's live view of ElapsedTime: when the last call was made.
+// elapsedTracker is run's live view of ElapsedTime: when the last call was made.
 type elapsedTracker struct {
 	now  func() time.Time
 	prev time.Time
@@ -58,7 +58,7 @@ func (t *elapsedTracker) mark() string {
 
 // FormatElapsedNotice renders the notice the model reads: the wall clock in
 // now's own zone, and the gap when there is a previous request to measure from.
-// A zero since, or a clock that went backwards, states the time alone.
+// A since, or a clock that went backwards, states the time alone.
 func FormatElapsedNotice(now, since time.Time) string {
 	head := elapsedNoticeHead + now.Format(elapsedTimeLayout)
 	if since.IsZero() || !now.After(since) {
@@ -67,7 +67,7 @@ func FormatElapsedNotice(now, since time.Time) string {
 	return head + ", " + FormatElapsed(now.Sub(since)) + elapsedNoticeTail
 }
 
-// elapsedUnits are the units a gap is rendered in, largest first.
+// elapsedUnits are the units a gap is rendered in, largest.
 var elapsedUnits = []struct {
 	size time.Duration
 	one  string
@@ -79,8 +79,8 @@ var elapsedUnits = []struct {
 	{time.Second, "sec", "secs"},
 }
 
-// FormatElapsed renders a gap as its two largest non-zero units, e.g. "1d 23hrs".
-// Under a second reads "<1sec" rather than "0secs", which looks like a stopped clock.
+// FormatElapsed renders a gap as its largest non- units, e.g. "1d 23hrs".
+// Under a reads "<1sec" rather than "0secs", which looks like a stopped clock.
 func FormatElapsed(d time.Duration) string {
 	if d < time.Second {
 		return elapsedInstant

@@ -43,7 +43,7 @@ func runAsk(cmd *cobra.Command, args []string) error {
 
 // promptFrom takes the prompt from the arguments, or from stdin when it is a
 // pipe. A terminal is never read from: a command that appears to hang while
-// waiting for input nobody knew to type is worse than one that says what it
+// waiting for input nobody knew to type is worse than that says what it
 // wanted.
 func promptFrom(cmd *cobra.Command, args []string) (string, error) {
 	if len(args) > 0 {
@@ -77,8 +77,8 @@ func printing(w io.Writer) *commonai.StreamEvents {
 	}
 }
 
-// report ends a call: a newline if the answer did not end with one, and the
-// failure if there was one -- after whatever text arrived, because output the
+// report ends a call: a newline if the answer did not end with, and the
+// failure if there was -- after whatever text arrived, because output the
 // caller already saw is theirs to keep.
 func report(cmd *cobra.Command, comp *client.Completion, callErr error) error {
 	text := answerText(comp)

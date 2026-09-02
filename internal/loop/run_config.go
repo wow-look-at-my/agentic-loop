@@ -6,7 +6,7 @@ import (
 
 // MaxTurns is an optional host-enforced cap on model calls.
 
-// DefaultAutoCompact is the auto-compact fraction (0.8); zero disables the feature.
+// DefaultAutoCompact is the auto-compact fraction (); disables the feature.
 const DefaultAutoCompact = 0.8
 
 // SubagentReportKind is the Kind set on subagent delivery messages the loop injects.
@@ -36,7 +36,7 @@ const stuckNudgeInstruction = "You have now requested the same tool calls severa
 // ErrStuck ends a run whose model kept repeating a byte-identical tool-call batch.
 var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls")
 
-// Config wires one Run: the Provider to call, the Tools advertised and
+// Config wires Run: the Provider to call, the Tools advertised and
 // executed (empty runs tool-less), the Approver consulted for EVERY tool call
 // (nil allows a Readonly tool and denies anything else with DeniedMessage),
 // and the event callbacks. MaxTurns, when positive, caps model calls.
@@ -50,7 +50,7 @@ var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls
 // it knows nothing about connections, status codes, or backoff, and an error
 // that reaches it is treated as REAL and PERMANENT -- the layer whose job was
 // to make the call happen has already given up, so Run stops rather than
-// second-guessing it. Riding out transient failure belongs to the Provider
+// -guessing it. Riding out transient failure belongs to the Provider
 // (ProviderConfig.Retry), which is also the only layer that can see whether a
 // call streamed anything -- the condition that decides whether re-sending is
 // safe. See "Layering" in README.md.
@@ -70,7 +70,6 @@ type Config struct {
 	KeepAlive any
 
 	// Messages delivers system notices and user messages INTO the run; a
-	// queued message reaches the model. One queue, both kinds.
 	Messages *MessageQueue
 
 	// Subagents is the registry an asynchronous run_subagent reports into; nil = none.
@@ -79,13 +78,13 @@ type Config struct {
 	// DisableOutputDedup opts out of collapsing byte-identical read-only results.
 	DisableOutputDedup bool
 
-	// ContextWindow is the model's context window size; zero disables auto-compaction.
+	// ContextWindow is the model's context window size; disables auto-compaction.
 	ContextWindow int
 
 	// ElapsedTime, when set, states how long has passed since the previous request on every call.
 	ElapsedTime *ElapsedTime
 
-	// turnHook, when non-nil, is invoked with the 1-based turn number as each turn begins.
+	// turnHook, when non-nil, is invoked with the -based turn number as each turn begins.
 	TurnHook func(turn int)
 
 	// unknownTool, when non-nil, replaces the text answering a call to an unoffered name.

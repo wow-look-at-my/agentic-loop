@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// What an exhausted credential rotation reports. A 404 covers a repository no
-// token can see, one none of them may write to, and an object that is not
+// What an exhausted credential rotation reports. A covers a repository no
+// token can see, none of them may write to, and an object that is not
 // there -- so which of those it was has to be established, never assumed.
 
 func TestRepoFileWriteAllTokensLackWriteAccess(t *testing.T) {
@@ -60,23 +60,23 @@ func TestAuthFailureRankPrefersWhatExplains(t *testing.T) {
 	hidden := GitHubAuthError{status: 404, what: "create the tree"}
 	bad := GitHubAuthError{status: 401, what: "create the tree"}
 
-	// A named missing object is the only one of these that identifies a cause
+	// A named missing object is the only of these that identifies a cause
 	// rather than a credential, so nothing displaces it.
 	for _, weaker := range []GitHubAuthError{denied, hidden, bad} {
 		assert.Equal(t, missing, MoreInformativeAuthFailure(missing, weaker), "%d must not displace a missing object", weaker.status)
 		assert.Equal(t, missing, MoreInformativeAuthFailure(weaker, missing), "a missing object must win from either side")
 	}
-	// A 401 says the credential was rejected; a 403 says it was recognized and denied.
+	// A says the credential was rejected; a says it was recognized and denied.
 	assert.Equal(t, denied, MoreInformativeAuthFailure(denied, bad))
 	assert.Equal(t, denied, MoreInformativeAuthFailure(bad, denied))
-	// Nothing to compare against yet: the first failure is the best so far.
+	// Nothing to compare against yet: the failure is the best so far.
 	assert.Equal(t, bad, MoreInformativeAuthFailure(GitHubAuthError{}, bad))
 	// Equal rank keeps the later attempt, which is what the loop did before.
 	assert.Equal(t, hidden, MoreInformativeAuthFailure(GitHubAuthError{status: 404, what: "write x"}, hidden))
 }
 
 func TestCommitReadNamesTheWholeSHA(t *testing.T) {
-	// A 404 on the branch point makes that sha the thing the reader has to look up.
+	// A on the branch point makes that sha the thing the reader has to look up.
 	err := ClassifyObjectRead("read the base commit "+authTestBaseTip, "commit "+authTestBaseTip,
 		GHResponse{status: 404, body: []byte(`{"message":"Not Found"}`)})
 	var auth GitHubAuthError

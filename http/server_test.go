@@ -16,7 +16,7 @@ import (
 )
 
 // fakeProvider answers with a scripted completion, optionally emitting events
-// first so a test can drive the streamed path.
+// so a test can drive the streamed path.
 type fakeProvider struct {
 	emit func(ev *commonai.StreamEvents) error
 	comp *commonai.Completion
@@ -112,9 +112,9 @@ func TestCompleteAnswersWithAResponseDocument(t *testing.T) {
 	assert.Equal(t, "hi", p.reqs[0].Messages[0].Content)
 }
 
-// The document a streamed call writes says the same thing as the one a
+// The document a streamed call writes says the same thing as the a
 // buffered call writes. That is the whole claim of writing the answer
-// progressively rather than inventing a second vocabulary for it.
+// progressively rather than inventing a vocabulary for it.
 func TestStreamedAndBufferedDocumentsAgree(t *testing.T) {
 	comp := &commonai.Completion{
 		Message: commonai.NewMessage(commonai.RoleAssistant,
@@ -165,7 +165,7 @@ func TestStreamedAndBufferedDocumentsAgree(t *testing.T) {
 }
 
 // A call that fails before it has anything to say gets a status and an <error>
-// document; one that fails after says both, in one document.
+// document; that fails after says both, in document.
 func TestFailureBeforeAndAfterOutput(t *testing.T) {
 	before := &fakeProvider{err: &commonai.APIError{Status: 429, Body: "slow down"}}
 	resp, data := post(t, serve(t, Config{Provider: before}).URL+"/v1/complete", ask(t, "hi"))
@@ -234,7 +234,7 @@ func TestConversationLifecycle(t *testing.T) {
 	require.Len(t, p.reqs[0].Messages, 1)
 	assert.Equal(t, "first question", p.reqs[0].Messages[0].Content)
 
-	// Both sides of the turn are in the stored transcript, so the next one sees what was said.
+	// Both sides of the turn are in the stored transcript, so the next sees what was said.
 	resp2, err := http.Get(srv.URL + "/v1/conversations/" + id)
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp2.Body)
@@ -269,7 +269,7 @@ func TestConversationLifecycle(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp2.StatusCode)
 }
 
-// A turn may raise max-tokens for one question without that becoming what the
+// A turn may raise max-tokens for question without that becoming what the
 // conversation is.
 func TestTurnOverridesAreForThatTurnOnly(t *testing.T) {
 	p := &fakeProvider{comp: answer("ok")}

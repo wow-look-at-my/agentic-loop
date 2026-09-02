@@ -6,13 +6,13 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// streamWriter writes the response document as it runs; nothing is written until the first event.
+// streamWriter writes the response document as it runs; nothing is written until the event.
 type streamWriter struct {
 	w  io.Writer
 	rw *commonai.ResponseWriter
 	// sent counts the parts written from OnPart, so finish can write the tail of the completion.
 	sent int
-	// pending is text streamed into the open <text> element, so the finished TextPart is the same one.
+	// pending is text streamed into the open <text> element, so the finished TextPart is the same.
 	pending string
 	role    commonai.Role
 }

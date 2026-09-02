@@ -35,7 +35,7 @@ type ghPull struct {
 	} `json:"base"`
 }
 
-// ghPRFile is one changed file of a PR.
+// ghPRFile is changed file of a PR.
 type ghPRFile struct {
 	Filename  string `json:"filename"`
 	Status    string `json:"status"`
@@ -67,7 +67,7 @@ func (e *repoTools) prList(ctx context.Context, in repoReadArgs) agentic.ToolRes
 	return agentic.ToolResult{Content: formatPRList(in.Org, in.Repo, state, pulls)}
 }
 
-// formatPRList renders one PR per line.
+// formatPRList renders PR per line.
 func formatPRList(org, repo, state string, pulls []ghPull) string {
 	header := fmt.Sprintf("pull requests of %s (state %s)", RepoPath(org, repo, ""), state)
 	if len(pulls) == 0 {
@@ -139,7 +139,7 @@ func (e *repoTools) prRead(ctx context.Context, in repoReadArgs) agentic.ToolRes
 	return agentic.ToolResult{Content: formatPR(in.Org, in.Repo, pr, files, filesErr, diff, diffNote)}
 }
 
-// formatPR renders one pull request: header, body (capped), changed files
+// formatPR renders pull request: header, body (capped), changed files
 // (capped with an explicit note), and the optional diff.
 func formatPR(org, repo string, pr ghPull, files []ghPRFile, filesErr, diff, diffNote string) string {
 	flags := pr.State

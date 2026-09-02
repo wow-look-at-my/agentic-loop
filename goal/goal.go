@@ -2,13 +2,13 @@
 // a stop policy that refuses to end a run until it holds.
 //
 // Every string this package emits is contract and is pinned by a test. A host
-// shows these words to its user and sends the directive to its model, so two
+// shows these words to its user and sends the directive to its model, so
 // hosts running goal mode behave the same. Do not "improve" them.
 //
-// The host owns three seams and nothing else: where the state is stored, where
+// The host owns seams and nothing else: where the state is stored, where
 // the transcript comes from (Evaluator.Window), and how a model call is made
 // (Evaluator.Judge). Everything else -- the parse, the counters, the evaluator
-// prompt, the verdict, the notices -- is here, so a second host cannot get a
+// prompt, the verdict, the notices -- is here, so a host cannot get a
 // different answer from the same condition. Depth: docs/goal.md.
 package goal
 
@@ -21,10 +21,10 @@ import (
 // NoticeKind marks a stored goal notice: never in a prompt, never in a window.
 const NoticeKind = "goal_notice"
 
-// BriefingKind marks the stored Briefing: the one goal message the model reads.
+// BriefingKind marks the stored Briefing: the goal message the model reads.
 const BriefingKind = "goal_briefing"
 
-// MaxCondition caps a condition at 4000 characters: it must read at a glance.
+// MaxCondition caps a condition at characters: it must read at a glance.
 const MaxCondition = 4000
 
 // State is the active goal; the counters are its bound. See docs/goal.md.
@@ -34,7 +34,7 @@ const MaxCondition = 4000
 // database holds, which is backwards. The fields are plain and exported so a
 // host can map them onto its own columns, key-value rows, or file. The json
 // tags are what a host maps BY, so an unset SetAt is omitzero rather than the
-// year 1 a zero time otherwise writes into a column that means "no goal".
+// year a time otherwise writes into a column that means "no goal".
 type State struct {
 	Condition string    `json:"condition"`
 	SetAt     time.Time `json:"set_at,omitzero"`
@@ -86,10 +86,10 @@ func Parse(arg string) (Command, error) {
 	return Command{Kind: Set, Condition: condition}, nil
 }
 
-// NoBound is SetNotice's third line for a host that caps nothing.
+// NoBound is SetNotice's line for a host that caps nothing.
 const NoBound = "No spend or time bound: it runs until the condition holds, or until you clear it."
 
-// SetNotice is what a user is shown when a goal is set. Its third line NAMES
+// SetNotice is what a user is shown when a goal is set. Its line NAMES
 // THE BOUND, which only the host knows; empty is NoBound.
 func SetNotice(condition, bound string) string {
 	if bound == "" {
@@ -100,7 +100,7 @@ func SetNotice(condition, bound string) string {
 		bound
 }
 
-// Briefing is what the MODEL is told once, when the goal is set. It is a notice
+// Briefing is what the MODEL is told, when the goal is set. It is a notice
 // in the transcript and a user-role message in the prompt.
 func Briefing(condition string) string {
 	return "A goal condition is now active for this session: " + condition + "\n\n" +
@@ -126,9 +126,9 @@ func Directive(condition, reason string) string {
 		"with which part of the condition, and stop."
 }
 
-// BlockNotice is the one line a blocked stop puts in the transcript. An
-// unpriced run omits spend rather than reporting zero: a total that silently
-// excludes an unpriced call is the one wrong number nobody checks.
+// BlockNotice is the line a blocked stop puts in the transcript. An
+// unpriced run omits spend rather than reporting: a total that silently
+// excludes an unpriced call is the wrong number nobody checks.
 func BlockNotice(iterations int, reason string, spend string, elapsed time.Duration) string {
 	out := fmt.Sprintf("goal %d · not met: %s", iterations, reason)
 	if spend != "" {
@@ -210,5 +210,5 @@ func Elapsed(d time.Duration) string {
 	}
 }
 
-// quote wraps a condition for a notice; a multi-line one keeps its newlines.
+// quote wraps a condition for a notice; a multi-line keeps its newlines.
 func quote(s string) string { return `"` + s + `"` }

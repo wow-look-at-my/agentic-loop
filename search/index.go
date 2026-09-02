@@ -1,7 +1,7 @@
 // Package search indexes a host's conversations so they can be searched by
 // word and, when an embedding model is available, by meaning.
 //
-// It owns one SQLite file holding an FTS5 index over message text plus the
+// It owns SQLite file holding an FTS5 index over message text plus the
 // vectors for a semantic search over the same messages. The conversations
 // themselves stay wherever the host keeps them: the index reads them through
 // the Source interface, and SessionSource adapts an agentic-loop
@@ -54,7 +54,7 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("search: open %q: %w", path, err)
 	}
-	// One connection: this is a single-writer index, and the cap removes lock contention.
+	// connection: this is a single-writer index, and the cap removes lock contention.
 	sqlDB.SetMaxOpenConns(1)
 
 	// Schema work runs detached from the caller's context so a mid-rebuild cancellation can't drop a half.
@@ -75,8 +75,8 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 // Close closes the index database.
 func (i *Index) Close() error { return i.sql.Close() }
 
-// applySchema creates both halves and rebuilds either one whose recorded
-// version is not the current one, or whose tables on disk are not the shape
+// applySchema creates both halves and rebuilds either whose recorded
+// version is not the current, or whose tables on disk are not the shape
 // that version describes. The halves are handled independently, which is the
 // whole point of versioning them separately: a change to the text index must
 // not cost every caller their embeddings.
@@ -131,9 +131,9 @@ func (i *Index) applySchema(ctx context.Context) error {
 // The recorded version says which shape the file is MEANT to have. It cannot
 // say which shape the file actually has, because the number is not the
 // library's alone: another implementation of this index writes its own
-// versions into the same meta table, and one of them met version 1 with a
+// versions into the same meta table, and of them met version with a
 // different column set. The version then reads as up to date, no rebuild runs,
-// and the first CREATE INDEX over a column that is not there fails -- on every
+// and the CREATE INDEX over a column that is not there fails -- on every
 // open, forever, for a file that is derived data and free to rebuild.
 func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (bool, error) {
 	for table, columns := range want {
@@ -167,7 +167,7 @@ func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (boo
 	return true, nil
 }
 
-// meta reads one meta value, returning "" when the key is unset.
+// meta reads meta value, returning "" when the key is unset.
 func (i *Index) meta(ctx context.Context, key string) (string, error) {
 	var v string
 	err := i.sql.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&v)
@@ -180,9 +180,9 @@ func (i *Index) meta(ctx context.Context, key string) (string, error) {
 	return v, nil
 }
 
-// metaInt reads one meta value as an integer. An unset key is 0. A key holding
-// something that is not a number is a corrupt index rather than a zero: it is
-// reported, because reading it as 0 would silently skip a schema rebuild.
+// metaInt reads meta value as an integer. An unset key is. A key holding
+// something that is not a number is a corrupt index rather than a: it is
+// reported, because reading it as would silently skip a schema rebuild.
 func (i *Index) metaInt(ctx context.Context, key string) (int64, error) {
 	v, err := i.meta(ctx, key)
 	if err != nil || v == "" {
@@ -195,7 +195,7 @@ func (i *Index) metaInt(ctx context.Context, key string) (int64, error) {
 	return n, nil
 }
 
-// setMeta writes one meta value.
+// setMeta writes meta value.
 func (i *Index) setMeta(ctx context.Context, key, value string) error {
 	_, err := i.sql.ExecContext(ctx,
 		`INSERT INTO meta (key, value) VALUES (?, ?)
@@ -207,7 +207,6 @@ func (i *Index) setMeta(ctx context.Context, key, value string) error {
 }
 
 // RecordError stores the last indexing failure so Status can report why the
-// index is behind. An empty message clears it.
 func (i *Index) RecordError(ctx context.Context, msg string) error {
 	return i.setMeta(ctx, metaLastError, msg)
 }

@@ -10,7 +10,7 @@ import (
 
 // Sub-agent runs are ASYNCHRONOUS: run_subagent returns as soon as the sub-agent is launched.
 
-// SubagentState is the lifecycle state of one launched sub-agent.
+// SubagentState is the lifecycle state of launched sub-agent.
 type SubagentState string
 
 const (
@@ -26,16 +26,16 @@ const (
 	SubagentAbandoned SubagentState = "abandoned"
 )
 
-// SubagentReport is one finished sub-agent's result, waiting to be delivered.
+// SubagentReport is finished sub-agent's result, waiting to be delivered.
 type SubagentReport struct {
 	// CallID is the parent run_subagent tool call id; also the live-activity telemetry id.
 	CallID string
-	// Label is the orchestrator's own one-line description of the task.
+	// Label is the orchestrator's own -line description of the task.
 	Label string
 	// Text is the sub-agent's final report (or the error text).
 	Text    string
 	IsError bool
-	// Usages is what this sub-agent spent: one entry per model call, in order.
+	// Usages is what this sub-agent spent: entry per model call, in order.
 	Usages []Usage
 	// Duration is wall-clock from launch to report; browser-only, text stays deterministic.
 	Duration time.Duration
@@ -50,11 +50,11 @@ type subagentRun struct {
 	startedAt time.Time
 }
 
-// SubagentUpdate is one lifecycle change; transient telemetry, never in a model's context.
+// SubagentUpdate is lifecycle change; transient telemetry, never in a model's context.
 type SubagentUpdate struct {
 	CallID string
 	Label  string
-	// Prompt is the task text, carried on the first (queued) update only.
+	// Prompt is the task text, carried on the (queued) update only.
 	Prompt string
 	State  SubagentState
 	// Report/IsError set on the terminal update; Usages is the run's total; Duration is wall-clock.
@@ -72,11 +72,11 @@ type SubagentRuns struct {
 	mu sync.Mutex
 	// active holds runs that have not reported yet, keyed by call id.
 	active map[string]*subagentRun
-	// ready holds arrived reports not yet delivered into the conversation, oldest first.
+	// ready holds arrived reports not yet delivered into the conversation, oldest.
 	ready []SubagentReport
-	// signal is a capacity-1 notification channel: Complete pokes it, Collect waits.
+	// signal is a capacity- notification channel: Complete pokes it, Collect waits.
 	signal chan struct{}
-	// seq numbers ids for backends that assign none, so two launches never collide.
+	// seq numbers ids for backends that assign none, so launches never collide.
 	seq int
 }
 
@@ -91,7 +91,7 @@ func (r *SubagentRuns) nextID() string {
 // NewCallID mints a fresh, unique sub-agent call id; exported counterpart of nextID.
 func (r *SubagentRuns) NewCallID() string { return r.nextID() }
 
-// NewSubagentRuns returns an empty registry; onUpdate gets one update per change.
+// NewSubagentRuns returns an empty registry; onUpdate gets update per change.
 func NewSubagentRuns(onUpdate func(SubagentUpdate)) *SubagentRuns {
 	return &SubagentRuns{
 		onUpdate: onUpdate,
@@ -104,7 +104,7 @@ func NewSubagentRuns(onUpdate func(SubagentUpdate)) *SubagentRuns {
 // Launch registers a sub-agent as outstanding, in the queued state. callID is
 // the parent tool call's id; label is the orchestrator's description and
 // prompt its task text (both are shown in the UI, never re-sent to a model).
-// Launching the same call id twice is ignored — a tool call is executed once.
+// Launching the same call id is ignored — a tool call is executed.
 func (r *SubagentRuns) Launch(callID, label, prompt string) {
 	r.mu.Lock()
 	if _, dup := r.active[callID]; dup {
@@ -239,7 +239,7 @@ func (r *SubagentRuns) CancelRemaining() int {
 	return len(stranded)
 }
 
-// emit hands one lifecycle update to the host; telemetry is best-effort.
+// emit hands lifecycle update to the host; telemetry is best-effort.
 func (r *SubagentRuns) emit(u SubagentUpdate) {
 	if r.onUpdate == nil {
 		return

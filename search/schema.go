@@ -1,6 +1,6 @@
 package search
 
-// The index is derived data, rebuildable from the conversations; its two halves are versioned separately.
+// The index is derived data, rebuildable from the conversations; its halves are versioned separately.
 
 const (
 	// ftsSchemaVersion covers the text tables; a bump drops them and re-indexes.
@@ -22,7 +22,7 @@ const (
 //
 // indexed_messages carries its own copy of the content because an
 // external-content FTS5 table has to read from a table in the SAME database,
-// and the host's conversations are not in this one -- they may not be in a
+// and the host's conversations are not in this -- they may not be in a
 // database at all.
 //
 // It also carries owner, so scoping a search to whoever owns the conversation
@@ -87,7 +87,7 @@ var (
 )
 
 // dropFTSSchema tears the text half down for a version bump. The triggers go
-// first: dropping indexed_messages while its delete trigger still exists would
+// : dropping indexed_messages while its delete trigger still exists would
 // fire that trigger for every row into an FTS table that is about to be
 // dropped anyway.
 const dropFTSSchema = `
@@ -99,7 +99,7 @@ DROP TABLE IF EXISTS indexed_messages;
 DROP TABLE IF EXISTS indexed_conversations;
 `
 
-// embedSchema builds the vector half; model is part of the key since vectors from two models aren't comparable.
+// embedSchema builds the vector half; model is part of the key since vectors from models aren't comparable.
 const embedSchema = `
 CREATE TABLE IF NOT EXISTS embeddings (
 	message_id  TEXT NOT NULL,

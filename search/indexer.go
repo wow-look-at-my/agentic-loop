@@ -7,7 +7,7 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// Conversation identifies one conversation and says whether its transcript has
+// Conversation identifies conversation and says whether its transcript has
 // moved since the index last read it.
 type Conversation struct {
 	// ID is the host's own conversation id.
@@ -18,7 +18,7 @@ type Conversation struct {
 	Revision string
 }
 
-// Message is one transcript entry as the index needs it.
+// Message is transcript entry as the index needs it.
 type Message struct {
 	// ID must be STABLE across re-reads, because it is what the embeddings are keyed by.
 	ID        string
@@ -33,7 +33,7 @@ type Message struct {
 type Source interface {
 	// Conversations returns every conversation that currently exists, with its revision.
 	Conversations(ctx context.Context) ([]Conversation, error)
-	// Messages returns one conversation's transcript, in order.
+	// Messages returns conversation's transcript, in order.
 	Messages(ctx context.Context, conversationID string) ([]Message, error)
 }
 
@@ -99,7 +99,7 @@ func (i *Index) knownRevisions(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-// reindex replaces one conversation's indexed messages and records the
+// reindex replaces conversation's indexed messages and records the
 // revision they were read at, in a single transaction. The revision landing in
 // the same commit as the rows it describes is what makes a crash mid-pass
 // re-read that conversation rather than skip it.

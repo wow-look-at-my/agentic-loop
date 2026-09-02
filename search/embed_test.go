@@ -26,7 +26,7 @@ func TestEmbedPendingIsResumableAndRecordsTruncation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
 
-	// Nothing is left pending, so a second pass makes no request at all.
+	// Nothing is left pending, so a pass makes no request at all.
 	before := emb.calls
 	n, err = idx.EmbedPending(ctx, "u1", "up/model", emb, 10)
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestEmbedFailureLeavesTheMessagePendingRatherThanMarkedDone(t *testing.T) {
 		"a failed embedding is retried on the next pass, never recorded as covered")
 	assert.Zero(t, status.EmbeddedMessages)
 
-	// And it succeeds once the endpoint does; there is no attempt counter to have run out.
+	// And it succeeds the endpoint does; there is no attempt counter to have run out.
 	n, err := idx.EmbedPending(ctx, "u1", "up/model", &bagEmbedder{dim: 8}, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
@@ -68,8 +68,8 @@ func TestEmbedFailureLeavesTheMessagePendingRatherThanMarkedDone(t *testing.T) {
 
 // A provider that returns fewer vectors than it was given inputs cannot have
 // them lined back up with the messages that produced them. Storing the overlap
-// would attach one message's vector to another's id, which is a wrong answer
-// that looks like a right one forever after.
+// would attach message's vector to another's id, which is a wrong answer
+// that looks like a right forever after.
 func TestAShortVectorBatchIsRefusedRatherThanPartiallyStored(t *testing.T) {
 	ctx := context.Background()
 	idx := testIndex(t)
@@ -137,14 +137,14 @@ func TestDropModelRemovesOnlyThatModelsVectors(t *testing.T) {
 	assert.Equal(t, int64(1), status.EmbeddedMessages)
 }
 
-// A message's chunks never span two batches, so a batch that lands is a whole
+// A message's chunks never span batches, so a batch that lands is a whole
 // number of finished messages -- which is what lets embed_status be trusted as
 // "this message is done".
 func TestAMessagesChunksNeverSpanTwoRequests(t *testing.T) {
 	ctx := context.Background()
 	idx := testIndex(t)
 	src := newFakeSource()
-	// Each message needs several chunks; together they exceed one batch.
+	// Each message needs several chunks; together they exceed batch.
 	long := strings.Repeat("word ", chunkRunes*6/5)
 	perMessage, _ := chunkContent(long)
 	count := embedBatchSize/len(perMessage) + 2

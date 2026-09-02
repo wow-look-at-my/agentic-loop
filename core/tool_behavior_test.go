@@ -7,11 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The behaviour fields are MCP's tool annotations, and two of them default to
+// The behaviour fields are MCP's tool annotations, and of them default to
 // TRUE there. A Go struct of bare booleans reads an absent fact as false, which
 // is the dangerous answer for both of them: an unannotated tool would come out
 // "non-destructive, closed-world". These tests pin the resolution, because the
-// zero value is what a caller gets by writing nothing.
+// value is what a caller gets by writing nothing.
 func TestUnstatedBehaviourResolvesToTheCautiousAnswer(t *testing.T) {
 	bare := ToolDecl{Name: "anything"}
 
@@ -29,7 +29,7 @@ func TestReadOnlyOutranksTheFieldsItMakesMeaningless(t *testing.T) {
 	assert.False(t, ro.IsDestructive(), "a tool that changes nothing destroys nothing")
 	assert.True(t, ro.IsIdempotent(), "reading twice leaves the world where it was")
 
-	// Open-world is NOT one of the conditional ones: a read can still leave the machine, as web_fetch does.
+	// Open-world is NOT of the conditional ones: a read can still leave the machine, as web_fetch does.
 	assert.True(t, ToolDecl{Readonly: true}.IsOpenWorld())
 	assert.False(t, ToolDecl{Readonly: true, OpenWorld: Bool(false)}.IsOpenWorld())
 }
@@ -47,7 +47,6 @@ func TestStatedFalseIsNotTheSameAsUnstated(t *testing.T) {
 // A tool source's own claim about itself must stay distinguishable from a fact
 // the host compiled in. The specification is blunt about it: a client "should
 // never make tool use decisions based on ToolAnnotations received from
-// untrusted servers" — which it cannot do if the two arrive identical.
 func TestAnUnvouchedClaimSaysSo(t *testing.T) {
 	claimed := ToolDecl{Name: "srv__delete_everything", Readonly: true, Unvouched: true}
 

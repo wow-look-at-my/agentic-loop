@@ -18,7 +18,7 @@ const (
 	ResourceRemoved  = "removed"
 )
 
-// ResourceChange is one detected change, already recorded by the watcher. It
+// ResourceChange is detected change, already recorded by the watcher. It
 // carries no content: everything here is announced to the model, and the
 // before/after bytes stay in storage until mcp_resource_diff asks for them.
 type ResourceChange struct {
@@ -30,21 +30,21 @@ type ResourceChange struct {
 	URI string
 	// Label is the resource's human name (title, name, or the URI again).
 	Label string
-	// Kind is one of the Resource* constants above.
+	// Kind is of the Resource* constants above.
 	Kind string
-	// Summary is a one-line shape-of-the-change, e.g. "4.1 KB -> 4.3 KB, +7 -2 lines".
+	// Summary is a -line shape-of-the-change, e.g. " KB -> KB, + - lines".
 	Summary string
 	// Note is an accuracy caveat that must travel with the change.
 	Note string
 }
 
-// ResourcePoll is the outcome of one watch pass.
+// ResourcePoll is the outcome of watch pass.
 type ResourcePoll struct {
 	// Changes are the resources that differ from the last pass.
 	Changes []ResourceChange
 	// Warnings are servers or resources the pass could NOT account for.
 	Warnings []string
-	// Baseline marks the first pass, where every resource is new; changes only the wording.
+	// Baseline marks the pass, where every resource is new; changes only the wording.
 	Baseline bool
 }
 
@@ -53,13 +53,13 @@ func (p ResourcePoll) Empty() bool { return len(p.Changes) == 0 && len(p.Warning
 
 // ResourceWatcher re-reads the conversation's MCP resources, reporting changes since last pass.
 type ResourceWatcher interface {
-	// Poll performs one pass; remote failures are reported as Warnings, not errors.
+	// Poll performs pass; remote failures are reported as Warnings, not errors.
 	Poll(ctx context.Context) (ResourcePoll, error)
 }
 
-// FormatResourceNotice renders one watch pass as the delivered message text.
+// FormatResourceNotice renders watch pass as the delivered message text.
 // diffTool is the advertised name of the diff tool, quoted so the model calls
-// the name it was actually given rather than the one this package assumed.
+// the name it was actually given rather than the this package assumed.
 func FormatResourceNotice(poll ResourcePoll, diffTool string) string {
 	var b strings.Builder
 	b.WriteString(resourceNoticeHeader)
@@ -97,7 +97,7 @@ func FormatResourceNotice(poll ResourcePoll, diffTool string) string {
 	return b.String()
 }
 
-// describeResourceChange renders one change as its own block: what it is, how it
+// describeResourceChange renders change as its own block: what it is, how it
 // moved, and the id that resolves to it.
 func describeResourceChange(c ResourceChange, baseline bool) string {
 	var b strings.Builder
@@ -132,7 +132,7 @@ func resourceTitle(c ResourceChange) string {
 	return b.String()
 }
 
-// plural renders "1 <one>" or "N <many>".
+// plural renders " <>" or "N <many>".
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one

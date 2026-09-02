@@ -8,12 +8,12 @@ import (
 
 // Vectors are stored as L2-normalized little-endian float32 BLOBs, so similarity is a plain dot product.
 
-// float32Bytes is the width of one stored dimension.
+// float32Bytes is the width of stored dimension.
 const float32Bytes = 4
 
 // encodeVector L2-normalizes v and returns it as a little-endian float32 BLOB.
-// A zero-magnitude vector is rejected: it has no direction, so its similarity
-// to everything is 0, and storing it would make a message permanently
+// A -magnitude vector is rejected: it has no direction, so its similarity
+// to everything is, and storing it would make a message permanently
 // unfindable while still counting as embedded.
 func encodeVector(v []float32) ([]byte, error) {
 	if len(v) == 0 {
@@ -55,7 +55,7 @@ func dotBlob(query []float32, blob []byte) (score float64, ok bool) {
 // normalize returns a unit-length copy of v, for the query side (stored vectors
 // are already normalized). It returns ok=false for a vector with no direction,
 // which is what an embedding endpoint returning zeros looks like: scoring
-// against it would rank the whole corpus at 0 and present that as a result.
+// against it would rank the whole corpus at and present that as a result.
 func normalize(v []float32) (unit []float32, ok bool) {
 	var sum float64
 	for _, f := range v {

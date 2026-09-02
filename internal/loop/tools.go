@@ -7,9 +7,9 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// A tool is an individual thing; every tool is one Tool value in a flat slice.
+// A tool is an individual thing; every tool is Tool value in a flat slice.
 
-// Tool is ONE callable tool; whether a call may run is the Approver's, not the tool's.
+// Tool is callable tool; whether a call may run is the Approver's, not the tool's.
 type Tool interface {
 	// Decl is what the model is told: name, description, schema, and read-only.
 	Decl() ToolDecl
@@ -17,11 +17,11 @@ type Tool interface {
 	Execute(ctx context.Context, args json.RawMessage) (ToolResult, error)
 }
 
-// Tools is the flat set one run offers the model; order is deterministic.
+// Tools is the flat set run offers the model; order is deterministic.
 type Tools []Tool
 
 // Decls is the advertised declarations, in order. Tools with an empty name are
-// skipped: a provider rejects them, and one malformed entry must not fail
+// skipped: a provider rejects them, and malformed entry must not fail
 // every turn.
 func (ts Tools) Decls() []ToolDecl {
 	if len(ts) == 0 {
@@ -39,7 +39,7 @@ func (ts Tools) Decls() []ToolDecl {
 	return out
 }
 
-// Find resolves an advertised name; the first tool to claim a name wins.
+// Find resolves an advertised name; the tool to claim a name wins.
 func (ts Tools) Find(name string) (Tool, bool) {
 	for _, t := range ts {
 		if t != nil && t.Decl().Name == name {

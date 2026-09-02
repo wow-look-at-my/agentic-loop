@@ -60,7 +60,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 }
 
 // continueConversation appends the turn to the stored conversation, starting
-// one when the name is new, and returns the call to make over the whole
+// when the name is new, and returns the call to make over the whole
 // transcript.
 func continueConversation(st session.Store, name string, turn commonai.Request) (commonai.Request, error) {
 	stored, err := st.Append(name, turn.Messages...)

@@ -1,6 +1,6 @@
 // ratelimit.go implements a fixed-rate request limiter, a provider-side
 // throttle for staying under an upstream's per-minute request cap (e.g.
-// Novita's 30 requests/minute). A RateLimiter spaces request STARTS evenly --
+// Novita's requests/minute). A RateLimiter spaces request STARTS evenly --
 // at most n per minute -- so a hard provider cap is never exceeded.
 //
 // The limiter belongs to the Provider, like retry: making a call happen
@@ -11,7 +11,7 @@
 //
 // Only request starts are counted. A call that has begun may take as long as
 // it needs, so slow calls never push the average over the limit, and because
-// consecutive starts are at least one interval apart, no 60-second window can
+// consecutive starts are at least interval apart, no - window can
 // contain more than the configured number of started requests.
 package extras
 
@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-// RateLimiter gates request starts to at most one every interval -- a fixed-rate gate of one minute / n for n per minute.
+// RateLimiter gates request starts to at most every interval -- a fixed-rate gate of minute / n for n per minute.
 type RateLimiter struct {
 	mu       sync.Mutex
 	interval time.Duration
@@ -33,7 +33,7 @@ type RateLimiter struct {
 	sleep func(context.Context, time.Duration) error
 }
 
-// NewRateLimiter returns a RateLimiter permitting at most n request starts per minute, n clamped to >= 1.
+// NewRateLimiter returns a RateLimiter permitting at most n request starts per minute, n clamped to >=.
 func NewRateLimiter(n int) *RateLimiter {
 	if n < 1 {
 		n = 1
@@ -43,8 +43,8 @@ func NewRateLimiter(n int) *RateLimiter {
 
 // Wait blocks until the next request may start, or until ctx is done (it then
 // returns ctx.Err(), which the transport surfaces like any other canceled
-// request). The first caller is admitted immediately; each later caller waits
-// until one interval has passed since the previous start.
+// request). The caller is admitted immediately; each later caller waits
+// until interval has passed since the previous start.
 func (l *RateLimiter) Wait(ctx context.Context) error {
 	l.mu.Lock()
 	now := l.now

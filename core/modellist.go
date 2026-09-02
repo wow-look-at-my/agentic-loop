@@ -8,12 +8,12 @@ import (
 	"strings"
 )
 
-// ModelList is what an endpoint's model list says: one fetch answers protocol and prices.
+// ModelList is what an endpoint's model list says: fetch answers protocol and prices.
 type ModelList struct {
 	// Dialect is the protocol the document identifies, or DialectAuto; never DialectResponses (identical document).
 	Dialect Dialect
 
-	// Prices is per-model rates, keyed by id; a model with no pricing block is ABSENT, not zero.
+	// Prices is per-model rates, keyed by id; a model with no pricing block is ABSENT, not.
 	Prices map[string]Rates
 }
 
@@ -74,7 +74,7 @@ func modelListURL(baseURL string) (string, error) {
 
 // DecodeModelList reads a model-list document.
 //
-// A document that will not parse is an ERROR, not an empty result. The two are
+// A document that will not parse is an ERROR, not an empty result. The are
 // different facts a host has to be able to tell apart: an endpoint that
 // publishes no prices renders an em dash and is working correctly, and an
 // endpoint answering with an HTML error page is not — reporting both as "no
@@ -96,7 +96,7 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 
 	out := &ModelList{Prices: make(map[string]Rates, len(doc.Data))}
 
-	// The ENVELOPE decides first, because a list with no models at all still
+	// The ENVELOPE decides, because a list with no models at all still
 	// identifies its server.
 	switch {
 	case doc.Object == "list":
