@@ -44,7 +44,7 @@ type ResponsesConfig struct {
 type AnthropicConfig struct {
 	ProviderConfig
 
-	// Version sets the anthropic-version header; empty defaults to "2023-06-01".
+	// Version sets the anthropic-version header; empty defaults to "--".
 	Version string
 	// DisableCaching drops the ephemeral cache_control breakpoints the provider otherwise places.
 	DisableCaching bool

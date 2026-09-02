@@ -39,7 +39,6 @@ func (s *streamWriter) begin(role commonai.Role) {
 }
 
 // flush pushes what has been written so far to the client, which is what makes
-// this a stream rather than a slow buffer.
 func (s *streamWriter) flush() {
 	if f, ok := s.w.(http.Flusher); ok {
 		f.Flush()

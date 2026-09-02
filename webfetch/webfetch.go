@@ -52,7 +52,7 @@ var webFetchSchema = json.RawMessage(`{
 
 // WebFetchConfig configures NewWebFetchTool.
 type WebFetchConfig struct {
-	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a 45- timeout.
+	// HTTPClient performs the fetch (and Tika) requests; nil defaults to a - timeout.
 	HTTPClient *http.Client
 	// UserAgent, when non-empty, is sent as the User-Agent header on the tool's outbound requests.
 	UserAgent string

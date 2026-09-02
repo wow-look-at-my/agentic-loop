@@ -74,7 +74,6 @@ type scriptStep struct {
 }
 
 // scriptProvider replays scripted responses and records every request, so a
-// test can drive the layers above without an upstream.
 type scriptProvider struct {
 	steps []scriptStep
 	reqs  []Request

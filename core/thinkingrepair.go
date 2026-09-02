@@ -11,7 +11,6 @@ import (
 )
 
 // invalidThinkingSigPattern matches Anthropic's wording for a rejected
-// signature; anAssistantContent drops a signature-less thinking block.
 var invalidThinkingSigPattern = regexp.MustCompile(
 	"(?i)messages\\.(\\d+)\\.content\\.(\\d+):\\s*Invalid `signature` in `thinking` block")
 

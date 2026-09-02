@@ -79,7 +79,7 @@ var elapsedUnits = []struct {
 	{time.Second, "sec", "secs"},
 }
 
-// FormatElapsed renders a gap as its largest non-zero units, e.g. "1d 23hrs".
+// FormatElapsed renders a gap as its largest non- units, e.g. "1d 23hrs".
 // Under a reads "<1sec" rather than "0secs", which looks like a stopped clock.
 func FormatElapsed(d time.Duration) string {
 	if d < time.Second {

@@ -384,7 +384,7 @@ func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {
 	assert.Equal(t, "sorry", res.Final.Content)
 }
 
-// noTurnCapProbe is well past the old 10-turn cap, so a regression fails here, not in production.
+// noTurnCapProbe is well past the old -turn cap, so a regression fails here, not in production.
 const noTurnCapProbe = 40
 
 func TestRunHasNoTurnCap(t *testing.T) {

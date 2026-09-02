@@ -12,7 +12,7 @@ type Rates struct {
 	Completion float64
 	CacheRead  float64
 	CacheWrite float64
-	// CacheWrite1h is the one-hour cache-write tier, published but not used by Cost (no tier in the usage tokens).
+	// CacheWrite1h is the -hour cache-write tier, published but not used by Cost (no tier in the usage tokens).
 	CacheWrite1h float64
 }
 
@@ -52,7 +52,7 @@ func cacheCounts(u Usage) (read, write int) {
 }
 
 // modelListPricing is the pricing block a model list publishes per model. Every
-// field is a string in the wire format — OpenRouter sends "0.000015", not
+// field is a string in the wire format — OpenRouter sends "", not
 // — so each is decoded as and parsed here.
 type modelListPricing struct {
 	Prompt             string          `json:"prompt"`

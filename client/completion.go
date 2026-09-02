@@ -6,7 +6,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// model call's outcome: message, folded usage, stop reason; usage fields are tri-state, never zero-filled.
+// model call's outcome: message, folded usage, stop reason; usage fields are tri-state, never -filled.
 type Completion struct {
 	Message         Message
 	Usage           Usage

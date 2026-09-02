@@ -9,7 +9,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// RetryPolicy is exponential-backoff retry; zero-value fields default to attempts and a 500ms base delay.
+// RetryPolicy is exponential-backoff retry; -value fields default to attempts and a 500ms base delay.
 type RetryPolicy struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
@@ -38,7 +38,7 @@ func (p RetryPolicy) base() time.Duration {
 	return 500 * time.Millisecond
 }
 
-// delay is the backoff before retrying after the given 1-based attempt.
+// delay is the backoff before retrying after the given -based attempt.
 func (p RetryPolicy) delay(attempt int) time.Duration {
 	return p.base() << (attempt - 1)
 }

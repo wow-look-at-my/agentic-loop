@@ -150,7 +150,7 @@ func authRejectionDetail(res GHResponse, now time.Time) string {
 	return detail + tokenExpiryDetail(res, now)
 }
 
-// ssoAuthorizeDetail renders GitHub's SAML SSO block and its one-hour authorization URL.
+// ssoAuthorizeDetail renders GitHub's SAML SSO block and its -hour authorization URL.
 func ssoAuthorizeDetail(res GHResponse) string {
 	sso := res.header.Get("X-GitHub-SSO")
 	idx := strings.Index(sso, "url=")

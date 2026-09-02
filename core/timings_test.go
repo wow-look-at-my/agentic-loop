@@ -55,7 +55,7 @@ func TestOpenAITimingsAbsentStaysNil(t *testing.T) {
 }
 
 func TestOpenAIUsageReportedDistinguishesZero(t *testing.T) {
-	// An upstream that reports an all-zero usage snapshot is distinguishable
+	// An upstream that reports an all- usage snapshot is distinguishable
 	// from that reports none: UsageReported is true, Usage is.
 	h := &sseHandler{payloads: []string{
 		`{"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}`,

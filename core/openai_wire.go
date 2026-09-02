@@ -209,7 +209,7 @@ func oaMarkPromptCache(msgs []oaMessage) {
 
 // oaWithMarkedContent returns a copy of the message whose content carries the
 // ephemeral cache breakpoint: a non-empty block array gets the marker on its
-// last block, a non-empty string becomes a one-block array, and empty content
+// last block, a non-empty string becomes a -block array, and empty content
 // passes through unmarked.
 func oaWithMarkedContent(m oaMessage) oaMessage {
 	switch {

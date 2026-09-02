@@ -42,7 +42,6 @@ type (
 )
 
 // Normalized stop reasons. A provider maps its own vocabulary onto these, so a
-// caller branches on set of strings rather than.
 const (
 	StopEndTurn   = client.StopEndTurn
 	StopToolUse   = client.StopToolUse

@@ -345,7 +345,7 @@ func TestAnthropicErrorEventMapsToAPIError(t *testing.T) {
 }
 
 func TestAnthropicErrorEventOverflowConsistent(t *testing.T) {
-	// A 400-mapped in-stream error is checked against the overflow regex just
+	// A -mapped in-stream error is checked against the overflow regex just
 	// like a non-2xx body.
 	h := &anSSEHandler{events: [][2]string{
 		{"error", `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}`},

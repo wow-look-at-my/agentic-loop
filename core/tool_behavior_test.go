@@ -47,7 +47,6 @@ func TestStatedFalseIsNotTheSameAsUnstated(t *testing.T) {
 // A tool source's own claim about itself must stay distinguishable from a fact
 // the host compiled in. The specification is blunt about it: a client "should
 // never make tool use decisions based on ToolAnnotations received from
-// untrusted servers" — which it cannot do if the two arrive identical.
 func TestAnUnvouchedClaimSaysSo(t *testing.T) {
 	claimed := ToolDecl{Name: "srv__delete_everything", Readonly: true, Unvouched: true}
 

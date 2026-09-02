@@ -122,7 +122,7 @@ const (
 type SubagentActivity struct {
 	CallID string
 	Kind   string // of the SubagentActivity* constants
-	Turn   int    // 1-based turn number (every kind but tool_call/tool_result)
+	Turn   int    //-based turn number (every kind but tool_call/tool_result)
 	Tool   string // tool name (tool_call / tool_result)
 	Detail string // arguments preview, result preview, or other short context
 	// Content is Detail's text but WHOLE: the full arguments or output, never capped.
@@ -236,7 +236,7 @@ func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessag
 // allowedToolsDescription is the allowed_tools field description, naming the
 // concrete tools available this turn so the model knows exactly what it can
 // pin the sub-agent to. Tools that are NOT read-only are flagged "(modifies
-// state)" so the model sees that listing one grants a side-effecting tool —
+// state)" so the model sees that listing grants a side-effecting tool —
 // by default the sub-agent only gets read-only tools, and naming a tool here
 // is what makes a non-read-only available.
 func allowedToolsDescription(tools []agentic.ToolDecl) string {

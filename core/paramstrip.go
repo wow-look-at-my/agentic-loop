@@ -21,7 +21,7 @@ import (
 
 // rejectParamPatterns matches common OpenAI-compatible phrasings for a rejected/unsupported parameter, capturing the parameter name.
 var rejectParamPatterns = []*regexp.Regexp{
-	// xAI: Model grok-build-0.1 does not support parameter reasoningEffort.
+	// xAI: Model grok-build- does not support parameter reasoningEffort.
 	regexp.MustCompile(`(?i)does not support parameter\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
 	// OpenAI: Unsupported parameter: 'reasoning_effort'... / unsupported parameter reasoning_effort
 	regexp.MustCompile(`(?i)unsupported parameter:?\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),

@@ -30,7 +30,7 @@ const (
 type SubagentReport struct {
 	// CallID is the parent run_subagent tool call id; also the live-activity telemetry id.
 	CallID string
-	// Label is the orchestrator's own one-line description of the task.
+	// Label is the orchestrator's own -line description of the task.
 	Label string
 	// Text is the sub-agent's final report (or the error text).
 	Text    string
@@ -74,7 +74,7 @@ type SubagentRuns struct {
 	active map[string]*subagentRun
 	// ready holds arrived reports not yet delivered into the conversation, oldest.
 	ready []SubagentReport
-	// signal is a capacity-1 notification channel: Complete pokes it, Collect waits.
+	// signal is a capacity- notification channel: Complete pokes it, Collect waits.
 	signal chan struct{}
 	// seq numbers ids for backends that assign none, so launches never collide.
 	seq int

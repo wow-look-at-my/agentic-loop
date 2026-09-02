@@ -231,7 +231,7 @@ func (st *anStream) onData(data []byte) error {
 	case "message_stop":
 		st.sawData = true
 	case "error":
-		// In-stream error events map to *APIError like non-2xx; not sawData, so error-first stays retryable.
+		// In-stream error events map to *APIError like non-2xx; not sawData, so error- stays retryable.
 		errType := ""
 		if msg.Error != nil {
 			errType = msg.Error.Type

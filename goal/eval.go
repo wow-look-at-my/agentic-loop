@@ -18,7 +18,6 @@ const EvalTimeout = 30 * time.Second
 const EvalMaxTokens = 512
 
 // A tool result in the window keeps its head and tail: the evidence of a test
-// run lives at both ends and nowhere in the middle.
 const (
 	evalToolResultCap = 2000
 	evalHead          = 1200
@@ -79,7 +78,7 @@ func ParseVerdict(text string) (Verdict, error) {
 	return v, nil
 }
 
-// unfence strips a ```json fence when the model wrapped its object in one.
+// unfence strips a ```json fence when the model wrapped its object in.
 func unfence(text string) string {
 	t := strings.TrimSpace(text)
 	if !strings.HasPrefix(t, "```") {
@@ -119,7 +118,6 @@ const (
 )
 
 // Entry is line of the window; things never map onto -- private
-// reasoning, and goal mode's own notices (docs/goal.md).
 type Entry struct {
 	Kind EntryKind
 	Text string
@@ -182,7 +180,7 @@ func RenderWindow(entries []Entry, maxTokens int) string {
 	return body
 }
 
-// estimateTokens is the chars/4 estimator; nothing here pretends to tokenize.
+// estimateTokens is the chars/ estimator; nothing here pretends to tokenize.
 func estimateTokens(s string) int { return len(s)/4 + 1 }
 
 // renderEntry renders entry, or reports that it carries nothing.

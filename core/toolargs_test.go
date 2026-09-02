@@ -21,7 +21,7 @@ func zeroArgTranscript() []Message {
 	}
 }
 
-// A zero-argument tool call still carries an arguments field on the openai
+// A -argument tool call still carries an arguments field on the openai
 // wire. Z.AI answers a function object without with "Invalid API
 // parameter, please check the documentation", which fails the turn -- and the
 // call is in the stored transcript, so every later turn fails the same way.
@@ -120,7 +120,7 @@ func TestResponsesReplaysZeroArgumentToolCall(t *testing.T) {
 	assert.Equal(t, "{}", args)
 }
 
-// Anthropic streams a zero-argument tool_use as a block with no
+// Anthropic streams a -argument tool_use as a block with no
 // input_json_delta at all. The non-streaming path already reads that as {};
 // the streamed must agree, or which transport served the turn decides
 // whether the transcript can be replayed later.

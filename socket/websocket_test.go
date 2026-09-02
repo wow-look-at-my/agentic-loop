@@ -103,7 +103,7 @@ func TestWebSocketClosesBack(t *testing.T) {
 	assert.Equal(t, byte(opClose), op)
 }
 
-// An answer past KiB needs the 8-byte length field. The frame is
+// An answer past KiB needs the -byte length field. The frame is
 // message either way, so a client that reassembles by concatenation cannot
 // tell -- which is the property worth keeping.
 func TestWebSocketCarriesAnAnswerTooBigForAShortLength(t *testing.T) {

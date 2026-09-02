@@ -144,7 +144,7 @@ type ghRepoMeta struct {
 }
 
 // repoMeta probes a repository with credential and returns its metadata.
-//// come back as GitHubAuthError so the caller tries the next credential
+// // come back as GitHubAuthError so the caller tries the next credential
 // (GitHub hides an inaccessible private repo behind).
 func (e *repoTools) repoMeta(ctx context.Context, token, org, repo string) (ghRepoMeta, error) {
 	res, err := e.gh.doGet(ctx, e.repoURL(org, repo), token, "application/vnd.github+json")

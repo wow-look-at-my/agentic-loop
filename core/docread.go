@@ -195,7 +195,6 @@ func (s *docScanner) closeTag() bool {
 }
 
 // isPrefixOf reports whether b is a proper prefix of s, which is how the
-// scanner waits for enough bytes to tell a comment from a declaration.
 func isPrefixOf(b []byte, s string) bool {
 	return len(b) < len(s) && s[:len(b)] == string(b)
 }

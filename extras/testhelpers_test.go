@@ -20,7 +20,6 @@ type scriptStep struct {
 }
 
 // scriptProvider replays scripted responses and records every request, so a
-// test can drive a decorator without an upstream.
 type scriptProvider struct {
 	steps []scriptStep
 	reqs  []commonai.Request

@@ -50,7 +50,7 @@ var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls
 // it knows nothing about connections, status codes, or backoff, and an error
 // that reaches it is treated as REAL and PERMANENT -- the layer whose job was
 // to make the call happen has already given up, so Run stops rather than
-// second-guessing it. Riding out transient failure belongs to the Provider
+//-guessing it. Riding out transient failure belongs to the Provider
 // (ProviderConfig.Retry), which is also the only layer that can see whether a
 // call streamed anything -- the condition that decides whether re-sending is
 // safe. See "Layering" in README.md.
@@ -70,7 +70,6 @@ type Config struct {
 	KeepAlive any
 
 	// Messages delivers system notices and user messages INTO the run; a
-	// queued message reaches the model. queue, both kinds.
 	Messages *MessageQueue
 
 	// Subagents is the registry an asynchronous run_subagent reports into; nil = none.
@@ -85,7 +84,7 @@ type Config struct {
 	// ElapsedTime, when set, states how long has passed since the previous request on every call.
 	ElapsedTime *ElapsedTime
 
-	// turnHook, when non-nil, is invoked with the 1-based turn number as each turn begins.
+	// turnHook, when non-nil, is invoked with the -based turn number as each turn begins.
 	TurnHook func(turn int)
 
 	// unknownTool, when non-nil, replaces the text answering a call to an unoffered name.

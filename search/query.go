@@ -269,7 +269,7 @@ func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit 
 // copy of the content.
 //
 // The needle is escaped at the binding site so LIKE's %, _ and \ match
-// literally -- searching "100%" finds "100%", not every "100...".
+// literally -- searching "%" finds "%", not every "...".
 func (i *Index) searchSubstring(ctx context.Context, owner, query string, limit int) ([]Hit, error) {
 	rows, err := i.sql.QueryContext(ctx, `
 		SELECT message_id, conversation_id, role, content, position, created_at

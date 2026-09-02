@@ -61,7 +61,7 @@ func readAPIError(resp *http.Response) *APIError {
 }
 
 // readCapped reads at most max bytes, reporting whether it stopped early. A
-// truncated read is trimmed back to a UTF-8 boundary so the caller never has
+// truncated read is trimmed back to a UTF- boundary so the caller never has
 // to reason about a half-decoded rune.
 func readCapped(r io.Reader, max int64) (data []byte, truncated bool, err error) {
 	var b bytes.Buffer

@@ -20,7 +20,6 @@ import (
 func intPtr(v int) *int { return &v }
 
 // coreProvider is a fake at the format level, so a test can say exactly what
-// the provider reported and check what the fold made of it.
 type coreProvider struct {
 	comp *commonai.Completion
 	err  error
@@ -299,7 +298,6 @@ func TestParamStripperRetriesWithoutTheRejectedParam(t *testing.T) {
 }
 
 // scriptProvider is a caller-supplied Provider: it speaks this package's
-// Completion and knows nothing about the format layer.
 type scriptStep struct {
 	comp *Completion
 	err  error

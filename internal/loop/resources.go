@@ -32,7 +32,7 @@ type ResourceChange struct {
 	Label string
 	// Kind is of the Resource* constants above.
 	Kind string
-	// Summary is a one-line shape-of-the-change, e.g. "4.1 KB -> 4.3 KB, +7 -2 lines".
+	// Summary is a -line shape-of-the-change, e.g. " KB -> KB, + - lines".
 	Summary string
 	// Note is an accuracy caveat that must travel with the change.
 	Note string
@@ -132,7 +132,7 @@ func resourceTitle(c ResourceChange) string {
 	return b.String()
 }
 
-// plural renders "1 <one>" or "N <many>".
+// plural renders " <>" or "N <many>".
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one

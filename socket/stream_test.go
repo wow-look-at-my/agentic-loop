@@ -16,7 +16,6 @@ import (
 )
 
 // scriptProvider answers with whatever the test hands it, so a case can say
-// exactly which events fired before the call ended and how.
 type scriptProvider struct {
 	comp *commonai.Completion
 	err  error

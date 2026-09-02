@@ -106,7 +106,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 	})
 
 	// Some gateways answer with an error object. Reading that as an empty
-	// data list would report "0 vectors" and lose the reason given.
+	// data list would report " vectors" and lose the reason given.
 	t.Run("error object under a 200", func(t *testing.T) {
 		srv, _ := embeddingsServer(t, http.StatusOK, map[string]any{
 			"error": map[string]any{"message": "model not found"},

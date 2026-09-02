@@ -26,7 +26,7 @@ type ThinkingBlock struct {
 	Redacted string
 }
 
-// ToolCall is tool invocation; Arguments is the raw JSON text, "{}" for a zero-argument tool.
+// ToolCall is tool invocation; Arguments is the raw JSON text, "{}" for a -argument tool.
 type ToolCall struct {
 	ID        string
 	Name      string
@@ -42,10 +42,6 @@ func toolArgs(args string) string {
 }
 
 // replayToolArgs is toolArgs for a call sent BACK to a model: arguments that
-// are not valid JSON become "{}". The model's own text stays in the transcript,
-// and the tool result after it says what was wrong; but a transcript replayed
-// with the raw text is rejected on every later turn, forever, since the call
-// is persisted. The Anthropic writer already does this (parseToolInput).
 func replayToolArgs(args string) string {
 	s := toolArgs(args)
 	if !json.Valid([]byte(s)) {

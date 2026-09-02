@@ -146,7 +146,7 @@ func TestInterleavedMutationsTouchOnlyTheNamedTask(t *testing.T) {
 		res := run(t, byName[TodoAddToolName], jsontest.Must(jsontest.Obj{"title": title}))
 		require.False(t, res.IsError, res.Content)
 	}
-	// Host now holds one..four with ids.., all pending.
+	// Host now holds.. with ids.., all pending.
 	require.Len(t, rec.got, 4)
 	require.Equal(t, []int{1, 2, 3, 4}, idsOf(rec.got[3]))
 

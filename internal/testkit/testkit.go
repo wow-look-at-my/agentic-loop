@@ -38,7 +38,7 @@ func (p *ScriptProvider) Complete(_ context.Context, req agentic.Request, ev *ag
 	return step.Comp, step.Err
 }
 
-// AssistantComp is a one-shot assistant completion for tests.
+// AssistantComp is a -shot assistant completion for tests.
 func AssistantComp(content string, calls ...agentic.ToolCall) *agentic.Completion {
 	stop := agentic.StopEndTurn
 	if len(calls) > 0 {

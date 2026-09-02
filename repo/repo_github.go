@@ -73,7 +73,7 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
 // last: the last attempt is the anonymous, whose says only that no
 // credential was sent. Returning that hid the actual reason a configured token
-// was refused — a spent code-search rate limit reads as "401 Requires
+// was refused — a spent code-search rate limit reads as " Requires
 // authentication", so a transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
 	var best GHResponse
@@ -119,9 +119,6 @@ type tokenAttempt struct {
 // writeTokenOrder (repo_write.go) instead, which never falls through to
 // unauthenticated.
 //
-// The anonymous attempt is never promoted by the cache: it runs last or not at
-// all. A cache that put it sent every later read of that repository to
-// the server's own IP bucket while the tokens sat unused.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()
@@ -174,7 +171,7 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 
 // OwnerRepos enumerates the repositories owned by a GitHub org or user.
 // Listing /repos/<owner> (no repo segment) means "show every repository under
-// this owner". GitHub splits this across two endpoints — /orgs/<owner>/repos for
+// this owner". GitHub splits this across endpoints — /orgs/<owner>/repos for
 // organizations and /users/<owner>/repos for personal accounts — so each
 // candidate credential is tried against the org endpoint, then the user
 // endpoint, until returns 2xx. The winning credential is cached under the

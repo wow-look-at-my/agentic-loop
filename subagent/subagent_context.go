@@ -88,7 +88,7 @@ func SelectLastN(msgs []agentic.Message, n int) []agentic.Message {
 	return msgs[len(msgs)-n:]
 }
 
-// SelectByEndIndices returns the messages at the given 1-based-from-the-end
+// SelectByEndIndices returns the messages at the given -based-from-the-end
 // indices ( = most recent), in chronological order, de-duplicated. Indices that
 // fall outside the range are ignored.
 func SelectByEndIndices(msgs []agentic.Message, indices []int) []agentic.Message {

@@ -16,7 +16,7 @@ import (
 var errSink = errors.New("sink closed")
 
 func TestRunCallbackErrorSingleRequestAndPartialResult(t *testing.T) {
-	// Delivery is marked before the callback runs, so a first-delta failure still blocks a re-attempt.
+	// Delivery is marked before the callback runs, so a -delta failure still blocks a re-attempt.
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)

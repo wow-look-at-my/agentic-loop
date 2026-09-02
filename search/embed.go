@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// chunkRunes is the window embedding covers; too wide a window averages unrelated topics into a direction that matches none.
+	// chunkRunes is the window embedding covers; too wide a window averages unrelated topics into a direction that matches
 	chunkRunes = 1200
 	// chunkOverlap is how much of the previous window each chunk repeats, so a straddling passage is whole in chunk.
 	chunkOverlap = 120
@@ -57,7 +57,7 @@ type pending struct {
 // PendingForModel returns up to limit of the owner's messages that have no
 // embedding under model, NEWEST.
 //
-// Newest is the load-bearing part of the ordering. A first-time backfill
+// Newest is the load-bearing part of the ordering. A -time backfill
 // over a long history drains over minutes, and during that time the covered
 // half should be the half most likely to be searched. It also means a caller
 // who never lets it finish still has a useful index.

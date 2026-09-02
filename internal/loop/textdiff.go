@@ -148,7 +148,7 @@ func lcsOps(a, b []string) []diffOp {
 
 // renderHunks groups an edit script into unified hunks with diffContextLines
 // lines of context, merging hunks whose context would touch or overlap. Counts
-// are always written explicitly ("-3,1" rather than "-3") for consistency.
+// are always written explicitly ("-," rather than "-") for consistency.
 func renderHunks(ops []diffOp) string {
 	if len(ops) == 0 {
 		return ""
@@ -215,7 +215,7 @@ func renderHunks(ops []diffOp) string {
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-// Plural renders "1 <one>" or "N <many>".
+// Plural renders " <>" or "N <many>".
 func Plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one

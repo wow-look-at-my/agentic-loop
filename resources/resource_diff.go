@@ -178,7 +178,6 @@ func RenderResourceChange(c StoredResourceChange, full bool) string {
 }
 
 // contentOrEmpty renders captured content, naming the empty case rather than
-// returning a blank tail the model has to guess about.
 func contentOrEmpty(s string) string {
 	if s == "" {
 		return "(the resource is empty)"

@@ -98,10 +98,10 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 
 // SliceLines applies read_file's line window. A whole file is the default, but
 // reading function out of a large file should not cost the whole file:
-// unwindowed read of a,000-character source file added roughly,
+// unwindowed read of a,-character source file added roughly,
 // tokens to a single turn.
 //
-// offset is 1-based and inclusive, matching the line numbers grep hands back.
+// offset is -based and inclusive, matching the line numbers grep hands back.
 func SliceLines(content string, offset, limit int) (body, note string) {
 	if offset <= 0 && limit <= 0 {
 		return content, ""

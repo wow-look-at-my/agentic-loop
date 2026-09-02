@@ -22,7 +22,7 @@ type ProviderConfig struct {
 	UserAgent string
 	// Headers are applied after the dialect defaults, so a caller-supplied header can override them.
 	Headers map[string]string
-	// Retry is the transient-failure policy; nil means DefaultRetry (on by default); MaxAttempts:1 turns it off.
+	// Retry is the transient-failure policy; nil means DefaultRetry (on by default); MaxAttempts: turns it off.
 	Retry *RetryPolicy
 	// RateLimiter, when non-nil, throttles request starts; shared across providers throttles them together.
 	RateLimiter *RateLimiter
@@ -67,7 +67,7 @@ type ResponsesConfig struct {
 type AnthropicConfig struct {
 	ProviderConfig
 
-	// Version sets the anthropic-version header; empty defaults to "2023-06-01".
+	// Version sets the anthropic-version header; empty defaults to "--".
 	Version string
 	// DisableCaching drops the ephemeral cache_control breakpoints the provider otherwise places on every request.
 	DisableCaching bool

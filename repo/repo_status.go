@@ -283,7 +283,7 @@ func anyFailed(runs []ghCheckRun) bool {
 }
 
 // formatFailureDetail renders a failing check's own account of itself, indented
-// under its line. A zero-value detail (not fetched, or nothing reported)
+// under its line. A -value detail (not fetched, or nothing reported)
 // renders nothing.
 func formatFailureDetail(c ghCheckRun) string {
 	var b strings.Builder

@@ -343,7 +343,6 @@ func hasThinking(parts []Part) bool {
 
 // respThinkingBlock maps a reasoning item onto a ThinkingBlock: the summary
 // text, the item id, and the encrypted payload in Signature -- the field whose
-// job on every dialect is "the opaque token that must be replayed verbatim".
 func respThinkingBlock(item respItem) ThinkingBlock {
 	var b strings.Builder
 	for _, s := range item.Summary {

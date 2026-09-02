@@ -35,7 +35,6 @@ type oaDelta struct {
 }
 
 // reasoning returns the delta's reasoning text from whichever field the
-// upstream used; reasoning_content wins when both are present.
 func (d oaDelta) reasoning() string {
 	if d.ReasoningContent != "" {
 		return d.ReasoningContent

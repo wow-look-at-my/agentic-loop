@@ -13,7 +13,7 @@ func TestCostDoesNotDoubleCountCachedTokens(t *testing.T) {
 	read, write := 36000, 0
 	u := Usage{PromptTokens: 40000, CompletionTokens: 0, CacheReadTokens: &read, CacheWriteTokens: &write}
 
-	// uncached at 15/MTok + cached at 1.5/MTok.
+	// uncached at /MTok + cached at /MTok.
 	assert.InDelta(t, 4000*0.000015+36000*0.0000015, r.Cost(u), 1e-9)
 
 	naive := 40000*0.000015 + 36000*0.0000015
@@ -37,8 +37,8 @@ func TestCostPricesCompletionOnceWhateverTheThinkingWas(t *testing.T) {
 }
 
 // crof.ai's own /v1/models reports pricing already in USD per tokens
-// ("0.35" for a model its pricing page prices at $0.35/M), not per token like
-// OpenRouter. Reading "0.35" as USD per token billed a real turn a
+// ("" for a model its pricing page prices at $/M), not per token like
+// OpenRouter. Reading "" as USD per token billed a real turn a
 // millionfold high. A value that would cross maxPlausiblePerTokenUSD under
 // the per-token reading is rescaled instead of taken literally.
 func TestParseRateRescalesAnAlreadyPerMillionValue(t *testing.T) {

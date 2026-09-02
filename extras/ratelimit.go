@@ -11,7 +11,7 @@
 //
 // Only request starts are counted. A call that has begun may take as long as
 // it needs, so slow calls never push the average over the limit, and because
-// consecutive starts are at least interval apart, no 60- window can
+// consecutive starts are at least interval apart, no - window can
 // contain more than the configured number of started requests.
 package extras
 

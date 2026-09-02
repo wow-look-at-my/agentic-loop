@@ -11,7 +11,6 @@ type QueuedMessage interface {
 }
 
 // SystemMessage is an automated notice queued for delivery: a CI transition,
-// a workspace toggle, a stop-hook nudge, a sub-agent report.
 type SystemMessage struct{ Message }
 
 func (m SystemMessage) queuedMessage() Message { return m.Message }

@@ -80,7 +80,6 @@ func optBoolAttr(name string, v *bool) []attr {
 func intAttr(name string, v int) attr { return attr{name: name, value: strconv.Itoa(v)} }
 
 // ptrIntAttr renders a tri-state int: nothing at all when it was never
-// reported, which is how the format says "unknown" rather than "zero".
 func ptrIntAttr(name string, v *int) []attr {
 	if v == nil {
 		return nil
@@ -152,7 +151,7 @@ func escapeAttr(s string) string {
 	return escape(s, true)
 }
 
-// escape is the escaper both forms share. A byte that is not valid UTF-8
+// escape is the escaper both forms share. A byte that is not valid UTF-
 // has no character to reference at all, so it is written as its own code
 // point -- the only representable reading of a byte that should not be there.
 func escape(s string, inAttr bool) string {
@@ -164,7 +163,7 @@ func escape(s string, inAttr bool) string {
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		if r == utf8.RuneError && size <= 1 {
-			// Not valid UTF-8: reference the byte itself, since dropping it loses content.
+			// Not valid UTF-: reference the byte itself, since dropping it loses content.
 			b.WriteString("&#" + strconv.Itoa(int(s[i])) + ";")
 			i++
 			continue

@@ -12,7 +12,7 @@ import (
 const float32Bytes = 4
 
 // encodeVector L2-normalizes v and returns it as a little-endian float32 BLOB.
-// A zero-magnitude vector is rejected: it has no direction, so its similarity
+// A -magnitude vector is rejected: it has no direction, so its similarity
 // to everything is, and storing it would make a message permanently
 // unfindable while still counting as embedded.
 func encodeVector(v []float32) ([]byte, error) {

@@ -118,7 +118,7 @@ func TestAnthropicRawUsageSynthesizedWireShape(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.True(t, comp.Streamed)
-	// message_start {input_tokens:3, output_tokens:1} + message_delta {output_tokens:2}.
+	// message_start {input_tokens:, output_tokens:} + message_delta {output_tokens:}.
 	assert.JSONEq(t, `{"input_tokens":3,"output_tokens":2}`, string(comp.RawUsage))
 	assert.Equal(t, 5, comp.Usage.TotalTokens)
 	assert.Nil(t, comp.ReasoningTokens, "anthropic never reports reasoning tokens")
@@ -265,7 +265,7 @@ func TestOpenAIPromptCacheBreakpoints(t *testing.T) {
 	body := bodyMap(t, h.body)
 	msgs := body["messages"].([]any)
 	require.Len(t, msgs, 2)
-	// Static: the leading system message's string content is a marked one-block array.
+	// Static: the leading system message's string content is a marked -block array.
 	sys := msgs[0].(map[string]any)
 	assert.Equal(t, "system", sys["role"])
 	assert.Equal(t, []any{map[string]any{

@@ -111,7 +111,7 @@ const orgSweepMaxOrgs = 20
 // the cap, and a non-empty error string when a page could not be fetched (the
 // token itself already passed the /user check, so this is reported alongside
 // OK rather than failing the whole test). orgOwners collects the distinct
-// Organization-type repo owners seen, in first-seen order, as a fallback
+// Organization-type repo owners seen, in -seen order, as a fallback
 // source of organizations to sweep when the token can't self-report its org
 // memberships via /user/orgs.
 func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []TokenTestRepo, orgOwners []string, truncated bool, errMsg string) {
@@ -180,7 +180,7 @@ func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string
 
 // mergeOrgLogins unions organization-login lists, case-insensitively
 // deduplicated, preferring discovered's casing (it comes straight from
-// GitHub's own org listing) and preserving first-seen order.
+// GitHub's own org listing) and preserving -seen order.
 func mergeOrgLogins(discovered, fromRepos []string) []string {
 	seen := set.New[string](len(discovered) + len(fromRepos))
 	var out []string

@@ -138,7 +138,7 @@ func (w *resourceWatcher) sourceName(id string) string {
 	return id
 }
 
-// summarizeResourceChange renders the one-line shape of a change: how the size
+// summarizeResourceChange renders the -line shape of a change: how the size
 // moved and, for text, how many lines were added and removed.
 func summarizeResourceChange(kind, before, after string, beforeBytes, afterBytes int64, binary bool) string {
 	if binary {
@@ -177,7 +177,7 @@ func approxBlobBytes(b64 string) int {
 	return len(strings.TrimRight(b64, "=")) * 3 / 4
 }
 
-// capText cuts content to max bytes, dropping a trailing partial UTF-8 rune so
+// capText cuts content to max bytes, dropping a trailing partial UTF- rune so
 // what lands in storage stays valid text.
 func capText(s string, max int) (string, bool) {
 	if len(s) <= max {

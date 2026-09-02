@@ -207,7 +207,6 @@ func (i *Index) setMeta(ctx context.Context, key, value string) error {
 }
 
 // RecordError stores the last indexing failure so Status can report why the
-// index is behind. An empty message clears it.
 func (i *Index) RecordError(ctx context.Context, msg string) error {
 	return i.setMeta(ctx, metaLastError, msg)
 }

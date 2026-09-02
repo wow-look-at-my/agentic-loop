@@ -273,7 +273,7 @@ func TestTestTokenFallsBackToRepoOwnersWhenUserOrgsFails(t *testing.T) {
 	assert.Empty(t, res.Orgs[0].Error)
 	require.Len(t, res.Orgs[0].Repos, 2)
 
-	// PazerOP/second-repo was found only by the org sweep.
+	// PazerOP/-repo was found only by the org sweep.
 	fullNames := []string{res.Repos[0].FullName, res.Repos[1].FullName}
 	assert.ElementsMatch(t, []string{"PazerOP/UE553", "PazerOP/second-repo"}, fullNames)
 }

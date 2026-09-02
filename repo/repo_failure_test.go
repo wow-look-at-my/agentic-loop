@@ -191,7 +191,7 @@ func TestExplainFailure403FallsBackToBodyMessageWithoutThePermissionHeader(t *te
 	assert.Contains(t, msg, `"Must have admin rights to Repository."`)
 }
 
-// X-GitHub-SSO's "required; url=..." form names a one-hour authorization
+// X-GitHub-SSO's "required; url=..." form names a -hour authorization
 // link — a different fix (visit the URL) than any scope/permission gap, and
 // GitHub sends it independently of whether the token has the right scope.
 func TestExplainFailure403SurfacesTheSSOAuthorizeURL(t *testing.T) {

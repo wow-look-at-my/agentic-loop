@@ -113,7 +113,6 @@ type files struct {
 }
 
 // FileTools is a handle returned by NewFileTools that provides the
-// file tools and allows runtime mutation of the provider set.
 type FileTools struct {
 	*files
 	tools agentic.Tools

@@ -93,7 +93,7 @@ func TestRateLimiterCatchUpAfterSlowCall(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
 	l := rateLimiter(clock, 10*time.Millisecond)
 
-	require.NoError(t, l.Wait(context.Background())) // start at t=0
+	require.NoError(t, l.Wait(context.Background())) // start at t=
 	require.NoError(t, l.Wait(context.Background())) // waits 10ms, start at t=10ms
 
 	// The call is slow; the next start is admitted immediately rather than held to a missed schedule.
