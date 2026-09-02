@@ -339,7 +339,7 @@ func TestUnparseableArgumentsAreRefused(t *testing.T) {
 	assert.Empty(t, rec.got)
 }
 
-// The list caps at tasks; the 101st add is refused, and the store keeps.
+// The list caps, so an add past the cap is refused and the store keeps what it had.
 func TestATooLongListIsRefused(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)

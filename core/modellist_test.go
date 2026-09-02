@@ -161,8 +161,7 @@ func TestFetchModelListReadsTheEndpoint(t *testing.T) {
 	assert.Contains(t, list.Prices, "anthropic/claude-opus-4-6")
 	assert.Equal(t, DialectOpenAI, list.Dialect, "one request answers both")
 
-	// Both credential forms, because which server is answering is exactly what
-	// this request exists to find out.
+	// Both credential forms, because which server answers is what this asks.
 	assert.Equal(t, "Bearer sk-test", gotAuth)
 	assert.Equal(t, "sk-test", gotKey)
 	assert.Equal(t, defaultAnthropicVersion, gotVersion)
@@ -185,8 +184,7 @@ func TestTheModelListURLAcceptsEitherBaseSpelling(t *testing.T) {
 		srv.Close()
 	}
 
-	// A path that merely CONTAINS /v1 keeps it: only the trailing is the
-	// dialects' disagreement.
+	// A path that merely CONTAINS /v1 keeps it: only a trailing /v1 is the disagreement.
 	url, err := modelListURL("https://gw.example.com/v1/openai")
 	require.NoError(t, err)
 	assert.Equal(t, "https://gw.example.com/v1/openai/v1/models", url)

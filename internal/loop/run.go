@@ -71,10 +71,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	answer := func(turn int, comp *Completion, id MessageID, final Message) *Result {
 		cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
 		finalizeAssistant(FinalizeAssistantEvent{ID: id, Msg: final, Status: "complete"})
-		// Something is queued: either the stop hook above put it there, or
-		// it arrived while the model was working and the answer could not
-		// have accounted for it. Keep the answer and take another turn,
-		// which drains the queue at the top.
+		// Something is queued: keep the answer and take another turn, which drains it.
 		if cfg.Messages.Pending() && moreTurnsAllowed(turn) {
 			transcript = append(transcript, final)
 			return nil
@@ -330,8 +327,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				reports := cfg.Subagents.Take()
 				lost := cfg.Subagents.CancelRemaining()
 				if len(reports) > 0 || lost > 0 {
-					// The answer is recorded, then the delivery trails it: the
-					// cap leaves no turn to read it, but the host persists it.
+					// The answer is recorded, then the delivery trails it for the host.
 					final := assistant
 					final.ToolCalls = nil
 					if strings.TrimSpace(final.Content) == "" {
@@ -439,8 +435,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			comp2, err2 := runModelCall(ctx, &cfg, req, turn+2, wrapMsgs, nil, res, elapsed)
 			if err2 == nil {
 				if s := strings.TrimSpace(comp2.Message.Content); s != "" {
-					// The wrap-up's answer is this turn's answer: it lands on the
-					// row the host minted above, and is a stop boundary like any.
+					// The wrap-up's answer is this turn's answer, on the row minted above.
 					final := comp2.Message
 					final.ToolCalls = nil
 					if assistantID != "" {

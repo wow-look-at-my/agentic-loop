@@ -244,7 +244,7 @@ func TestRateLimiterGatesTheProvidersRequests(t *testing.T) {
 
 	p, err := NewOpenAIProvider(OpenAIConfig{ProviderConfig: ProviderConfig{
 		BaseURL:     srv.URL,
-		RateLimiter: NewRateLimiter(120_000), // 0.5ms apart: gated, not slow
+		RateLimiter: NewRateLimiter(120_000), // sub-millisecond apart: gated, not slow
 	}})
 	require.NoError(t, err)
 	for range 3 {

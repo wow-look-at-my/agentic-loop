@@ -228,7 +228,7 @@ func partsFrom(el *validator.Element) ([]Part, error) {
 }
 
 // partFrom reads content part, returning nil for an element that is not
-//.
+// .
 func partFrom(el *validator.Element) (Part, error) {
 	if !isCore(el) {
 		return nil, nil

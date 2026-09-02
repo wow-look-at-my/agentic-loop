@@ -50,7 +50,7 @@ var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls
 // it knows nothing about connections, status codes, or backoff, and an error
 // that reaches it is treated as REAL and PERMANENT -- the layer whose job was
 // to make the call happen has already given up, so Run stops rather than
-//-guessing it. Riding out transient failure belongs to the Provider
+// -guessing it. Riding out transient failure belongs to the Provider
 // (ProviderConfig.Retry), which is also the only layer that can see whether a
 // call streamed anything -- the condition that decides whether re-sending is
 // safe. See "Layering" in README.md.
