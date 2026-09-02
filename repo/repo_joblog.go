@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// what=job_log reads one Actions job's own log, where the failing assertion lives.
+// what=job_log reads Actions job's own log, where the failing assertion lives.
 
 const (
-	// jobLogMaxBytes caps one log read.
+	// jobLogMaxBytes caps log read.
 	jobLogMaxBytes = 24 << 20
 	// jobLogTailLines is how much of an over-long log is returned when no window is asked.
 	jobLogTailLines = 400

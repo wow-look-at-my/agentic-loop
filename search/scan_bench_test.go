@@ -18,9 +18,9 @@ import (
 //
 // go-toolchain does not run benchmarks. To reproduce:
 //
-//	go test -run '^$' -bench BenchmarkVectorScan -benchtime 10x ./search/
+//	go test -run '^$' -bench BenchmarkVectorScan -benchtime 10x./search/
 
-// fillVectors writes n vectors of the given width, all under one owner and
+// fillVectors writes n vectors of the given width, all under owner and
 // model, and returns the index holding them.
 func fillVectors(tb testing.TB, dir string, n, dim int) *Index {
 	tb.Helper()

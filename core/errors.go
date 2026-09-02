@@ -7,7 +7,7 @@ import (
 	"regexp"
 )
 
-// APIError is a non-2xx provider response: Body holds up to 4 KiB, ContextOverflow flags a permanent 400.
+// APIError is a non-2xx provider response: Body holds up to KiB, ContextOverflow flags a permanent.
 type APIError struct {
 	Status          int
 	Body            string

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// The filesystem tools: one vocabulary for reading and writing files behind mounted providers.
+// The filesystem tools: vocabulary for reading and writing files behind mounted providers.
 
 // The advertised tool names.
 const (
@@ -18,8 +18,8 @@ const (
 	DeleteFileToolName = "delete_file"
 )
 
-// The result caps. They bound what one call can put in the model's context;
-// each one is announced when it bites, never applied silently.
+// The result caps. They bound what call can put in the model's context;
+// each is announced when it bites, never applied silently.
 const (
 	// FindDefaultLimit and FindMaxLimit bound a find_files result.
 	FindDefaultLimit = 20
@@ -27,11 +27,11 @@ const (
 	// GrepDefaultLimit and GrepMaxLimit bound a grep result.
 	GrepDefaultLimit = 30
 	GrepMaxLimit     = 100
-	// ListMaxEntries caps one directory listing fed to the model.
+	// ListMaxEntries caps directory listing fed to the model.
 	ListMaxEntries = 1000
 )
 
-// DirEntry is one entry in a directory listing.
+// DirEntry is entry in a directory listing.
 type DirEntry struct {
 	Name string
 	Dir  bool
@@ -42,7 +42,7 @@ type DirEntry struct {
 	Kind string
 }
 
-// Listing is one directory's contents plus an optional header annotation.
+// Listing is directory's contents plus an optional header annotation.
 type Listing struct {
 	Entries []DirEntry
 	Note    string
@@ -59,7 +59,7 @@ type File struct {
 	TruncatedNote string
 }
 
-// GrepQuery is one content search.
+// GrepQuery is content search.
 type GrepQuery struct {
 	// Pattern is matched literally unless Regexp is set.
 	Pattern string
@@ -72,7 +72,7 @@ type GrepQuery struct {
 	MaxHits int
 }
 
-// GrepHit is one matching line.
+// GrepHit is matching line.
 type GrepHit struct {
 	// Path is the full virtual path, ready to hand back to read_file.
 	Path string
@@ -97,7 +97,7 @@ type FileToolsConfig struct {
 	Providers map[string]any
 	// MountsBlurb is the host's sentence naming its mounts, appended to every tool description.
 	MountsBlurb string
-	// Notes hold per-tool facts about the host's mounts, appended to that one tool's description.
+	// Notes hold per-tool facts about the host's mounts, appended to that tool's description.
 	Notes map[string]string
 	// Unavailable explains a mount this run does not serve; it receives the mount name.
 	Unavailable func(mount string) string
@@ -105,14 +105,14 @@ type FileToolsConfig struct {
 	Guard PathGuard
 }
 
-// files is the shared state behind the seven tools.
+// files is the shared state behind the tools.
 type files struct {
 	registry    *registry
 	unavailable func(string) string
 	guard       PathGuard
 }
 
-// FileTools is a handle returned by NewFileTools that provides the seven
+// FileTools is a handle returned by NewFileTools that provides the
 // file tools and allows runtime mutation of the provider set.
 type FileTools struct {
 	*files
@@ -145,7 +145,7 @@ func NewFileTools(cfg FileToolsConfig) *FileTools {
 	return &FileTools{files: e, tools: tools}
 }
 
-// Tools returns the seven file tools. Safe for use in agentic.Config while
+// Tools returns the file tools. Safe for use in agentic.Config while
 // mutating the provider set concurrently.
 func (ft *FileTools) Tools() agentic.Tools {
 	return ft.tools
@@ -173,7 +173,7 @@ func (ft *FileTools) Remove(prefix string) {
 	ft.files.registry.remove(prefix)
 }
 
-// sentence prepares a host addendum for appending: nothing for an empty one,
+// sentence prepares a host addendum for appending: nothing for an empty,
 // and a separating space otherwise.
 func sentence(s string) string {
 	if s = strings.TrimSpace(s); s == "" {

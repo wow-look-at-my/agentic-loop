@@ -36,7 +36,7 @@ func (i ghIssue) isPR() bool {
 	return s != "" && s != "null"
 }
 
-// ghIssueComment is one issue comment.
+// ghIssueComment is issue comment.
 type ghIssueComment struct {
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
@@ -82,7 +82,7 @@ func (e *repoTools) issueList(ctx context.Context, in repoReadArgs) agentic.Tool
 	return agentic.ToolResult{Content: formatIssueList(in.Org, in.Repo, state, labels, kept)}
 }
 
-// formatIssueList renders one issue per line.
+// formatIssueList renders issue per line.
 func formatIssueList(org, repo, state, labels string, issues []ghIssue) string {
 	header := fmt.Sprintf("issues of %s (state %s", RepoPath(org, repo, ""), state)
 	if labels != "" {
@@ -150,7 +150,7 @@ func (e *repoTools) issueRead(ctx context.Context, in repoReadArgs) agentic.Tool
 	return agentic.ToolResult{Content: formatIssue(in.Org, in.Repo, is, comments, commentsErr)}
 }
 
-// formatIssue renders one issue: header, body (capped), and comments (each
+// formatIssue renders issue: header, body (capped), and comments (each
 // capped, count-capped with an explicit note).
 func formatIssue(org, repo string, is ghIssue, comments []ghIssueComment, commentsErr string) string {
 	var b strings.Builder

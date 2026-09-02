@@ -56,7 +56,7 @@ func IsUnsupported(err error) bool {
 // ErrorKind classifies a failure the way the format names it, so a caller can branch on what happened.
 func ErrorKind(err error) string { return errorKind(err) }
 
-// IsBadRequest reports whether err is one the library refused to send, rather than one an upstream produced.
+// IsBadRequest reports whether err is the library refused to send, rather than an upstream produced.
 func IsBadRequest(err error) bool {
 	var re *requestError
 	return errors.As(err, &re)

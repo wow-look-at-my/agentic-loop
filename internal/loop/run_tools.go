@@ -16,7 +16,7 @@ func batchFingerprint(calls []ToolCall) string {
 	return b.String()
 }
 
-// resolveCall produces the recorded ToolResult for one requested call:
+// resolveCall produces the recorded ToolResult for requested call:
 // executed, denied, or a teaching error. EVERY call is put to the Approver --
 // a tool has no say in whether it is asked about, so a host's deny rule
 // reaches read-only calls too. The returned error is non-nil ONLY when an

@@ -205,7 +205,7 @@ func TestResponsesStreamsTextReasoningAndCalls(t *testing.T) {
 	assert.NotEmpty(t, firstUsage(comp).Raw, "the verbatim usage object survives for logging")
 }
 
-// No cache detail at all is UNKNOWN, never a zero: the tri-state contract.
+// No cache detail at all is UNKNOWN, never a: the tri-state contract.
 func TestResponsesUsageWithoutCacheDetailStaysUnknown(t *testing.T) {
 	_, base := respServer(t, respCompletedEvent(jsonObj{
 		"status": "completed",
@@ -220,7 +220,7 @@ func TestResponsesUsageWithoutCacheDetailStaysUnknown(t *testing.T) {
 }
 
 // A run that hit the output cap must say so, and this API reports it in only
-// one place.
+// place.
 func TestResponsesIncompleteReportsWhy(t *testing.T) {
 	cases := []struct {
 		reason string
@@ -245,8 +245,8 @@ func TestResponsesIncompleteReportsWhy(t *testing.T) {
 	}
 }
 
-// A 200 whose body says the response failed is still a failure, and re-sending
-// a request the server accepted and then rejected would just be billed twice.
+// A whose body says the response failed is still a failure, and re-sending
+// a request the server accepted and then rejected would just be billed.
 func TestResponsesFailureInsideA200(t *testing.T) {
 	cases := []struct {
 		name    string

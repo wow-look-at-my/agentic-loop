@@ -8,9 +8,9 @@ import (
 	"unicode/utf8"
 )
 
-// The writer is hand-rolled because encoding/xml cannot emit &#0; or control namespace prefixes.
+// The writer is hand-rolled because encoding/xml cannot emit &#; or control namespace prefixes.
 
-// Namespaces. The core vocabulary and one per dialect, so provider-specific
+// Namespaces. The core vocabulary and per dialect, so provider-specific
 // data is namespaced rather than guessed at by name.
 const (
 	NS          = "https://github.com/wow-look-at-my/common-ai-api/schema/v1"
@@ -26,11 +26,11 @@ const (
 	prefixResponses = "responses"
 )
 
-// xmlDecl is the declaration every document starts with; XML 1.1 is required.
+// xmlDecl is the declaration every document starts with; XML is required.
 const xmlDecl = `<?xml version="1.1" encoding="UTF-8"?>` + "\n"
 
-// writer emits XML to an io.Writer, tracking the first error so callers can
-// write a whole document and check once.
+// writer emits XML to an io.Writer, tracking the error so callers can
+// write a whole document and check.
 type writer struct {
 	w    io.Writer
 	err  error
@@ -44,7 +44,7 @@ func newWriter(w io.Writer) *writer {
 	return xw
 }
 
-// raw writes literal bytes, skipping once an error has been seen.
+// raw writes literal bytes, skipping an error has been seen.
 func (x *writer) raw(s string) {
 	if x.err != nil {
 		return
@@ -54,7 +54,7 @@ func (x *writer) raw(s string) {
 	}
 }
 
-// attr is one attribute, already namespaced if it needs to be.
+// attr is attribute, already namespaced if it needs to be.
 type attr struct {
 	name  string
 	value string
@@ -152,7 +152,7 @@ func escapeAttr(s string) string {
 	return escape(s, true)
 }
 
-// escape is the one escaper both forms share. A byte that is not valid UTF-8
+// escape is the escaper both forms share. A byte that is not valid UTF-8
 // has no character to reference at all, so it is written as its own code
 // point -- the only representable reading of a byte that should not be there.
 func escape(s string, inAttr bool) string {

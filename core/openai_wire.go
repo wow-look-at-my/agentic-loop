@@ -30,13 +30,13 @@ type oaToolCall struct {
 	Function oaFunctionCall `json:"function"`
 }
 
-// oaFunctionCall has no omitempty on Arguments: a missing arguments field makes Z.AI reject with 400.
+// oaFunctionCall has no omitempty on Arguments: a missing arguments field makes Z.AI reject with.
 type oaFunctionCall struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 
-// oaMessage is one chat message; MarshalJSON owns encoding because content presence is role-dependent.
+// oaMessage is chat message; MarshalJSON owns encoding because content presence is role-dependent.
 type oaMessage struct {
 	Role             string
 	Content          string
@@ -47,7 +47,7 @@ type oaMessage struct {
 	ReasoningDetails []oaReasoningDetail
 }
 
-// MarshalJSON always emits content so an empty tool result doesn't 400; assistant tool_calls may omit it.
+// MarshalJSON always emits content so an empty tool result doesn't; assistant tool_calls may omit it.
 func (m oaMessage) MarshalJSON() ([]byte, error) {
 	type wire struct {
 		Role             string              `json:"role"`
@@ -153,7 +153,7 @@ func reasoningText(m Message) string {
 	return b.String()
 }
 
-// oaReasoningDetail is one item of an OpenRouter-style reasoning_details
+// oaReasoningDetail is item of an OpenRouter-style reasoning_details
 // array. A field this dialect never interprets (Signature, Format, Index) is
 // still captured and replayed, since a downstream gateway checks the whole
 // item, not the fields this library happens to read.

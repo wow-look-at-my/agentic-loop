@@ -164,7 +164,7 @@ func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
 	assert.Equal(t, "c1", res.Messages[1].ToolCallID)
 }
 
-// The tool returned one thing and the transcript recorded another: dedup
+// The tool returned thing and the transcript recorded another: dedup
 // replaced the repeat with a marker. OnToolResult reports both, so a host that
 // persists the transcript stores what the model actually saw instead of
 // re-deriving it by diffing Result.Messages afterwards.

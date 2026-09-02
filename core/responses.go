@@ -136,7 +136,7 @@ func (o *responsesProvider) buildBody(req Request) ([]byte, error) {
 	return b, nil
 }
 
-// respEvent is one streamed event. Every Responses event carries its own type
+// respEvent is streamed event. Every Responses event carries its own type
 // in the payload, so the SSE `event:` line adds nothing the scanner must read.
 type respEvent struct {
 	Type     string          `json:"type"`
@@ -182,7 +182,7 @@ const (
 	respEvError           = "error"
 )
 
-// respStream accumulates one streamed response.
+// respStream accumulates streamed response.
 type respStream struct {
 	ev      *StreamEvents
 	content strings.Builder
@@ -198,7 +198,7 @@ type respStream struct {
 	sawData bool
 }
 
-// onData decodes one SSE payload. Unparseable payloads are tolerated silently
+// onData decodes SSE payload. Unparseable payloads are tolerated silently
 // (keep-alive noise), matching the chat-completions dialect. State is
 // accumulated BEFORE each emit, so a callback error yields a partial completion
 // including the failing delta.
@@ -207,7 +207,7 @@ type respStream struct {
 // reassembled from argument fragments: this API sends each item whole when it
 // finishes, so there is no accumulator to get wrong. The argument-delta events
 // are therefore not decoded at all -- a fragment stream nobody needs is a
-// second source of truth for the same bytes.
+// source of truth for the same bytes.
 func (st *respStream) onData(data []byte) error {
 	var e respEvent
 	if err := json.Unmarshal(data, &e); err != nil {
@@ -284,7 +284,7 @@ func (st *respStream) addItem(item respItem) {
 // finishResponse reads the terminal Response object: the usage snapshot with
 // its verbatim wire form, and the stop reason. Items are NOT re-read from
 // response.output -- each already arrived as an output_item.done, and taking
-// them twice would duplicate every tool call.
+// them would duplicate every tool call.
 func (st *respStream) finishResponse(raw []byte, r respResponse) error {
 	st.stop = respStopReason(r, st.haveCall)
 	if r.Usage == nil {
@@ -373,7 +373,7 @@ func respStopFromShape(hasCalls bool) string {
 	return StopEndTurn
 }
 
-// respFailure turns a response.failed event into a permanent error, not a transient one.
+// respFailure turns a response.failed event into a permanent error, not a transient.
 func respFailure(r *respResponse) error {
 	if r != nil && r.Error != nil {
 		return respEventFailure(r.Error)

@@ -149,7 +149,7 @@ func TestAMessageWithoutAnIDIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "no id")
 }
 
-// The whole reason the two halves carry separate versions: rebuilding the text
+// The whole reason the halves carry separate versions: rebuilding the text
 // index is free, and re-embedding a history is not. A text-side bump must not
 // send every caller back to their provider's billing page.
 func TestRebuildingTheTextIndexKeepsThePaidForVectors(t *testing.T) {
@@ -293,7 +293,7 @@ func TestAForeignIndexAtTheSameVersionIsRebuiltNotRefused(t *testing.T) {
 	_, err = idx.EmbedPending(ctx, "u1", "up/model", emb, 10)
 	require.NoError(t, err)
 
-	// The file now looks like one an earlier, differently-shaped index left behind.
+	// The file now looks like an earlier, differently-shaped index left behind.
 	_, err = idx.sql.ExecContext(ctx, oldForeignFTSSchema)
 	require.NoError(t, err)
 	require.NoError(t, idx.Close())

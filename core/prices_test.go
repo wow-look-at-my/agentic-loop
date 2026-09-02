@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The arithmetic, with the three errors that cost real money.
+// The arithmetic, with the errors that cost real money.
 func TestCostDoesNotDoubleCountCachedTokens(t *testing.T) {
 	r := Rates{Prompt: 0.000015, Completion: 0.000075, CacheRead: 0.0000015, CacheWrite: 0.00001875}
 	read, write := 36000, 0
 	u := Usage{PromptTokens: 40000, CompletionTokens: 0, CacheReadTokens: &read, CacheWriteTokens: &write}
 
-	// 4000 uncached at 15/MTok + 36000 cached at 1.5/MTok.
+	// uncached at 15/MTok + cached at 1.5/MTok.
 	assert.InDelta(t, 4000*0.000015+36000*0.0000015, r.Cost(u), 1e-9)
 
 	naive := 40000*0.000015 + 36000*0.0000015
@@ -36,7 +36,7 @@ func TestCostPricesCompletionOnceWhateverTheThinkingWas(t *testing.T) {
 	assert.InDelta(t, 100*0.000001+4100*0.00001, r.Cost(u), 1e-9)
 }
 
-// crof.ai's own /v1/models reports pricing already in USD per MILLION tokens
+// crof.ai's own /v1/models reports pricing already in USD per tokens
 // ("0.35" for a model its pricing page prices at $0.35/M), not per token like
 // OpenRouter. Reading "0.35" as USD per token billed a real turn a
 // millionfold high. A value that would cross maxPlausiblePerTokenUSD under

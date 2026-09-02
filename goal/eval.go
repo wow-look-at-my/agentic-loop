@@ -11,10 +11,10 @@ import (
 	agentic "github.com/wow-look-at-my/agentic-loop"
 )
 
-// EvalTimeout bounds one evaluator call.
+// EvalTimeout bounds evaluator call.
 const EvalTimeout = 30 * time.Second
 
-// EvalMaxTokens is the evaluator's budget; Anthropic requires one.
+// EvalMaxTokens is the evaluator's budget; Anthropic requires.
 const EvalMaxTokens = 512
 
 // A tool result in the window keeps its head and tail: the evidence of a test
@@ -48,7 +48,7 @@ agent has tried every reasonable approach and demonstrated that it cannot be don
 Slow progress is not impossible. No progress yet is not impossible. When in doubt,
 set "met": false and leave "impossible": false.`
 
-// EvalUser is the evaluator's one user message.
+// EvalUser is the evaluator's user message.
 func EvalUser(condition, window string) string {
 	return "Condition: " + condition + "\n\nTranscript:\n" + window
 }
@@ -60,7 +60,7 @@ type Verdict struct {
 	Reason     string `json:"reason"`
 }
 
-// ParseVerdict reads one verdict out of a model's reply. An empty reason is a
+// ParseVerdict reads verdict out of a model's reply. An empty reason is a
 // parse failure rather than a verdict with nothing to say: the reason is the
 // whole of what the user and the model are told, and a block carrying none is a
 // refusal nobody can act on.
@@ -94,13 +94,13 @@ func unfence(text string) string {
 	return t
 }
 
-// EvalTokens caps the rendered window. Oldest turns are dropped first.
+// EvalTokens caps the rendered window. Oldest turns are dropped.
 const EvalTokens = 40000
 
 // OmittedMarker heads a window that dropped something. Why: docs/goal.md.
 const OmittedMarker = "[earlier turns omitted]"
 
-// EntryKind is what one transcript entry is; a host maps its own rows onto these.
+// EntryKind is what transcript entry is; a host maps its own rows onto these.
 type EntryKind uint8
 
 const (
@@ -118,7 +118,7 @@ const (
 	EntryError
 )
 
-// Entry is one line of the window; two things never map onto one -- private
+// Entry is line of the window; things never map onto -- private
 // reasoning, and goal mode's own notices (docs/goal.md).
 type Entry struct {
 	Kind EntryKind
@@ -126,8 +126,8 @@ type Entry struct {
 }
 
 // EntriesFromMessages maps a library transcript onto window entries, for a host
-// whose store IS []agentic.Message. A tool call becomes one entry per call so a
-// truncated window drops calls rather than halves of one.
+// whose store IS []agentic.Message. A tool call becomes entry per call so a
+// truncated window drops calls rather than halves of.
 func EntriesFromMessages(msgs []agentic.Message) []Entry {
 	out := make([]Entry, 0, len(msgs))
 	for _, m := range msgs {
@@ -166,7 +166,7 @@ func RenderWindow(entries []Entry, maxTokens int) string {
 		return "(no transcript yet: no work has been recorded since the goal was set)"
 	}
 
-	// Newest first while filling: a small budget keeps the most recent evidence.
+	// Newest while filling: a small budget keeps the most recent evidence.
 	keep, budget := 0, maxTokens
 	for i := len(rendered) - 1; i >= 0; i-- {
 		budget -= estimateTokens(rendered[i])
@@ -185,7 +185,7 @@ func RenderWindow(entries []Entry, maxTokens int) string {
 // estimateTokens is the chars/4 estimator; nothing here pretends to tokenize.
 func estimateTokens(s string) int { return len(s)/4 + 1 }
 
-// renderEntry renders one entry, or reports that it carries nothing.
+// renderEntry renders entry, or reports that it carries nothing.
 func renderEntry(e *Entry) (string, bool) {
 	if strings.TrimSpace(e.Text) == "" {
 		return "", false
@@ -220,16 +220,16 @@ func truncateMiddle(s string) string {
 		string(r[len(r)-evalTail:])
 }
 
-// Judge makes one bounded, tool-less call; the *Completion is what it spent.
+// Judge makes bounded, tool-less call; the *Completion is what it spent.
 type Judge func(ctx context.Context, system, user string) (*agentic.Completion, error)
 
-// OneShotJudge is the ordinary Judge: one bounded, tool-less call on the host's
+// OneShotJudge is the ordinary Judge: bounded, tool-less call on the host's
 // own provider and model, with the evaluator's own answer budget.
 func OneShotJudge(p agentic.Provider, req agentic.Request) Judge {
 	return func(ctx context.Context, system, user string) (*agentic.Completion, error) {
 		r := req
 		r.System = system
-		// SystemParts outranks System, so the host's prompt would replace this one.
+		// SystemParts outranks System, so the host's prompt would replace this.
 		r.SystemParts = nil
 		r.MaxTokens = EvalMaxTokens
 		r.Messages = []agentic.Message{{Role: agentic.RoleUser, Content: user}}
@@ -237,7 +237,7 @@ func OneShotJudge(p agentic.Provider, req agentic.Request) Judge {
 	}
 }
 
-// Outcome is what one evaluation decided; the host turns it into notices.
+// Outcome is what evaluation decided; the host turns it into notices.
 type Outcome uint8
 
 const (
@@ -274,7 +274,7 @@ func (o Outcome) String() string {
 // repetitionLimit identical reasons is a VERDICT, not a budget: docs/goal.md.
 const repetitionLimit = 3
 
-// Verdicts is what one evaluation produced, for the host to record.
+// Verdicts is what evaluation produced, for the host to record.
 type Verdicts struct {
 	Outcome   Outcome
 	Reason    string
@@ -284,11 +284,11 @@ type Verdicts struct {
 }
 
 // Evaluator decides whether a run may stop. Evaluate mutates the state's
-// counters, so the caller serializes: one goroutine per state at a time.
+// counters, so the caller serializes: goroutine per state at a time.
 type Evaluator struct {
 	// State is the goal being evaluated; nil permits the stop.
 	State *State
-	// Window returns the goal-scoped entries, oldest first.
+	// Window returns the goal-scoped entries, oldest.
 	Window func() ([]Entry, error)
 	// Judge makes the evaluator call.
 	Judge Judge
@@ -358,10 +358,10 @@ func (e *Evaluator) Evaluate(ctx context.Context) Verdicts {
 	}
 }
 
-// ask makes the evaluator call, with one retry on an unusable answer. The retry
+// ask makes the evaluator call, with retry on an unusable answer. The retry
 // sends the identical request: the failure it is for is a model that wrapped its
-// object in prose, not a request that was wrong. A second failure suspends, and
-// the message names which of the two failures it was.
+// object in prose, not a request that was wrong. A failure suspends, and
+// the message names which of the failures it was.
 func (e *Evaluator) ask(ctx context.Context, window string) (Verdict, *agentic.Completion, error) {
 	user := EvalUser(e.State.Condition, window)
 

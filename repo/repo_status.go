@@ -20,7 +20,7 @@ const (
 	statusSummaryMaxRunes = 4_000
 	// checkRunTextMaxRunes caps what=check_run's own output text.
 	checkRunTextMaxRunes = 60_000
-	// checkRunAnnotationLimit bounds the annotations listed for one check run.
+	// checkRunAnnotationLimit bounds the annotations listed for check run.
 	checkRunAnnotationLimit = 50
 )
 
@@ -36,7 +36,7 @@ type ghCombinedStatus struct {
 	} `json:"statuses"`
 }
 
-// ghCheckRun decodes one check run, from either the per-commit listing or the
+// ghCheckRun decodes check run, from either the per-commit listing or the
 // single-check-run read.
 type ghCheckRun struct {
 	ID         int64  `json:"id"`
@@ -58,7 +58,7 @@ type ghCheckRunsResponse struct {
 	CheckRuns []ghCheckRun `json:"check_runs"`
 }
 
-// ghAnnotation decodes one check-run annotation: where GitHub Actions records
+// ghAnnotation decodes check-run annotation: where GitHub Actions records
 // the actual error lines a failing step produced.
 type ghAnnotation struct {
 	Path            string `json:"path"`
@@ -154,7 +154,7 @@ func (e errStr) Error() string { return string(e) }
 // explainFailures fetches the detail of each failing check run, up to
 // statusFailureDetailLimit. It returns the fetched details by check-run id and
 // the names it did NOT explain, so the report can say so rather than let a
-// bounded read pass for a complete one.
+// bounded read pass for a complete.
 func (e *repoTools) explainFailures(ctx context.Context, org, repo string, runs []ghCheckRun) (map[int64]ghCheckRun, []string) {
 	details := map[int64]ghCheckRun{}
 	var undetailed []string
@@ -176,7 +176,7 @@ func (e *repoTools) explainFailures(ctx context.Context, org, repo string, runs 
 	return details, undetailed
 }
 
-// fetchCheckRun reads one check run by id.
+// fetchCheckRun reads check run by id.
 func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int64) (ghCheckRun, error) {
 	target := fmt.Sprintf("%s/check-runs/%d", e.gh.RepoURL(org, repo), id)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")
@@ -193,7 +193,7 @@ func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int6
 	return c, nil
 }
 
-// formatStatus renders both CI mechanisms as one report. A check-runs failure
+// formatStatus renders both CI mechanisms as report. A check-runs failure
 // is noted, not fatal — a token can read the legacy status and lack Checks API
 // access (or vice versa), and a partial answer beats none.
 func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote, actions, actionsNote string, details map[int64]ghCheckRun, undetailed []string) string {
@@ -305,7 +305,7 @@ func formatFailureDetail(c ghCheckRun) string {
 	return b.String()
 }
 
-// checkRunRead is what=check_run: one check run's full output and its
+// checkRunRead is what=check_run: check run's full output and its
 // annotations. what=status names the ids; this is the drill-down for when its
 // inlined summary is not enough.
 func (e *repoTools) checkRunRead(ctx context.Context, in repoReadArgs) agentic.ToolResult {
@@ -344,7 +344,7 @@ func (e *repoTools) fetchAnnotations(ctx context.Context, org, repo string, id i
 	return out, ""
 }
 
-// formatCheckRun renders one check run in full.
+// formatCheckRun renders check run in full.
 func formatCheckRun(org, repo string, c ghCheckRun, annotations []ghAnnotation, annNote string) string {
 	var b strings.Builder
 	runState := c.Status
@@ -392,7 +392,7 @@ func formatCheckRun(org, repo string, c ghCheckRun, annotations []ghAnnotation, 
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// formatAnnotation renders one annotation as "level path:line -- message".
+// formatAnnotation renders annotation as "level path:line -- message".
 func formatAnnotation(a ghAnnotation) string {
 	var b strings.Builder
 	level := a.AnnotationLevel

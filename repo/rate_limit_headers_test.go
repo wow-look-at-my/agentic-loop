@@ -42,8 +42,8 @@ func TestReadRateLimitTakesTheCoreBudgetOffAnyResponse(t *testing.T) {
 	assert.Equal(t, now, s.ObservedAt, "a reader has to know how old these numbers are")
 }
 
-// Search spends a separate, much smaller budget. Reporting it as the core one
-// tells the reader they have 30 requests left when they have thousands.
+// Search spends a separate, much smaller budget. Reporting it as the core
+// tells the reader they have requests left when they have thousands.
 func TestReadRateLimitIgnoresANonCoreResource(t *testing.T) {
 	rec := httptest.NewRecorder()
 	rlHeader(rec, "search", 30, 1, 29, time.Now().Add(time.Minute))
@@ -66,7 +66,7 @@ func TestReadRateLimitReportsNothingWhenTheHeadersAreAbsent(t *testing.T) {
 	assert.False(t, ok, "absent is not zero remaining")
 }
 
-// Used is derived when GitHub omits it, so the field is never a bare zero
+// Used is derived when GitHub omits it, so the field is never a bare
 // standing in for a number nobody sent.
 func TestReadRateLimitDerivesUsedWhenItIsMissing(t *testing.T) {
 	h := http.Header{}
@@ -108,7 +108,7 @@ func TestAnOrdinaryReadReportsTheQuotaItSpent(t *testing.T) {
 	assert.Equal(t, 4321, seen[0].Status.Remaining)
 }
 
-// The unauthenticated bucket is a credential of its own, and the one whose
+// The unauthenticated bucket is a credential of its own, and the whose
 // exhaustion a host most needs to see coming.
 func TestAnAnonymousReadReportsTheAnonymousBucket(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +154,7 @@ func TestTestTokenCarriesTheQuotaItsOwnProbeReported(t *testing.T) {
 }
 
 // A failed test still reports the quota: a token rejected while the budget is
-// spent is a different problem from one rejected with budget to spare.
+// spent is a different problem from rejected with budget to spare.
 func TestTestTokenCarriesTheQuotaEvenWhenTheTokenIsRejected(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		rlHeader(w, "core", 5000, 11, 4989, time.Now().Add(time.Hour))

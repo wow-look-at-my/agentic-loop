@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// TestToken probes exactly one credential's real health against GitHub's /user endpoint, plus its repos and orgs.
+// TestToken probes exactly credential's real health against GitHub's /user endpoint, plus its repos and orgs.
 type TokenTestResult struct {
 	OK             bool            `json:"ok"`
 	Login          string          `json:"login,omitempty"`   // authenticated GitHub login, when ok
@@ -28,7 +28,7 @@ type TokenTestResult struct {
 	RateLimit RateLimitStatus `json:"rate_limit,omitempty"`
 }
 
-// TokenTestRepo is one repository visible to the tested token, with the
+// TokenTestRepo is repository visible to the tested token, with the
 // permission levels GitHub reports for it in a repo-list response's per-repo
 // "permissions" object (shared by /user/repos and /orgs/{org}/repos).
 type TokenTestRepo struct {
@@ -41,7 +41,7 @@ type TokenTestRepo struct {
 	Pull     bool   `json:"pull"`
 }
 
-// TokenTestOrg is one organization the tested token can see, with that org's
+// TokenTestOrg is organization the tested token can see, with that org's
 // own repository listing (a direct GET /orgs/{org}/repos, not an inference
 // from the flat Repos list).
 type TokenTestOrg struct {
@@ -178,7 +178,7 @@ func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string
 	}
 }
 
-// mergeOrgLogins unions two organization-login lists, case-insensitively
+// mergeOrgLogins unions organization-login lists, case-insensitively
 // deduplicated, preferring discovered's casing (it comes straight from
 // GitHub's own org listing) and preserving first-seen order.
 func mergeOrgLogins(discovered, fromRepos []string) []string {
@@ -231,7 +231,7 @@ func (e *GitHub) listVisibleOrgs(ctx context.Context, token string) (logins []st
 	return logins, ""
 }
 
-// listOrgRepos lists one organization's repositories directly (GET
+// listOrgRepos lists organization's repositories directly (GET
 // /orgs/{org}/repos, type=all so it covers everything the token itself can
 // see rather than only public ones), paginated the same way as
 // listVisibleRepos.
@@ -260,7 +260,7 @@ func (e *GitHub) listOrgRepos(ctx context.Context, token, org string) (repos []T
 	return repos, true, ""
 }
 
-// ghUserRepo is one repository from a repo-list response (/user/repos or
+// ghUserRepo is repository from a repo-list response (/user/repos or
 // /orgs/{org}/repos), including the permissions object GitHub reports for the
 // authenticated credential and the owner GitHub attributes it to.
 type ghUserRepo struct {

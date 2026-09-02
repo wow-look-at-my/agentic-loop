@@ -8,7 +8,7 @@ import (
 // Role identifies the author of a Message.
 type Role string
 
-// Four roles: RoleSystem via Request.System, RoleTool carries tool results back.
+// roles: RoleSystem via Request.System, RoleTool carries tool results back.
 const (
 	RoleSystem    Role = "system"
 	RoleUser      Role = "user"
@@ -16,7 +16,7 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// One reasoning block: Text is the reasoning, Signature must replay VERBATIM; contents differ by dialect.
+// reasoning block: Text is the reasoning, Signature must replay VERBATIM; contents differ by dialect.
 type ThinkingBlock struct {
 	Text      string
 	Signature string
@@ -26,7 +26,7 @@ type ThinkingBlock struct {
 	Redacted string
 }
 
-// ToolCall is one tool invocation; Arguments is the raw JSON text, "{}" for a zero-argument tool.
+// ToolCall is tool invocation; Arguments is the raw JSON text, "{}" for a zero-argument tool.
 type ToolCall struct {
 	ID        string
 	Name      string
@@ -54,7 +54,7 @@ func replayToolArgs(args string) string {
 	return s
 }
 
-// Message is one entry in a conversation transcript. Thinking and ToolCalls
+// Message is entry in a conversation transcript. Thinking and ToolCalls
 // are meaningful only on assistant messages; ToolCallID and ToolIsError only
 // on tool messages.
 type Message struct {
@@ -133,7 +133,7 @@ func (t ToolDecl) schema() json.RawMessage {
 
 // A message's content is an ordered list of parts; order is the contract and is never flattened.
 
-// PartKind names one kind of content part; the discriminator the XML codec writes and reads.
+// PartKind names kind of content part; the discriminator the XML codec writes and reads.
 type PartKind string
 
 // The kinds of content a message can carry.
@@ -145,7 +145,7 @@ const (
 	PartKindToolCall         PartKind = "tool-call"
 )
 
-// Part is one piece of a message's content; concrete types are TextPart, ImagePart, etc.
+// Part is piece of a message's content; concrete types are TextPart, ImagePart, etc.
 type Part interface {
 	// Kind identifies the part without a type switch.
 	Kind() PartKind
@@ -169,7 +169,7 @@ type ImagePart struct {
 // Kind implements Part.
 func (ImagePart) Kind() PartKind { return PartKindImage }
 
-// ThinkingPart is one reasoning block: Text the reasoning, Signature replayed verbatim, ID the id.
+// ThinkingPart is reasoning block: Text the reasoning, Signature replayed verbatim, ID the id.
 type ThinkingPart struct {
 	Text      string
 	Signature string
@@ -188,7 +188,7 @@ type RedactedThinkingPart struct {
 // Kind implements Part.
 func (RedactedThinkingPart) Kind() PartKind { return PartKindRedactedThinking }
 
-// ToolCallPart is one tool invocation; Arguments kept as raw text because a model can emit invalid JSON.
+// ToolCallPart is tool invocation; Arguments kept as raw text because a model can emit invalid JSON.
 type ToolCallPart struct {
 	ID        string
 	Name      string

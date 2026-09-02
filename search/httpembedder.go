@@ -25,7 +25,7 @@ type HTTPEmbedder struct {
 	Model string
 	// APIKey, when non-empty, is sent as a Bearer token.
 	APIKey string
-	// Headers are extra request headers, set after the bearer token so one can override it.
+	// Headers are extra request headers, set after the bearer token so can override it.
 	Headers map[string]string
 	// HTTP is the client; nil uses http.DefaultClient.
 	HTTP *http.Client
@@ -34,17 +34,17 @@ type HTTPEmbedder struct {
 	DocumentPrefix string
 	QueryPrefix    string
 
-	// MaxBatch caps how many inputs go in one request; the cap is the endpoint's, and endpoints disagree.
+	// MaxBatch caps how many inputs go in request; the cap is the endpoint's, and endpoints disagree.
 	MaxBatch int
 }
 
-// Nomic's text models require a task instruction prefix on every input; these are the two that matter for retrieval.
+// Nomic's text models require a task instruction prefix on every input; these are the that matter for retrieval.
 const (
 	NomicDocumentPrefix = "search_document: "
 	NomicQueryPrefix    = "search_query: "
 )
 
-// embeddingsMaxBytes caps one response, well above a full batch, to stop an unbounded read.
+// embeddingsMaxBytes caps response, well above a full batch, to stop an unbounded read.
 const embeddingsMaxBytes = 64 << 20
 
 // embeddingsRequest is the POST body; encoding_format is sent explicitly so a base64 gateway can't break it.
@@ -100,7 +100,7 @@ func (e HTTPEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, e
 	return vecs[0], nil
 }
 
-// post makes one embeddings request.
+// post makes embeddings request.
 func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, error) {
 	body, err := json.Marshal(embeddingsRequest{Model: e.Model, Input: texts, EncodingFormat: "float"})
 	if err != nil {
@@ -146,7 +146,7 @@ func (e HTTPEmbedder) post(ctx context.Context, texts []string) ([][]float32, er
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, fmt.Errorf("search: decode embeddings: %w", err)
 	}
-	// Some gateways answer 200 with an error object; reading it as empty data would lose the real reason.
+	// Some gateways answer with an error object; reading it as empty data would lose the real reason.
 	if parsed.Error != nil && parsed.Error.Message != "" {
 		return nil, fmt.Errorf("search: embeddings: %s", parsed.Error.Message)
 	}

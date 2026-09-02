@@ -82,11 +82,11 @@ type bagEmbedder struct {
 	fail error
 	// calls counts requests, so a test can assert the batching.
 	calls int
-	// short makes it return one fewer vector than it was given inputs.
+	// short makes it return fewer vector than it was given inputs.
 	short bool
 }
 
-// EmbedQuery embeds one query the same way a document is embedded: the bag
+// EmbedQuery embeds query the same way a document is embedded: the bag
 // projection is symmetric, so a query matches the documents sharing its words.
 func (b *bagEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
 	vecs, err := b.EmbedDocuments(ctx, []string{text})
@@ -111,8 +111,8 @@ func (b *bagEmbedder) EmbedDocuments(_ context.Context, texts []string) ([][]flo
 			}
 			v[((h%b.dim)+b.dim)%b.dim]++
 		}
-		// A text with no words would be a zero vector, which encodeVector
-		// rightly refuses; give it one fixed direction instead.
+		// A text with no words would be a vector, which encodeVector
+		// rightly refuses; give it fixed direction instead.
 		if strings.TrimSpace(t) == "" {
 			v[0] = 1
 		}

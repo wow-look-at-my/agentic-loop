@@ -7,8 +7,8 @@ type Gate struct {
 	ch chan struct{}
 }
 
-// NewGate returns a Gate that permits at most n concurrent holders. n < 1 is
-// clamped to 1 — a Gate always limits; use a nil Gate for "no limit".
+// NewGate returns a Gate that permits at most n concurrent holders. n < is
+// clamped to — a Gate always limits; use a nil Gate for "no limit".
 func NewGate(n int) *Gate {
 	if n < 1 {
 		n = 1

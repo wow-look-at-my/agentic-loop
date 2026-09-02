@@ -195,7 +195,7 @@ func writeRequestBody(x *writer, req Request) {
 	}
 }
 
-// writeMessage writes one transcript entry.
+// writeMessage writes transcript entry.
 func writeMessage(x *writer, m Message) {
 	attrs := []attr{{name: "role", value: string(m.Role)}}
 	attrs = append(attrs, optAttr("tool-call-id", m.ToolCallID)...)
@@ -214,7 +214,7 @@ func writeParts(x *writer, parts []Part) {
 	}
 }
 
-// writePart writes one content part.
+// writePart writes content part.
 func writePart(x *writer, p Part) {
 	switch v := p.(type) {
 	case TextPart:
@@ -242,7 +242,7 @@ func writePart(x *writer, p Part) {
 	}
 }
 
-// writeTool writes one advertised tool; the input schema is a param tree, not JSON.
+// writeTool writes advertised tool; the input schema is a param tree, not JSON.
 func writeTool(x *writer, t ToolDecl) {
 	attrs := []attr{{name: "name", value: t.Name}}
 	attrs = append(attrs, optAttr("description", t.Description)...)
@@ -341,7 +341,7 @@ func writeParams(x *writer, params []Param) {
 	}
 }
 
-// writeParam writes one param node.
+// writeParam writes param node.
 func writeParam(x *writer, p Param) {
 	attrs := optAttr("name", p.Name)
 	attrs = append(attrs, attr{name: "type", value: p.Type})

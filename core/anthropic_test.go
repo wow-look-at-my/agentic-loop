@@ -32,7 +32,7 @@ func (h *anSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// minimalAnEvents is a bare valid stream: one text block.
+// minimalAnEvents is a bare valid stream: text block.
 func minimalAnEvents(text string) [][2]string {
 	return [][2]string{
 		{"message_start", `{"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}`},
@@ -62,7 +62,7 @@ func TestAnthropicRequestBody(t *testing.T) {
 			Content: "on it",
 			Thinking: []ThinkingBlock{
 				{Text: "pondering", Signature: "sig-1"},
-				// Unreplayable: no signature, so sending it as a thinking block would 400 the whole turn.
+				// Unreplayable: no signature, so sending it as a thinking block would the whole turn.
 				{Text: "text-only reasoning from somewhere else"},
 				{Redacted: "opaque-blob"},
 			},
@@ -360,7 +360,7 @@ func TestAnthropicErrorEventOverflowConsistent(t *testing.T) {
 }
 
 func TestAnthropicErrorEventAfterDataKeepsPartial(t *testing.T) {
-	// An error event after data has streamed still classifies (529 transient),
+	// An error event after data has streamed still classifies ( transient),
 	// but the partial completion rides alongside the error — and Run's
 	// nothing-streamed guard is what keeps such a call from being re-sent.
 	h := &anSSEHandler{events: [][2]string{

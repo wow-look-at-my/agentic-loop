@@ -10,7 +10,7 @@ import (
 // The Actions-API account of a commit's CI, used when the Checks API cannot be read.
 
 const (
-	// actionsRunLimit bounds how many workflow runs for one commit are reported.
+	// actionsRunLimit bounds how many workflow runs for commit are reported.
 	actionsRunLimit = 5
 	// actionsJobLimit bounds the jobs listed per run.
 	actionsJobLimit = 30
@@ -18,7 +18,7 @@ const (
 	actionsStepLimit = 10
 )
 
-// ghWorkflowRun decodes one entry of /actions/runs.
+// ghWorkflowRun decodes entry of /actions/runs.
 type ghWorkflowRun struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -34,7 +34,7 @@ type ghWorkflowRuns struct {
 	WorkflowRuns []ghWorkflowRun `json:"workflow_runs"`
 }
 
-// ghJob decodes one entry of /actions/runs/{id}/jobs.
+// ghJob decodes entry of /actions/runs/{id}/jobs.
 type ghJob struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -55,9 +55,9 @@ type ghJobs struct {
 	Jobs       []ghJob `json:"jobs"`
 }
 
-// actionsReport renders the workflow runs for one commit, each failed job and
-// the steps that failed inside it. The second return is a note explaining why
-// nothing could be rendered; exactly one of the two is ever non-empty, so a
+// actionsReport renders the workflow runs for commit, each failed job and
+// the steps that failed inside it. The return is a note explaining why
+// nothing could be rendered; exactly of the is ever non-empty, so a
 // failed read can never pass for "no runs".
 func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (string, string) {
 	resource := RepoPath(org, repo, "") + "@" + sha
@@ -98,8 +98,8 @@ func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (s
 	return strings.TrimRight(b.String(), "\n"), ""
 }
 
-// jobsReport renders one run's jobs, indented under it: every job's verdict,
-// and for a failed one the steps that failed inside it — the line a reader is
+// jobsReport renders run's jobs, indented under it: every job's verdict,
+// and for a failed the steps that failed inside it — the line a reader is
 // actually after.
 func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWorkflowRun) string {
 	target := fmt.Sprintf("%s/actions/runs/%d/jobs?per_page=%d", e.gh.RepoURL(org, repo), run.ID, actionsJobLimit)

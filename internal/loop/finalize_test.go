@@ -37,7 +37,7 @@ func newMintingEvents() *mintingEvents {
 }
 
 // A stalled turn's wrap-up answer lands on the row the host minted for the
-// turn: one mint, one finalize, the same id, the answer as its content.
+// turn: mint, finalize, the same id, the answer as its content.
 func TestRunWrapUpAnswerFinalizesTheMintedRow(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: &Completion{Message: Message{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "only thoughts"}}}, StopReason: StopEndTurn}},
@@ -119,7 +119,7 @@ func TestRunReasoningOnlyAnswerAsksTheStopHook(t *testing.T) {
 	assert.Equal(t, "the reasoning", m.finalized[0].Msg.Content, "the fallback text is what the host stores")
 }
 
-// A capped final turn with sub-agents still out records the answer once, with
+// A capped final turn with sub-agents still out records the answer, with
 // the delivery trailing it, and finalizes the row even when the answer is
 // only reasoning.
 func TestRunCappedFinalTurnRecordsTheAnswerOnce(t *testing.T) {

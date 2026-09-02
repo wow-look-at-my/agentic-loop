@@ -11,7 +11,7 @@ import (
 
 // Per-"what" argument validation for repo_read.
 //
-// repo_read is one tool over an argument union, so its schema has to accept
+// repo_read is tool over an argument union, so its schema has to accept
 // every field for every read. That made a field the chosen read ignores
 // silently droppable — see the table below for what that cost.
 
@@ -47,8 +47,8 @@ var repoReadFieldRedirect = map[string]string{
 }
 
 // validateRepoReadArgs rejects a call carrying arguments the chosen read
-// ignores. It decodes the raw object a second time because what matters is
-// which fields the caller actually supplied — a field carrying its zero value
+// ignores. It decodes the raw object a time because what matters is
+// which fields the caller actually supplied — a field carrying its value
 // states no intent (a client that marshals the whole argument struct sends
 // every key), so only a field with a value in it counts.
 func validateRepoReadArgs(what string, raw json.RawMessage) error {
@@ -86,7 +86,7 @@ func validateRepoReadArgs(what string, raw json.RawMessage) error {
 	return errors.New(b.String())
 }
 
-// isZeroJSON reports whether a raw argument value is one a caller could not
+// isZeroJSON reports whether a raw argument value is a caller could not
 // have meant anything by: absent-in-spirit rather than absent in fact.
 func isZeroJSON(raw json.RawMessage) bool {
 	switch strings.TrimSpace(string(raw)) {

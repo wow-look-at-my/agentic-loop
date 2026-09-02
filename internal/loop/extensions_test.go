@@ -11,7 +11,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Part A extension 1: public per-turn hooks on Events
+// Part A extension: public per-turn hooks on Events
 // (OnTurnBegin / OnTurnEnd; the internal turnHook stays untouched)
 // ---------------------------------------------------------------------------
 
@@ -48,7 +48,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
 
-	// Numbered 1..2, in order.
+	// Numbered.., in order.
 	assert.Equal(t, []int{1, 2}, begins)
 	// The mutation reached the provider's per-call request -- and only that call.
 	require.Len(t, provider.reqs, 2)
@@ -91,7 +91,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 	res, err := Run(context.Background(), cfg, req)
 	require.Error(t, err)
 
-	// First call succeeded (comp non-nil); the second failed (comp nil -- nothing produced).
+	// call succeeded (comp non-nil); the failed (comp nil -- nothing produced).
 	assert.Equal(t, []int{1, 2}, turns)
 	require.NotNil(t, comps[0])
 	assert.NoError(t, errs[0])
@@ -107,7 +107,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 // classification the mid-stream partial-completion path already applies.
 // Before the fix, a nil completion always finalized "error" regardless of
 // cause, so an outbound call torn down before it streamed a single byte
-// (e.g. "openai: Post ...: context canceled") persisted as a permanent
+// (e.g. "openai: Post...: context canceled") persisted as a permanent
 // failure instead of the graceful cancellation it actually was.
 func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 	cases := []struct {
@@ -207,7 +207,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
-	// Turn 1 stalled, so the wrap-up is turn 2, not the old maxTurns+1.
+	// Turn stalled, so the wrap-up is turn, not the old maxTurns+.
 	assert.Equal(t, []int{1, 2}, begins)
 	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)
@@ -234,7 +234,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
-	// Both fire once per numbered turn, in order; turnHook is unaffected by the public hooks.
+	// Both fire per numbered turn, in order; turnHook is unaffected by the public hooks.
 	assert.Equal(t, []int{1, 2}, internal)
 	assert.Equal(t, []int{1, 2}, begins)
 }

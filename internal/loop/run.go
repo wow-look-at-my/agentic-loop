@@ -18,7 +18,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	}
 	advertised := cfg.Tools.Decls()
 
-	// Output dedup: one deduper for the whole run collapses unchanged read-only results.
+	// Output dedup: deduper for the whole run collapses unchanged read-only results.
 	var deduper *OutputDeduper
 	if !cfg.DisableOutputDedup {
 		deduper = NewOutputDeduper()
@@ -56,7 +56,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			panic(r) // re-panic so the caller's recover sees it
 		}
 	}()
-	// moreTurnsAllowed reports whether a host cap still permits a turn after this one.
+	// moreTurnsAllowed reports whether a host cap still permits a turn after this.
 	moreTurnsAllowed := func(turn int) bool {
 		return cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1
 	}
@@ -110,7 +110,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				}
 			}
 		}
-		// Drain queued messages: system first, then user.
+		// Drain queued messages: system, then user.
 		for _, msg := range cfg.Messages.Drain() {
 			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
 			transcript = append(transcript, msg)
@@ -193,7 +193,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
-			// A batch identical to the previous turn's makes no progress; nudge once, then end the run.
+			// A batch identical to the previous turn's makes no progress; nudge, then end the run.
 			if fp := batchFingerprint(calls); fp == lastBatch {
 				repeats++
 			} else {
@@ -263,7 +263,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					}(i, call)
 					continue
 				}
-				// Mutating: barrier -- wait for in-flight read-only calls to finish first.
+				// Mutating: barrier -- wait for in-flight read-only calls to finish.
 				reads.Wait()
 
 				result, aerr := resolveCall(ctx, &cfg, call)
@@ -296,7 +296,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 						}
 					}
 				}
-				// The id answered is the MODEL's, never a rewritten one; a mismatch is an orphan.
+				// The id answered is the MODEL's, never a rewritten; a mismatch is an orphan.
 				recorded := Message{
 					Role:        RoleTool,
 					Content:     content,
@@ -330,7 +330,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				reports := cfg.Subagents.Take()
 				lost := cfg.Subagents.CancelRemaining()
 				if len(reports) > 0 || lost > 0 {
-					// The answer is recorded ONCE, then the delivery trails it: the
+					// The answer is recorded, then the delivery trails it: the
 					// cap leaves no turn to read it, but the host persists it.
 					final := assistant
 					final.ToolCalls = nil
@@ -425,7 +425,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 		// The model stopped without writing an answer -- it produced only
 		// reasoning. When tools were in
-		// play (so it may already have gathered useful results), make one
+		// play (so it may already have gathered useful results), make
 		// final tool-less request that forces it to synthesize an answer from
 		// what it has. The stalling turn's assistant message is deliberately
 		// NOT in the transcript (it is only appended on the tool-execution

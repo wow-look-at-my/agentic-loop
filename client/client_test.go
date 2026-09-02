@@ -51,7 +51,7 @@ func TestFoldTakesTheNewestSnapshotAndNeverSums(t *testing.T) {
 }
 
 func TestFoldDiscardsARegressingSnapshot(t *testing.T) {
-	// A final chunk that zeroes usage reports strictly less evidence than one
+	// A final chunk that zeroes usage reports strictly less evidence than
 	// already seen, so it loses.
 	inner := &coreProvider{comp: &commonai.Completion{
 		Usages: []Usage{
@@ -63,7 +63,7 @@ func TestFoldDiscardsARegressingSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 150, comp.Usage.TotalTokens)
 
-	// Equal evidence lets the later one win: it may carry richer cache detail.
+	// Equal evidence lets the later win: it may carry richer cache detail.
 	inner = &coreProvider{comp: &commonai.Completion{
 		Usages: []Usage{
 			{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
@@ -178,7 +178,7 @@ func TestAdaptersRoundTripWithoutASubstitute(t *testing.T) {
 }
 
 // A caller's own Provider only ever had the folded figure, so handing it to a
-// format-level decorator reports that figure as the call's one report.
+// format-level decorator reports that figure as the call's report.
 func TestDownAdapterReportsTheFoldedFigure(t *testing.T) {
 	caller := &scriptProvider{steps: []scriptStep{{comp: &Completion{
 		UsageReported: true,
@@ -255,7 +255,7 @@ func TestRateLimiterGatesTheProvidersRequests(t *testing.T) {
 	assert.Equal(t, 3, hits)
 }
 
-// The stripper drops the parameter the upstream named and re-sends once, and
+// The stripper drops the parameter the upstream named and re-sends, and
 // the folded Completion still comes back on the other side.
 func TestParamStripperRetriesWithoutTheRejectedParam(t *testing.T) {
 	var bodies []string
@@ -288,7 +288,7 @@ func TestParamStripperRetriesWithoutTheRejectedParam(t *testing.T) {
 	assert.Contains(t, bodies[0], "reasoning_effort")
 	assert.NotContains(t, bodies[1], "reasoning_effort")
 
-	// The strip is remembered, so the next call does not have to fail first.
+	// The strip is remembered, so the next call does not have to fail.
 	_, err = p.Complete(context.Background(), req, nil)
 	require.NoError(t, err)
 	require.Len(t, bodies, 3)

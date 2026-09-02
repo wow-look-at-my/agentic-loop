@@ -9,8 +9,8 @@ import (
 
 // RateLimitStatus is a credential's core-quota standing. Every GitHub response
 // carries it in headers, so this is READ OFF a call that was going to happen
-// anyway. There is deliberately no probe: GET /rate_limit is a second request
-// asking what the first one already answered.
+// anyway. There is deliberately no probe: GET /rate_limit is a request
+// asking what the already answered.
 type RateLimitStatus struct {
 	OK        bool      `json:"ok"`
 	Error     string    `json:"error,omitempty"`
@@ -22,7 +22,7 @@ type RateLimitStatus struct {
 	ObservedAt time.Time `json:"observed_at,omitempty"`
 }
 
-// RateLimitObservation is one response's report. Anonymous is the
+// RateLimitObservation is response's report. Anonymous is the
 // unauthenticated bucket, whose CredentialID is empty.
 type RateLimitObservation struct {
 	CredentialID   string
@@ -34,7 +34,7 @@ type RateLimitObservation struct {
 // ReadRateLimit pulls the core-quota standing out of a response's headers,
 // reporting whether they were there at all. Only the CORE resource counts: a
 // code-search call spends a different, much smaller budget (GitHub names it in
-// x-ratelimit-resource), and folding the two together reports a quota the
+// x-ratelimit-resource), and folding the together reports a quota the
 // reader does not have. An absent resource header reads as core, since only
 // the search and graphql routes set it to anything else.
 func ReadRateLimit(h http.Header, now time.Time) (RateLimitStatus, bool) {
@@ -68,7 +68,7 @@ func headerInt64(h http.Header, name string) (int64, bool) {
 	return v, err == nil
 }
 
-// observeRateLimit reports one response's rate-limit headers to the host, if
+// observeRateLimit reports response's rate-limit headers to the host, if
 // it asked to hear about them. token names which bucket was spent.
 func (e *GitHub) observeRateLimit(token string, h http.Header) {
 	if e.onRateLimit == nil {

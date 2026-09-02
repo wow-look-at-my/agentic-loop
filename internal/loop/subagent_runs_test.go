@@ -65,7 +65,7 @@ func TestSubagentRunsCollectDrainsEveryReadyReport(t *testing.T) {
 	runs.Complete("a", "ra", false, nil)
 	runs.Complete("b", "rb", true, nil)
 
-	// Two finished together, so they cost ONE delivery, not two.
+	// finished together, so they cost delivery, not.
 	reports, err := runs.Collect(context.Background())
 	require.NoError(t, err)
 	require.Len(t, reports, 2)
@@ -122,18 +122,18 @@ func TestNilSubagentRunsIsIdle(t *testing.T) {
 func TestSubagentRunsIgnoreUnknownAndDuplicateCalls(t *testing.T) {
 	runs := NewSubagentRuns(nil)
 	runs.Launch("a", "one", "p")
-	runs.Launch("a", "again", "p") // one tool call executes once
+	runs.Launch("a", "again", "p") // tool call executes
 	runs.MarkRunning("ghost")
 	runs.Complete("ghost", "from nowhere", false, nil)
 
-	// One launch, one outstanding run, nothing ready: the ghost report was not adopted.
+	// launch, outstanding run, nothing ready: the ghost report was not adopted.
 	assert.Equal(t, 1, runs.Pending())
 	assert.Empty(t, runs.Take())
 	assert.Equal(t, 1, runs.Running())
 }
 
-// A backend that assigns no tool_call id must still get one run per launch:
-// two sub-agents sharing an id would report over each other.
+// A backend that assigns no tool_call id must still get run per launch:
+// sub-agents sharing an id would report over each other.
 func TestSubagentRunsMintsDistinctIDs(t *testing.T) {
 	runs := NewSubagentRuns(nil)
 	first, second := runs.nextID(), runs.nextID()

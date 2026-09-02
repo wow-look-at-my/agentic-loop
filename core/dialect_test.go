@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// The vocabulary is the library's, so a host's UI does not carry a second copy
+// The vocabulary is the library's, so a host's UI does not carry a copy
 // that goes stale when a dialect is added.
 //
 // Reading a dialect off an endpoint is FetchModelList's job -- see

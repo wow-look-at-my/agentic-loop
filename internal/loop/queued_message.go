@@ -1,8 +1,8 @@
 package loop
 
-// QueuedMessage is a message queued for delivery into a running loop. Its two
+// QueuedMessage is a message queued for delivery into a running loop. Its
 // implementations, SystemMessage and UserMessage, tell MessageQueue which kind
-// it holds, so ONE queue carries both and no caller can wire up half of it.
+// it holds, so queue carries both and no caller can wire up half of it.
 type QueuedMessage interface {
 	// queuedMessage returns the wrapped Message; unexported keeps the set closed.
 	queuedMessage() Message

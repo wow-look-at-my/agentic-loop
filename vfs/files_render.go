@@ -27,7 +27,7 @@ func renderListing(where string, l Listing) string {
 	entries := l.Entries
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].Dir != entries[j].Dir {
-			return entries[i].Dir // directories first
+			return entries[i].Dir // directories
 		}
 		return entries[i].Name < entries[j].Name
 	})
@@ -97,8 +97,8 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 }
 
 // SliceLines applies read_file's line window. A whole file is the default, but
-// reading one function out of a large file should not cost the whole file: one
-// unwindowed read of a 60,000-character source file added roughly 18,000
+// reading function out of a large file should not cost the whole file:
+// unwindowed read of a,000-character source file added roughly,
 // tokens to a single turn.
 //
 // offset is 1-based and inclusive, matching the line numbers grep hands back.

@@ -1,8 +1,8 @@
-// Command todo_driver is the entry-point launch check for the four task-list
+// Command todo_driver is the entry-point launch check for the task-list
 // tools. It drives the real NewTodoTools constructor and each tool's Execute
 // through a realistic mutation sequence, and verifies that the host's recorded
-// store reaches exactly the intended end state. It exits 0 only when the
-// shipped code behaved; running it twice must produce identical output.
+// store reaches exactly the intended end state. It exits only when the
+// shipped code behaved; running it must produce identical output.
 package main
 
 import (
@@ -42,7 +42,7 @@ func main() {
 		return nil
 	}
 
-	// The realistic sequence: add two, edit one, complete one, cancel one.
+	// The realistic sequence: add, edit, complete, cancel.
 	for i, args := range []string{
 		`{"title":"write it"}`,
 		`{"title":"test it","state":"in_progress"}`,
@@ -71,7 +71,7 @@ func main() {
 		}
 	}
 
-	// Consistent, non-empty output that a second run reproduces exactly.
+	// Consistent, non-empty output that a run reproduces exactly.
 	fmt.Println("todo_driver: sequence passed; host stored", len(rec.snapshots), "lists, final list:")
 	for _, t := range got {
 		fmt.Println("  id", t.ID, t.State, t.Title)

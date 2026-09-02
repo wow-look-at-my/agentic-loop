@@ -103,7 +103,7 @@ func TestPartOrderSurvives(t *testing.T) {
 }
 
 // A tool result can be arbitrary bytes. NUL has no literal spelling and no
-// standard character reference, so the writer emits &#0; and our own parser
+// standard character reference, so the writer emits &#; and our own parser
 // reads it back.
 func TestNulByteSurvives(t *testing.T) {
 	req := Request{Model: "m", Messages: []Message{
@@ -132,7 +132,7 @@ func TestToolSchemaRoundTrip(t *testing.T) {
 	require.Len(t, got.Tools, 1)
 	assert.Equal(t, "grep", got.Tools[0].Name)
 	assert.True(t, got.Tools[0].Readonly)
-	// Byte-for-byte: member order and the 1.50 literal both survive, a lossless mapping.
+	// Byte-for-byte: member order and the literal both survive, a lossless mapping.
 	assert.Equal(t, schema, string(got.Tools[0].InputSchema))
 }
 
@@ -167,7 +167,7 @@ func TestDialectParamsRoundTrip(t *testing.T) {
 	assert.Contains(t, got.Extra, "temperature")
 }
 
-// ParamsFor is what stops one dialect's parameters reaching another's upstream.
+// ParamsFor is what stops dialect's parameters reaching another's upstream.
 func TestParamsForKeepsDialectsApart(t *testing.T) {
 	req := Request{
 		Extra: map[string]any{"temperature": 0.7},
@@ -221,7 +221,7 @@ func TestResponseRoundTrip(t *testing.T) {
 	assert.Equal(t, 12, got.Timings[0].PromptN)
 }
 
-// A provider that reported nothing and one that reported zeros are different
+// A provider that reported nothing and that reported zeros are different
 // facts, and attribute presence is how the format keeps them apart.
 func TestCacheTokensStayTriState(t *testing.T) {
 	zero := 0
@@ -236,8 +236,8 @@ func TestCacheTokensStayTriState(t *testing.T) {
 	assert.Nil(t, got.Usages[0].CacheWriteTokens)
 }
 
-// The streamed document and the buffered one are the same bytes. If they ever
-// diverge, a consumer that reads one cannot trust the other.
+// The streamed document and the buffered are the same bytes. If they ever
+// diverge, a consumer that reads cannot trust the other.
 func TestStreamedDocumentMatchesBuffered(t *testing.T) {
 	comp := &Completion{
 		Message: NewMessage(RoleAssistant,
@@ -275,7 +275,7 @@ func TestTruncatedStreamKeepsWhatArrived(t *testing.T) {
 	assert.Contains(t, buf.String(), "half an ans")
 }
 
-// A call that fails after producing output says both, in one document.
+// A call that fails after producing output says both, in document.
 func TestFailureAfterOutputIsOneDocument(t *testing.T) {
 	var buf bytes.Buffer
 	rw := NewResponseWriter(&buf, RoleAssistant)
@@ -396,8 +396,8 @@ func TestUnsupportedErrorReadsPlainly(t *testing.T) {
 	assert.True(t, strings.HasPrefix(err.Error(), "commonai: "))
 }
 
-// Reasoning deltas coalesce into one <thinking> element the same way text
-// deltas coalesce into one <text>, and a part written afterwards closes it.
+// Reasoning deltas coalesce into <thinking> element the same way text
+// deltas coalesce into <text>, and a part written afterwards closes it.
 func TestResponseWriterReasoningDeltas(t *testing.T) {
 	var buf bytes.Buffer
 	rw := NewResponseWriter(&buf, RoleAssistant)
@@ -415,7 +415,7 @@ func TestResponseWriterReasoningDeltas(t *testing.T) {
 	assert.Equal(t, PartKindThinking, comp.Message.Parts[0].Kind())
 	assert.Equal(t, "answer", comp.Message.Content)
 
-	// An empty delta is not a part: a stream that sends one has said nothing.
+	// An empty delta is not a part: a stream that sends has said nothing.
 	var empty bytes.Buffer
 	rw = NewResponseWriter(&empty, RoleAssistant)
 	require.NoError(t, rw.Reasoning(""))

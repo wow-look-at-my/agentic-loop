@@ -19,13 +19,13 @@ import (
 const (
 	// DefaultResourceMax is the per-source resource cap.
 	DefaultResourceMax = 64
-	// DefaultResourceMaxBytes is the per-resource capture cap (256 KiB).
+	// DefaultResourceMaxBytes is the per-resource capture cap ( KiB).
 	DefaultResourceMaxBytes = 256 << 10
 	// resourceReadConcurrency bounds simultaneous reads per turn.
 	resourceReadConcurrency = 8
 )
 
-// Resource is one watchable resource as its source advertises it.
+// Resource is watchable resource as its source advertises it.
 type Resource struct {
 	URI      string
 	Name     string
@@ -45,7 +45,7 @@ func (r Resource) Label() string {
 	}
 }
 
-// ResourceContent is one block of a resource's content. Exactly one of Text and
+// ResourceContent is block of a resource's content. Exactly of Text and
 // Blob (base64) is set.
 type ResourceContent struct {
 	Text     string
@@ -53,7 +53,7 @@ type ResourceContent struct {
 	MimeType string
 }
 
-// ResourceSource is one thing that publishes watchable resources -- an MCP
+// ResourceSource is thing that publishes watchable resources -- an MCP
 // server, a directory, anything a host can list and read.
 type ResourceSource interface {
 	// ID is stable across renames: it keys the stored snapshots.
@@ -62,11 +62,11 @@ type ResourceSource interface {
 	Name() string
 	// List advertises up to max resources; truncated reports there were more, not silently dropped.
 	List(ctx context.Context, max int) (resources []Resource, truncated bool, err error)
-	// Read returns one resource's current content, in one or more blocks.
+	// Read returns resource's current content, in or more blocks.
 	Read(ctx context.Context, uri string) ([]ResourceContent, error)
 }
 
-// ResourceSnapshot is one watched resource as of the last pass.
+// ResourceSnapshot is watched resource as of the last pass.
 type ResourceSnapshot struct {
 	SourceID  string
 	URI       string
@@ -79,10 +79,10 @@ type ResourceSnapshot struct {
 	Truncated bool
 }
 
-// ResourceChangeRecord is the durable record of one detected change. It carries
+// ResourceChangeRecord is the durable record of detected change. It carries
 // its OWN copy of the before/after, which is what makes a change id honest: a
-// resource that has moved three times since still answers the first notice with
-// the first change.
+// resource that has moved times since still answers the notice with
+// the change.
 type ResourceChangeRecord struct {
 	SourceID      string
 	SourceName    string
@@ -102,7 +102,7 @@ type ResourceChangeRecord struct {
 
 // ResourceSnapshots is where the watcher keeps what it has seen. RecordChange
 // returns the id the model is given, so the host owns id generation (it is the
-// side that has to resolve one later).
+// side that has to resolve later).
 type ResourceSnapshots interface {
 	ListSnapshots(ctx context.Context) ([]ResourceSnapshot, error)
 	PutSnapshot(ctx context.Context, snap ResourceSnapshot) error
@@ -114,7 +114,7 @@ type ResourceSnapshots interface {
 type ResourceWatchConfig struct {
 	Sources   []ResourceSource
 	Snapshots ResourceSnapshots
-	// MaxResources bounds how many resources ONE source contributes; the cut is announced, not dropped.
+	// MaxResources bounds how many resources source contributes; the cut is announced, not dropped.
 	MaxResources int
 	// MaxBytes bounds captured content per resource; text past it is stored prefix-only.
 	MaxBytes int
@@ -127,14 +127,14 @@ type resourceWatcher struct {
 	maxResources int
 	maxBytes     int
 
-	// warned holds warnings already delivered, so a broken source is reported once.
+	// warned holds warnings already delivered, so a broken source is reported.
 	mu     sync.Mutex
 	warned set.Set[string]
 }
 
 // NewResourceWatcher returns a watcher over cfg.Sources, or nil when there is
 // nothing to watch or nowhere to keep it -- which is the common case, and the
-// one where this whole subsystem must cost nothing.
+// where this whole subsystem must cost nothing.
 func NewResourceWatcher(cfg ResourceWatchConfig) agentic.ResourceWatcher {
 	var sources []ResourceSource
 	for _, s := range cfg.Sources {
@@ -161,7 +161,7 @@ func NewResourceWatcher(cfg ResourceWatchConfig) agentic.ResourceWatcher {
 	return w
 }
 
-// capture is one resource as this pass read it.
+// capture is resource as this pass read it.
 type capture struct {
 	sourceID   string
 	sourceName string
@@ -175,13 +175,13 @@ type capture struct {
 	truncated  bool
 }
 
-// warning is one thing this pass could not account for, tagged with its source.
+// warning is thing this pass could not account for, tagged with its source.
 type warning struct {
 	sourceID string
 	text     string
 }
 
-// Poll performs one watch pass: list and read every source's resources, compare
+// Poll performs watch pass: list and read every source's resources, compare
 // against the stored snapshot, and record each difference as its own change
 // row. Remote failures become warnings; only a storage failure is an error.
 func (w *resourceWatcher) Poll(ctx context.Context) (agentic.ResourcePoll, error) {
@@ -309,9 +309,9 @@ func (w *resourceWatcher) readAll(ctx context.Context) ([]capture, []warning) {
 	return captures, warns
 }
 
-// capture folds one read result into the watched shape. A read may return
-// several content blocks (a directory-shaped URI yields one per file); they are
-// joined so the whole read is one hashable unit.
+// capture folds read result into the watched shape. A read may return
+// several content blocks (a directory-shaped URI yields per file); they are
+// joined so the whole read is hashable unit.
 //
 // Binary blobs are hashed but NOT stored: base64 bytes are useless as model
 // context and ruinous to prompt caching, so a binary resource is watched by

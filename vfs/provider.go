@@ -29,7 +29,7 @@ type pathSetter interface {
 	setPath(string)
 }
 
-// IFileProvider serves exactly one virtual file at a registered path. Use it
+// IFileProvider serves exactly virtual file at a registered path. Use it
 // when a host wants to expose a single document (a generated report, a
 // stitched-together brief, a config snapshot) without building a full folder
 // hierarchy behind it.
@@ -60,7 +60,7 @@ type IWritableFolderProvider interface {
 	Writable(path string) (bool, string)
 	// Create adds a brand-new file, failing when the path already exists.
 	Create(ctx context.Context, path, content string) (string, error)
-	// Replace swaps one exact occurrence of oldText for newText.
+	// Replace swaps exact occurrence of oldText for newText.
 	Replace(ctx context.Context, path, oldText, newText string) (string, error)
 	// Remove deletes an existing file.
 	Remove(ctx context.Context, path string) (string, error)
@@ -74,7 +74,7 @@ type ReadOnlyExplainer interface {
 // PathGuard vetoes a path before any provider sees it, with a model-facing reason; nil allows everything.
 type PathGuard func(path string) (blocked bool, reason string)
 
-// DuplicateMountError is returned when a provider is registered at a path prefix that already has one.
+// DuplicateMountError is returned when a provider is registered at a path prefix that already has.
 type DuplicateMountError struct {
 	Path string
 }
@@ -83,7 +83,7 @@ func (e *DuplicateMountError) Error() string {
 	return "vfs: a provider is already mounted at " + e.Path + "; remove it first or choose a different path"
 }
 
-// mount is one registered provider at a path prefix.
+// mount is registered provider at a path prefix.
 type mount struct {
 	prefix    string // lowercased, normalized, with leading slash, no trailing
 	displayAs string // original casing the host registered with
@@ -91,7 +91,7 @@ type mount struct {
 }
 
 // registry holds the set of mounted providers, sorted by prefix depth
-// (longest first) so resolve can pick the most specific match.
+// (longest) so resolve can pick the most specific match.
 type registry struct {
 	mu     sync.RWMutex
 	mounts []*mount
@@ -239,7 +239,7 @@ func (a *fileProviderAdapter) Grep(ctx context.Context, p string, q GrepQuery) (
 	return res, nil
 }
 
-// registrySort sorts mounts by prefix depth (longest first), then
+// registrySort sorts mounts by prefix depth (longest), then
 // alphabetically for deterministic ordering.
 func registrySort(mounts []*mount) {
 	for i := 1; i < len(mounts); i++ {

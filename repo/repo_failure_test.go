@@ -59,8 +59,8 @@ func TestClassifyRateLimitIgnoresPlainDenials(t *testing.T) {
 	}
 }
 
-// The anonymous attempt is always last, so before this ranking its 401 was the
-// failure every caller reported — hiding a token's real, transient 403.
+// The anonymous attempt is always last, so before this ranking its was the
+// failure every caller reported — hiding a token's real, transient.
 func TestFailureRankPrefersTokenFailureOverAnonymous401(t *testing.T) {
 	anon401 := GHResponse{status: http.StatusUnauthorized, header: http.Header{}, authed: false}
 	tokenDenied := GHResponse{status: http.StatusForbidden, header: http.Header{}, authed: true}
@@ -92,7 +92,7 @@ func TestExplainFailureRateLimitIsMarkedTransientWithItsWait(t *testing.T) {
 	assert.NotContains(t, msg, "Settings -> github", "a rate limit must not send the user off to reconfigure a working token")
 }
 
-// The one fact a bare "rate limit exceeded" never used to say: whether the
+// The fact a bare "rate limit exceeded" never used to say: whether the
 // request that got rate-limited carried a real credential at all.
 func TestExplainFailureRateLimitNamesTheCredentialThatHitIt(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -132,9 +132,9 @@ func TestExplainFailureDistinguishesTheDenialModes(t *testing.T) {
 	assert.NotContains(t, denied, "does not exist", "a 403 is not evidence about existence")
 }
 
-// A 401 means GitHub rejected the credential itself — the previous message
-// ("the tokens are valid but lack access") said the opposite of what a 401
-// means, since a 403 (not a 401) is what GitHub sends for a valid-but-scoped
+// A means GitHub rejected the credential itself — the previous message
+// ("the tokens are valid but lack access") said the opposite of what a
+// means, since a (not a) is what GitHub sends for a valid-but-scoped
 // token.
 func TestExplainFailure401RejectsTheCredentialNotJustAccess(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -151,7 +151,7 @@ func TestExplainFailure401RejectsTheCredentialNotJustAccess(t *testing.T) {
 }
 
 // GitHub does not expose any signal distinguishing an expired token from a
-// revoked or simply wrong one on a 401 — the message must say so rather than
+// revoked or simply wrong on a — the message must say so rather than
 // invent a distinction the API does not make.
 func TestExplainFailure401WithNoBodySaysNothingItCannotKnow(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -178,7 +178,7 @@ func TestExplainFailure403NamesTheMissingPermission(t *testing.T) {
 	assert.NotContains(t, msg, "Resource not accessible", "the named permission is more useful than the generic body message")
 }
 
-// Classic PATs predate X-Accepted-GitHub-Permissions, so a 403 without it
+// Classic PATs predate X-Accepted-GitHub-Permissions, so a without it
 // falls back to GitHub's own message body instead of going detail-free.
 func TestExplainFailure403FallsBackToBodyMessageWithoutThePermissionHeader(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -269,7 +269,7 @@ func TestTokenExpiryDetailReportsAnAlreadyExpiredToken(t *testing.T) {
 }
 
 // The expiry advisory rides the SAME response that explained the denial —
-// GitHub identified the credential to answer a 403, so its expiration header
+// GitHub identified the credential to answer a, so its expiration header
 // is meaningful there, not just on a bare 2xx.
 func TestExplainFailure403AppendsExpiryAdvisoryAlongsideThePermissionDetail(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -285,11 +285,11 @@ func TestExplainFailure403AppendsExpiryAdvisoryAlongsideThePermissionDetail(t *t
 }
 
 // When BOTH the token and the anonymous attempt are rate-limited, the token's
-// 403 must be the one reported. Before the fix both ranked 50, so the last
+// must be the reported. Before the fix both ranked, so the last
 // attempt (anonymous) won by virtue of running last, and the caller was told
 // "this was the unauthenticated (anonymous) request" when a PAT had actually
 // been tried and hit the same wall. A caller with valid PATs must never be
-// told it ran without one.
+// told it ran without.
 func TestFailureRankTokenRateLimitOutranksAnonymousRateLimit(t *testing.T) {
 	limited := GHResponse{
 		status: http.StatusForbidden,

@@ -38,7 +38,7 @@ func TestSubagentReportRejectsAnEnvelopeOnlyAnswer(t *testing.T) {
 	}
 }
 
-// A leak that follows only a scrap of prose is still no report: two words of
+// A leak that follows only a scrap of prose is still no report: words of
 // working notes are not findings.
 func TestSubagentReportRejectsALeakAfterAScrap(t *testing.T) {
 	res := subagentReport("Let me check.\n\n<tool_call>\n{\"name\":\"grep\"}\n")
@@ -75,7 +75,7 @@ func TestSplitLeakedToolCallsCutsAtTheLineStart(t *testing.T) {
 	assert.False(t, leaked)
 	assert.Equal(t, "no envelope at all", clean)
 
-	// An envelope on the very first line leaves nothing.
+	// An envelope on the very line leaves nothing.
 	clean, leaked = splitLeakedToolCalls("<|tool_calls|>\nwhatever")
 	require.True(t, leaked)
 	assert.Equal(t, "", strings.TrimSpace(clean))

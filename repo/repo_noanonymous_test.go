@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// NoAnonymous is the host's policy knob: a server holding at least one PAT
+// NoAnonymous is the host's policy knob: a server holding at least PAT
 // must never let a read fall through to an unauthenticated request, because
 // GitHub buckets the anonymous request by the server's own IP and answers it
 // with a different (worse) verdict than the token's real failure. These tests
 // pin that the client-level flag drops the anonymous attempt from the read
 // paths (FetchURLOpts, Credentials, OwnerRepos) while leaving the default
-// (zero tokens) anonymous-friendly for public repositories.
+// ( tokens) anonymous-friendly for public repositories.
 
 func TestNoAnonymousDropsTheUnauthenticatedAttemptFromReads(t *testing.T) {
 	var auths []string
@@ -92,7 +92,7 @@ func TestCachedAnonymousWinnerNeverOutranksATokenOrDefeatsNoAnonymous(t *testing
 }
 
 // An anonymous win is not remembered: the cache holds tokens only, so a token
-// configured later is tried first rather than shadowed by a stored preference
+// configured later is tried rather than shadowed by a stored preference
 // for no credential.
 func TestAnAnonymousWinIsNotRemembered(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

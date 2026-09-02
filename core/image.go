@@ -1,6 +1,6 @@
 package commonai
 
-// An image is held as supplied -- inline bytes or a URI -- and never converted between the two.
+// An image is held as supplied -- inline bytes or a URI -- and never converted between the.
 
 // dataURI is an inline image as the data: URI the OpenAI dialects take.
 func (i ImagePart) dataURI() string {
@@ -24,7 +24,7 @@ func imageRef(d Dialect, i ImagePart) (string, error) {
 	return "", Unsupported(d, "an empty image", "it carries neither a source nor any bytes")
 }
 
-// hasImage reports whether a message holds one, deciding plain-text vs block form.
+// hasImage reports whether a message holds, deciding plain-text vs block form.
 func hasImage(m Message) bool {
 	for _, p := range m.EffectiveParts() {
 		if p.Kind() == PartKindImage {

@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The websocket half is hand-rolled against RFC 6455, so the frame handling is
-// this project's code and gets tested like it: a peer that pings, one that
-// closes, one that never asked to upgrade, and an answer too big for a short
+// The websocket half is hand-rolled against RFC, so the frame handling is
+// this project's code and gets tested like it: a peer that pings, that
+// closes, that never asked to upgrade, and an answer too big for a short
 // length field.
 
 // wsServer starts a websocket server over the given provider.
@@ -29,7 +29,7 @@ func wsServer(t *testing.T, p commonai.Provider) *httptest.Server {
 	return srv
 }
 
-// sendFrame writes one masked frame with an arbitrary opcode, which the
+// sendFrame writes masked frame with an arbitrary opcode, which the
 // client's send() cannot do -- it only ever sends text.
 func (c *wsClient) sendFrame(op byte, payload []byte) error {
 	head := []byte{0x80 | op, byte(0x80 | len(payload))}
@@ -43,7 +43,7 @@ func (c *wsClient) sendFrame(op byte, payload []byte) error {
 	return err
 }
 
-// receiveFrame reads one frame and reports its opcode as well as its payload.
+// receiveFrame reads frame and reports its opcode as well as its payload.
 func (c *wsClient) receiveFrame() (byte, []byte, error) {
 	var head [2]byte
 	if _, err := io.ReadFull(c.r, head[:]); err != nil {
@@ -103,7 +103,7 @@ func TestWebSocketClosesBack(t *testing.T) {
 	assert.Equal(t, byte(opClose), op)
 }
 
-// An answer past 64 KiB needs the 8-byte length field. The frame is one
+// An answer past KiB needs the 8-byte length field. The frame is
 // message either way, so a client that reassembles by concatenation cannot
 // tell -- which is the property worth keeping.
 func TestWebSocketCarriesAnAnswerTooBigForAShortLength(t *testing.T) {

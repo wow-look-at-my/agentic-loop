@@ -16,7 +16,7 @@ import (
 
 // --- local test scaffolding (ported from the agentic package's tests) ---
 
-// scriptStep is one scripted provider response.
+// scriptStep is scripted provider response.
 type scriptStep struct {
 	comp *agentic.Completion
 	err  error
@@ -86,8 +86,8 @@ func (t *fakeTool) Execute(ctx context.Context, args json.RawMessage) (agentic.T
 	return agentic.ToolResult{Content: "ran " + t.decl.Name}, nil
 }
 
-// subParentExec is the canonical parent toolset for subagent tests: two
-// namespaced tools (one read-only, one not) and a bare read-only one.
+// subParentExec is the canonical parent toolset for subagent tests:
+// namespaced tools ( read-only, not) and a bare read-only.
 func subParentExec() *fakeExec {
 	return &fakeExec{tools: []agentic.ToolDecl{
 		{Name: "Repo__read", Readonly: true},

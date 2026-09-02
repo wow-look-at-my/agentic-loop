@@ -12,7 +12,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/goal"
 )
 
-// answers replies with each text in turn, then repeats the last one.
+// answers replies with each text in turn, then repeats the last.
 func answers(texts ...string) goal.Judge {
 	calls := 0
 	return func(context.Context, string, string) (*agentic.Completion, error) {

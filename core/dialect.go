@@ -1,12 +1,12 @@
 package commonai
 
-// Detection asks the endpoint which protocol it speaks; a gateway may serve the two separately; callers may override.
+// Detection asks the endpoint which protocol it speaks; a gateway may serve the separately; callers may override.
 
 // Dialect names a wire protocol.
 type Dialect string
 
 const (
-	// DialectAuto asks the endpoint (DetectDialect); it is the zero value, so a config that predates the field detects.
+	// DialectAuto asks the endpoint (DetectDialect); it is the value, so a config that predates the field detects.
 	DialectAuto Dialect = ""
 	// DialectOpenAI is the OpenAI-compatible chat-completions API.
 	DialectOpenAI Dialect = "openai"
@@ -26,7 +26,7 @@ func (d Dialect) Valid() bool {
 }
 
 // Label is how a dialect reads on a screen. It lives here so a host's UI does
-// not have to carry its own copy of the vocabulary -- a second list that goes
+// not have to carry its own copy of the vocabulary -- a list that goes
 // stale the moment a dialect is added.
 func (d Dialect) Label() string {
 	switch d {
@@ -43,7 +43,7 @@ func (d Dialect) Label() string {
 }
 
 // Dialects is every dialect a host may offer, in the order it should present
-// them: the default first.
+// them: the default.
 func Dialects() []Dialect {
 	return []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}
 }

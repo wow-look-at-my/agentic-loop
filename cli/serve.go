@@ -113,7 +113,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 
 // listenUnix binds a unix socket, refusing to remove something that is already
 // there: a path in use is either another server or a file somebody wants, and
-// unlinking it silently is how one of those disappears.
+// unlinking it silently is how of those disappears.
 func listenUnix(path string) (net.Listener, error) {
 	if _, err := os.Stat(path); err == nil {
 		return nil, fmt.Errorf("%s already exists: another cai may be serving there", path)

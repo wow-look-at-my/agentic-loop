@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// zeroArgTranscript is one assistant turn that called a tool taking no
+// zeroArgTranscript is assistant turn that called a tool taking no
 // arguments, as a host replays it out of storage: the model sent no argument
 // bytes, so Arguments is empty.
 func zeroArgTranscript() []Message {
@@ -22,7 +22,7 @@ func zeroArgTranscript() []Message {
 }
 
 // A zero-argument tool call still carries an arguments field on the openai
-// wire. Z.AI answers a function object without one with 400 "Invalid API
+// wire. Z.AI answers a function object without with "Invalid API
 // parameter, please check the documentation", which fails the turn -- and the
 // call is in the stored transcript, so every later turn fails the same way.
 func TestOpenAIReplaysZeroArgumentToolCall(t *testing.T) {
@@ -43,7 +43,7 @@ func TestOpenAIReplaysZeroArgumentToolCall(t *testing.T) {
 	assert.Equal(t, "{}", args, "no arguments is the empty object, not a missing field")
 }
 
-// malformedArgTranscript is one assistant turn whose tool call carried text
+// malformedArgTranscript is assistant turn whose tool call carried text
 // that is not JSON, as a host replays it out of storage. The tool result after
 // it already told the model what was wrong.
 func malformedArgTranscript() []Message {
@@ -55,7 +55,7 @@ func malformedArgTranscript() []Message {
 }
 
 // A tool call whose arguments are not valid JSON is replayed as {}: the
-// backend rejects the raw text with 400 "function.arguments must be valid
+// backend rejects the raw text with "function.arguments must be valid
 // JSON", and since the call is persisted, every later turn of that
 // conversation would fail the same way. The transcript itself keeps the
 // model's text; only the wire copy is repaired.
@@ -122,7 +122,7 @@ func TestResponsesReplaysZeroArgumentToolCall(t *testing.T) {
 
 // Anthropic streams a zero-argument tool_use as a block with no
 // input_json_delta at all. The non-streaming path already reads that as {};
-// the streamed one must agree, or which transport served the turn decides
+// the streamed must agree, or which transport served the turn decides
 // whether the transcript can be replayed later.
 func TestAnthropicStreamZeroArgumentToolCall(t *testing.T) {
 	h := &anSSEHandler{events: [][2]string{

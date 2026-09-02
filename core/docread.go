@@ -12,9 +12,9 @@ import (
 // maxDocument caps a single document, so a stream that never closes its root is not read until memory runs out.
 const maxDocument = 64 << 20
 
-// ReadDocument reads exactly one document from r, leaving whatever follows it
+// ReadDocument reads exactly document from r, leaving whatever follows it
 // for the next call. It returns io.EOF when the stream ends cleanly between
-// documents, and an error when it ends in the middle of one -- a truncated
+// documents, and an error when it ends in the middle of -- a truncated
 // document is not a document, and a reader that returned it as if it were
 // would be handing the caller half an answer with no way to tell.
 func ReadDocument(r *bufio.Reader) ([]byte, error) {
@@ -60,9 +60,9 @@ type docScanner struct {
 	started bool
 	// tagKind is what the tag being read turned out to be, decided from the bytes right after '<'.
 	tagKind tagKind
-	// lead holds the first few bytes of a tag, enough to tell a comment from a CDATA section from a PI.
+	// lead holds the few bytes of a tag, enough to tell a comment from a CDATA section from a PI.
 	lead []byte
-	// quote is the attribute delimiter currently open, or 0.
+	// quote is the attribute delimiter currently open, or.
 	quote byte
 }
 
@@ -85,7 +85,7 @@ const (
 	tagSelfClosing
 )
 
-// feed advances the scanner by one byte, reporting whether the document just
+// feed advances the scanner by byte, reporting whether the document just
 // ended.
 func (s *docScanner) feed(b byte) bool {
 	switch s.state {
@@ -178,7 +178,7 @@ func (s *docScanner) closeTag() bool {
 	switch s.tagKind {
 	case tagSelfClosing:
 		if !s.started {
-			// A self-closing root: the whole document is one element.
+			// A self-closing root: the whole document is element.
 			s.started = true
 			return true
 		}

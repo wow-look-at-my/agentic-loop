@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// Two mutating tools: not Readonly, never anonymous, WRITE-only, completed writes cached.
+// mutating tools: not Readonly, never anonymous, WRITE-only, completed writes cached.
 const (
 	repoFileWriteDescription = "Creates a single NEW file in a GitHub repository as a new commit on the given branch, " +
 		"optionally creating the branch first (create_branch=true, from create_branch_from or the default branch). " +
@@ -32,11 +32,11 @@ var repoFileWriteSchema = agentic.InferSchema[repoFileWriteArgs]()
 
 var repoPRCreateSchema = agentic.InferSchema[repoPRCreateArgs]()
 
-// GitHubAuthError: credential-specific write failure (401/403/404); retried next token.
+// GitHubAuthError: credential-specific write failure (//); retried next token.
 type GitHubAuthError struct {
 	status int
 	what   string
-	// object names the one git object this step READ, when it read one.
+	// object names the git object this step READ, when it read.
 	object string
 }
 
@@ -44,7 +44,7 @@ func (a GitHubAuthError) Error() string {
 	return fmt.Sprintf("could not %s: status %d", a.what, a.status)
 }
 
-// ClassifyObjectRead is ClassifyWriteStatus for a step that reads ONE named
+// ClassifyObjectRead is ClassifyWriteStatus for a step that reads named
 // git object, recording that object so an exhausted rotation can report a
 // missing commit as a missing commit.
 func ClassifyObjectRead(what, object string, res GHResponse) error {
@@ -99,9 +99,9 @@ func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 }
 
 // runWrite drives a write flow through writeTokenOrder: attempt runs the whole
-// flow with one token; a GitHubAuthError falls through to the next credential (the
+// flow with token; a GitHubAuthError falls through to the next credential (the
 // cached winner may have been discovered by a READ and lack write access), a
-// GitHubFatalError or transport error stops immediately, and the first success caches
+// GitHubFatalError or transport error stops immediately, and the success caches
 // the winning token — so only a credential that completed a write is recorded.
 // An empty write list is a recoverable teaching error: these are the
 // model-initiated write tools, so the fix is the user flagging (or adding) a
@@ -143,9 +143,9 @@ type ghRepoMeta struct {
 	DefaultBranch string `json:"default_branch"`
 }
 
-// repoMeta probes a repository with one credential and returns its metadata.
-// 401/403/404 come back as GitHubAuthError so the caller tries the next credential
-// (GitHub hides an inaccessible private repo behind 404).
+// repoMeta probes a repository with credential and returns its metadata.
+//// come back as GitHubAuthError so the caller tries the next credential
+// (GitHub hides an inaccessible private repo behind).
 func (e *repoTools) repoMeta(ctx context.Context, token, org, repo string) (ghRepoMeta, error) {
 	res, err := e.gh.doGet(ctx, e.repoURL(org, repo), token, "application/vnd.github+json")
 	if err != nil {
@@ -163,7 +163,7 @@ func (e *repoTools) repoMeta(ctx context.Context, token, org, repo string) (ghRe
 
 func (e *repoTools) repoURL(org, repo string) string { return e.gh.RepoURL(org, repo) }
 
-// RepoURL is the API root of one repository, which a host composing its own
+// RepoURL is the API root of repository, which a host composing its own
 // endpoint (a ref update, a blob write) builds on.
 func (e *GitHub) RepoURL(org, repo string) string {
 	return e.base + "/repos/" + url.PathEscape(org) + "/" + url.PathEscape(repo)
@@ -171,7 +171,7 @@ func (e *GitHub) RepoURL(org, repo string) string {
 
 // resolveRefSHA resolves any ref (branch, tag, or SHA) to a commit SHA via the
 // commits endpoint. The caller has already proven the repo visible with this
-// token, so a 404 means the ref itself is missing — a user-correctable error,
+// token, so a means the ref itself is missing — a user-correctable error,
 // not a credential problem.
 func (e *repoTools) resolveRefSHA(ctx context.Context, token, org, repo, ref string) (string, error) {
 	res, err := e.gh.doGet(ctx, e.repoURL(org, repo)+"/commits/"+url.PathEscape(ref), token, "application/vnd.github+json")
@@ -252,7 +252,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 	}
 	repoURL := e.repoURL(in.Org, in.Repo)
 
-	// Does the branch exist? A 404 here means it is really missing.
+	// Does the branch exist? A here means it is really missing.
 	res, err := e.gh.doGet(ctx, repoURL+"/git/ref/"+EscapeSegments("heads/"+in.Branch), token, "application/vnd.github+json")
 	if err != nil {
 		return "", err
@@ -378,7 +378,7 @@ func (e *repoTools) prCreate(ctx context.Context, args json.RawMessage) agentic.
 		return agentic.ToolResult{Content: err.Error(), IsError: true}
 	}
 	// Workspace mode: the workspace repository already has its pull request —
-	// the one attached to this conversation.
+	// the attached to this conversation.
 	if r := e.block(in.Org, in.Repo); r != nil {
 		return *r
 	}

@@ -92,9 +92,9 @@ func TestRepoReadHasNoContentSearchWhat(t *testing.T) {
 	assert.NotContains(t, repoReadDescription, "code search")
 }
 
-// The advertised enum and the dispatch table are two views of one list; a read
+// The advertised enum and the dispatch table are views of list; a read
 // present in either and missing from the other is a tool the model calls and
-// gets "unknown what" from, or one it is never told about.
+// gets "unknown what" from, or it is never told about.
 func TestEveryAdvertisedWhatHasAHandler(t *testing.T) {
 	assert.Len(t, repoReadWhats, len(repoReadWhatOrder))
 	for _, what := range repoReadWhatOrder {

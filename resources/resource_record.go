@@ -14,7 +14,7 @@ import (
 // The recording half of the resource watch: turning a detected difference into
 // a durable change record, and the prose the model is shown about it.
 
-// record writes one added/modified change and refreshes the snapshot,
+// record writes added/modified change and refreshes the snapshot,
 // returning what the model is told about it.
 func (w *resourceWatcher) record(ctx context.Context, kind string, c capture, before ResourceSnapshot, existed bool) (agentic.ResourceChange, error) {
 	beforeContent, beforeHash := "", ""

@@ -23,7 +23,7 @@ const (
 	ModeSubstring Mode = "substring"
 )
 
-// Hit is one message the index matched.
+// Hit is message the index matched.
 type Hit struct {
 	MessageID      string
 	ConversationID string
@@ -39,7 +39,7 @@ type Hit struct {
 	Semantic bool
 }
 
-// candidate is one half's ranked output before fusion.
+// candidate is half's ranked output before fusion.
 type candidate struct {
 	messageID string
 	score     float64
@@ -48,13 +48,13 @@ type candidate struct {
 // rrfK is the constant in reciprocal rank fusion; fusion is by rank because the halves' scores aren't comparable.
 const rrfK = 60.0
 
-// Query is one search.
+// Query is search.
 type Query struct {
 	// Owner scopes the search; it must match the Source's value exactly, or the search returns nothing.
 	Owner string
 	// Text is what the user typed. It is never parsed as a query language.
 	Text string
-	// Limit caps the hits returned. Zero or negative returns nothing.
+	// Limit caps the hits returned. or negative returns nothing.
 	Limit int
 	// Model and Embedder turn on the semantic half; leave Embedder nil for a text-only search.
 	Model    string
@@ -105,7 +105,7 @@ func (i *Index) Search(ctx context.Context, q Query) ([]Hit, Mode, error) {
 	return hits, mode, err
 }
 
-// fuse merges two ranked lists by reciprocal rank fusion, tagging each result
+// fuse merges ranked lists by reciprocal rank fusion, tagging each result
 // with which halves contributed to it.
 func fuse(text, semantic []candidate) []Hit {
 	scores := map[string]*Hit{}
@@ -142,7 +142,7 @@ func fuse(text, semantic []candidate) []Hit {
 	return out
 }
 
-// searchText runs the FTS5 half, best match first.
+// searchText runs the FTS5 half, best match.
 func (i *Index) searchText(ctx context.Context, owner, query string, limit int) ([]candidate, error) {
 	match := ftsQuery(query)
 	if match == "" {
@@ -150,7 +150,7 @@ func (i *Index) searchText(ctx context.Context, owner, query string, limit int) 
 	}
 	// Ties break on recency. bm25 gives identical scores to messages that use
 	// a term the same way -- which, in a chat history, is most of them -- and
-	// the newer of two equally relevant messages is the one being looked for.
+	// the newer of equally relevant messages is the being looked for.
 	rows, err := i.sql.QueryContext(ctx, `
 		SELECT m.message_id, bm25(messages_fts)
 		FROM messages_fts
@@ -297,7 +297,7 @@ func (i *Index) searchSubstring(ctx context.Context, owner, query string, limit 
 	return hits, nil
 }
 
-// escapeLike escapes LIKE's metacharacters so the needle matches literally; backslash is replaced first.
+// escapeLike escapes LIKE's metacharacters so the needle matches literally; backslash is replaced.
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `%`, `\%`)

@@ -7,21 +7,21 @@ import (
 )
 
 const (
-	// chunkRunes is the window one embedding covers; too wide a window averages unrelated topics into a direction that matches none.
+	// chunkRunes is the window embedding covers; too wide a window averages unrelated topics into a direction that matches none.
 	chunkRunes = 1200
-	// chunkOverlap is how much of the previous window each chunk repeats, so a straddling passage is whole in one chunk.
+	// chunkOverlap is how much of the previous window each chunk repeats, so a straddling passage is whole in chunk.
 	chunkOverlap = 120
-	// maxChunksPerMessage caps what one message can cost; the cap is recorded per message (embed_status.chunks_total).
+	// maxChunksPerMessage caps what message can cost; the cap is recorded per message (embed_status.chunks_total).
 	maxChunksPerMessage = 16
-	// embedBatchSize is how many chunks go in one request; a message's chunks never span two batches.
+	// embedBatchSize is how many chunks go in request; a message's chunks never span batches.
 	embedBatchSize = 64
 )
 
 // Embedder turns text into vectors; retrieval is asymmetric, so passages and queries embed separately.
 type Embedder interface {
-	// EmbedDocuments embeds text being STORED; it must return exactly one vector per input, in order.
+	// EmbedDocuments embeds text being STORED; it must return exactly vector per input, in order.
 	EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)
-	// EmbedQuery embeds one search query.
+	// EmbedQuery embeds search query.
 	EmbedQuery(ctx context.Context, text string) ([]float32, error)
 }
 
@@ -48,16 +48,16 @@ func chunkContent(content string) (chunks []string, total int) {
 	return chunks, total
 }
 
-// pending is one message awaiting embedding.
+// pending is message awaiting embedding.
 type pending struct {
 	id      string
 	content string
 }
 
 // PendingForModel returns up to limit of the owner's messages that have no
-// embedding under model, NEWEST FIRST.
+// embedding under model, NEWEST.
 //
-// Newest first is the load-bearing part of the ordering. A first-time backfill
+// Newest is the load-bearing part of the ordering. A first-time backfill
 // over a long history drains over minutes, and during that time the covered
 // half should be the half most likely to be searched. It also means a caller
 // who never lets it finish still has a useful index.
@@ -92,7 +92,7 @@ func (i *Index) PendingForModel(ctx context.Context, owner, model string, limit 
 	return out, nil
 }
 
-// batch is a set of whole messages whose chunks fit in one embedding request.
+// batch is a set of whole messages whose chunks fit in embedding request.
 type batch struct {
 	texts []string
 	msgs  []batchMessage
@@ -150,8 +150,8 @@ func (i *Index) EmbedPending(ctx context.Context, owner, model string, e Embedde
 	return done, nil
 }
 
-// embedBatch makes one embedding request and writes every vector it returned,
-// with the per-message embed_status rows, in ONE transaction. That is what
+// embedBatch makes embedding request and writes every vector it returned,
+// with the per-message embed_status rows, in transaction. That is what
 // lets the pending query trust embed_status: a message either has its full set
 // of chunks stored, or it has no record at all and is picked up again.
 func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batch) (n int, err error) {
@@ -215,7 +215,7 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 
 // DropModel removes every vector stored under model and returns how many
 // messages it un-embedded. It is what changing embedding model costs: vectors
-// from two models are not comparable, so the old ones can never answer a query
+// from models are not comparable, so the old ones can never answer a query
 // again and are storage with no reader.
 func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) {
 	tx, err := i.sql.BeginTx(ctx, nil)

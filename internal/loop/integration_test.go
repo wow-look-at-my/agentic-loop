@@ -102,7 +102,7 @@ func TestRunOpenAIOverflowNotRetried(t *testing.T) {
 }
 
 func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
-	// An in-stream overloaded_error (HTTP 200 + error event) maps to a 529 and is retried.
+	// An in-stream overloaded_error (HTTP + error event) maps to a and is retried.
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

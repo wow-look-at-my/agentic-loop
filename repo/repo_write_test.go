@@ -20,7 +20,7 @@ func writableCfg(cfg GitHubConfig, tokens ...GitHubToken) GitHubConfig {
 }
 
 // fileWriteResponder answers a full repo_file_write flow for the given token:
-// repo meta, branch ref, the existence lookup (existingSHA "" = 404, a new
+// repo meta, branch ref, the existence lookup (existingSHA "" =, a new
 // file; non-empty = the path already exists, which the create-only tool
 // refuses), and the contents PUT.
 func fileWriteResponder(t *testing.T, goodToken, existingSHA string) func(c ghCall) (int, string) {
@@ -283,7 +283,7 @@ func TestRepoFileWriteRetriesPastStaleCachedReadWinner(t *testing.T) {
 	})
 	require.False(t, res.IsError, res.Content)
 
-	// The cached (read-only) token was tried first, then the writer.
+	// The cached (read-only) token was tried, then the writer.
 	auths := gh.Auths()
 	assert.Equal(t, "readonly", auths[0])
 	assert.Contains(t, auths, "writer")

@@ -28,7 +28,7 @@ const defaultAnthropicVersion = "2023-06-01"
 // anReserved are the Extra keys the typed core always overrides.
 var anReserved = set.Of("model", "max_tokens", "stream", "system", "messages", "tools")
 
-// cacheEphemeral is the prompt-cache marker; the API allows 4 breakpoints max, this uses 2.
+// cacheEphemeral is the prompt-cache marker; the API allows breakpoints max, this uses.
 var cacheEphemeral = map[string]string{"type": "ephemeral"}
 
 // Complete implements Provider over a streaming Messages API call. The
@@ -76,7 +76,7 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		return nil, readAPIError(resp)
 	}
 
-	// A 200 that is NOT an SSE stream is a plain JSON response -- the server
+	// A that is NOT an SSE stream is a plain JSON response -- the server
 	// ignored stream:true and answered with the non-streaming Messages shape.
 	// It is accepted transparently and reassembled into a Completion with
 	// Streamed false, like openai.
@@ -100,7 +100,7 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 }
 
 // buildBody assembles the Messages API request. Extra passthrough params are
-// merged FIRST so the typed core fields always win; reserved keys in Extra
+// merged so the typed core fields always win; reserved keys in Extra
 // (model, max_tokens, stream, system, messages, tools) are silently ignored.
 // The library does not gate thinking/temperature by model — deciding what to
 // send is the caller's job via Extra.

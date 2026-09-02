@@ -35,7 +35,7 @@ func TestQueuedMessageIsDeliveredAtTheNextTurn(t *testing.T) {
 }
 
 // The bug this file exists for: a message queued when the model has already
-// answered must START ANOTHER TURN, every time -- not once per run.
+// answered must START ANOTHER TURN, every time -- not per run.
 func TestQueuedMessageStartsAnotherTurnEveryTime(t *testing.T) {
 	q := &MessageQueue{}
 	provider := &scriptProvider{steps: []scriptStep{
@@ -132,7 +132,7 @@ func TestUndeliveredMessagesComeBackWhenTheRunFails(t *testing.T) {
 }
 
 // A host cap still bounds the run: the queued message is handed back rather
-// than delivered, and the model's own answer stays the final one.
+// than delivered, and the model's own answer stays the final.
 func TestQueuedMessageDoesNotOutrunAHostCap(t *testing.T) {
 	q := &MessageQueue{}
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("capped answer")}}}
@@ -148,7 +148,7 @@ func TestQueuedMessageDoesNotOutrunAHostCap(t *testing.T) {
 }
 
 // Drain stable-partitions system ahead of user, each kind keeping its own
-// arrival order, regardless of how the two kinds interleaved going in.
+// arrival order, regardless of how the kinds interleaved going in.
 func TestDrainStablePartitionsSystemBeforeUser(t *testing.T) {
 	q := &MessageQueue{}
 	q.Queue(UserMessage{Message{Content: "u1"}})
@@ -168,7 +168,7 @@ func TestNilQueueAcceptsNothing(t *testing.T) {
 	assert.Nil(t, q.Close())
 }
 
-// Close is idempotent and drains only once.
+// Close is idempotent and drains only.
 func TestCloseReturnsUndrainedMessagesOnce(t *testing.T) {
 	q := &MessageQueue{}
 	require.True(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "a"}}))

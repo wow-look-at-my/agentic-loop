@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// scriptStep is one scripted provider response.
+// scriptStep is scripted provider response.
 type scriptStep struct {
 	comp *Completion
 	err  error
@@ -109,7 +109,7 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	assert.Equal(t, res.Messages[2], recorded[0])
 	assert.Equal(t, res.Messages[3], recorded[1])
 
-	// The loop advertises the executor's tools; the second request replays the tool calls and results.
+	// The loop advertises the executor's tools; the request replays the tool calls and results.
 	require.Len(t, provider.reqs, 2)
 	require.Len(t, provider.reqs[0].Tools, 2)
 	assert.Equal(t, "alpha", provider.reqs[0].Tools[0].Name)
@@ -238,7 +238,7 @@ func TestRunNilApproverAllowsReadonlyAndDeniesTheRest(t *testing.T) {
 	assert.Equal(t, "look", exec.executed[0].Name)
 }
 
-// The whole point of item 4: a host's deny rules reach EVERY call. A tool that
+// The whole point of item: a host's deny rules reach EVERY call. A tool that
 // considers itself unremarkable used never to be asked about, so a deny rule
 // could not fire on it at all.
 func TestRunApproverIsAskedAboutReadonlyCallsToo(t *testing.T) {
@@ -296,7 +296,7 @@ func TestRunApprovalAskError(t *testing.T) {
 	assert.ErrorIs(t, err, interrupted)
 	require.NotNil(t, res, "partial Result returned alongside the error")
 
-	// The first call ran and its result was appended; the second's Ask failed and the batch was cleared.
+	// The call ran and its result was appended; the 's Ask failed and the batch was cleared.
 	require.Len(t, res.Messages, 2)
 	final := res.Messages[1]
 	assert.Equal(t, "let me check", final.Content)
@@ -420,7 +420,7 @@ func TestRunContentAlongsideToolCallsStillRunsThem(t *testing.T) {
 }
 
 func TestRunRetriesTransientModelFailure(t *testing.T) {
-	// Retry is the provider's, so Run sees one call and counts one turn no
+	// Retry is the provider's, so Run sees call and counts turn no
 	// matter how many attempts it took underneath.
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: &APIError{Status: 503, Body: "unavailable"}},
@@ -510,7 +510,7 @@ func TestRunStuckNudgeUnsticksTheLoop(t *testing.T) {
 	assert.Equal(t, "unstuck", res.Final.Content)
 	assert.Len(t, exec.executed, StuckNudgeAt, "every nudged batch still ran")
 
-	// The nudge is ONE user turn, after the repeated batch's tool results.
+	// The nudge is user turn, after the repeated batch's tool results.
 	last := provider.reqs[len(provider.reqs)-1].Messages
 	nudges := 0
 	for i, m := range last {
@@ -541,7 +541,7 @@ func TestRunStuckFailsAfterNudge(t *testing.T) {
 }
 
 func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
-	// Alternating StuckFailAt batches: no two consecutive are identical, so the detector never fires.
+	// Alternating StuckFailAt batches: no consecutive are identical, so the detector never fires.
 	steps := make([]scriptStep, 0, 2*StuckFailAt+1)
 	for i := 0; i < 2*StuckFailAt; i++ {
 		call := repeatedCall(i)

@@ -12,7 +12,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Part A extension 2: provider-reported extras on Completion
+// Part A extension: provider-reported extras on Completion
 // (RawUsage verbatim, ReasoningTokens, CostUsd)
 // ---------------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ func TestOpenAIEstimatedCostAndCostPrecedence(t *testing.T) {
 	require.NotNil(t, comp.CostUsd)
 	assert.Equal(t, 0.005, *comp.CostUsd)
 
-	// ...and cost wins when both are present.
+	//...and cost wins when both are present.
 	h2 := &sseHandler{payloads: []string{
 		`{"choices":[{"delta":{"content":"x"}}]}`,
 		`{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0.001,"estimated_cost":0.009}}`,
@@ -152,7 +152,7 @@ func TestAnthropicRawUsageCacheSiblings(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Part A extension 3: Completion.Streamed + the plain-JSON fallback
+// Part A extension: Completion.Streamed + the plain-JSON fallback
 // ---------------------------------------------------------------------------
 
 func TestOpenAIStreamedFlag(t *testing.T) {
@@ -241,7 +241,7 @@ func TestAnthropicNonStreamingMalformedBody(t *testing.T) {
 	assert.False(t, IsTransient(err), "a malformed body is permanent, not retried")
 }
 
-// Part A extension 4: OpenAIConfig.PromptCache (static system + moving tail, clean transcript).
+// Part A extension: OpenAIConfig.PromptCache (static system + moving tail, clean transcript).
 
 // countCacheControls counts the literal `"cache_control"` occurrences in a
 // serialized request body.
@@ -277,7 +277,7 @@ func TestOpenAIPromptCacheBreakpoints(t *testing.T) {
 	assert.Equal(t, []any{map[string]any{
 		"type": "text", "text": "q", "cache_control": map[string]any{"type": "ephemeral"},
 	}}, user["content"])
-	// Exactly two breakpoints per request.
+	// Exactly breakpoints per request.
 	assert.Equal(t, 2, countCacheControls(t, h.body))
 	// The stored transcript never carries a marker (per-request copies only).
 	assert.Equal(t, []Message{{Role: RoleUser, Content: "q"}}, messages)
@@ -331,7 +331,7 @@ func TestOpenAIPromptCacheDefaultsOff(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Part A extension 5: OpenAIConfig.ReplayReasoning
+// Part A extension: OpenAIConfig.ReplayReasoning
 // (gateway extension: message.reasoning on assistant messages; default off)
 // ---------------------------------------------------------------------------
 

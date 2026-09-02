@@ -99,7 +99,7 @@ func TestTheKeyComesFromTheEnvironment(t *testing.T) {
 }
 
 // Endpoint, model and sessions directory each fall back to their environment
-// variable, so a shell can set them once.
+// variable, so a shell can set them.
 func TestSettingsFallBackToTheEnvironment(t *testing.T) {
 	srv, bodies := upstream(t, "hello")
 	dir := t.TempDir()
@@ -139,7 +139,7 @@ func TestPromptComesFromArgumentsOrAPipe(t *testing.T) {
 	require.ErrorContains(t, err, "nothing to ask")
 }
 
-// An image alone is a question, so a prompt is not required alongside one.
+// An image alone is a question, so a prompt is not required alongside.
 func TestAnImageWithNoPromptIsStillAQuestion(t *testing.T) {
 	srv, bodies := upstream(t, "a cat")
 	png := filepath.Join(t.TempDir(), "shot.png")

@@ -16,7 +16,7 @@ import (
 
 // GitHub plumbing: token-trying fetch, path parsing, arg helpers, listing/error rendering.
 
-// GHResponse is one GitHub API response.
+// GHResponse is GitHub API response.
 type GHResponse struct {
 	status    int
 	body      []byte
@@ -41,7 +41,7 @@ func (r GHResponse) ContentType() string { return r.ctype }
 // Truncated reports that the body hit the read cap, so it is a PREFIX.
 func (r GHResponse) Truncated() bool { return r.truncated }
 
-// FetchOptions tunes one repo fetch.
+// FetchOptions tunes repo fetch.
 type FetchOptions struct {
 	// NoAnonymous drops the unauthenticated attempt that makes public resources readable.
 	NoAnonymous bool
@@ -65,13 +65,13 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 }
 
 // FetchURLOpts performs a GET against an arbitrary API URL, trying the cached
-// token for cacheKey first (if any), then every configured token, then an
+// token for cacheKey (if any), then every configured token, then an
 // unauthenticated request (so public resources work without a PAT). On the
-// first 2xx it records the winning token id in the cache (an empty cacheKey
+// 2xx it records the winning token id in the cache (an empty cacheKey
 // disables caching) and returns the response.
 //
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
-// last one: the last attempt is the anonymous one, whose 401 says only that no
+// last: the last attempt is the anonymous, whose says only that no
 // credential was sent. Returning that hid the actual reason a configured token
 // was refused — a spent code-search rate limit reads as "401 Requires
 // authentication", so a transient wait looks like a permanent auth problem.
@@ -110,17 +110,17 @@ type tokenAttempt struct {
 }
 
 // tokenOrder is the credential order every repo read tries: the cached winner
-// for cacheKey first (if any; an empty cacheKey skips the cache), then every
+// for cacheKey (if any; an empty cacheKey skips the cache), then every
 // configured token, then an unauthenticated attempt (so public resources work
 // without a PAT) unless NoAnonymous drops it OR the client was configured with
-// NoAnonymous -- the host's policy that a server holding at least one PAT must
+// NoAnonymous -- the host's policy that a server holding at least PAT must
 // never let a read fall through to an anonymous request. Duplicates are
-// dropped so each distinct credential is tried once. Writes use
+// dropped so each distinct credential is tried. Writes use
 // writeTokenOrder (repo_write.go) instead, which never falls through to
 // unauthenticated.
 //
 // The anonymous attempt is never promoted by the cache: it runs last or not at
-// all. A cache that put it first sent every later read of that repository to
+// all. A cache that put it sent every later read of that repository to
 // the server's own IP bucket while the tokens sat unused.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
@@ -176,8 +176,8 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 // Listing /repos/<owner> (no repo segment) means "show every repository under
 // this owner". GitHub splits this across two endpoints — /orgs/<owner>/repos for
 // organizations and /users/<owner>/repos for personal accounts — so each
-// candidate credential is tried against the org endpoint first, then the user
-// endpoint, until one returns 2xx. The winning credential is cached under the
+// candidate credential is tried against the org endpoint, then the user
+// endpoint, until returns 2xx. The winning credential is cached under the
 // lowercased owner name (no slash, so it never collides with an "org/repo" key).
 func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, GHResponse, error) {
 	cacheKey := strings.ToLower(owner)
@@ -213,7 +213,7 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 // ErrOwnerListing signals that no credential yielded a 2xx owner listing.
 var ErrOwnerListing = fmt.Errorf("owner listing returned no successful response")
 
-// collectOwnerRepos parses the first page of an owner's repositories and follows
+// collectOwnerRepos parses the page of an owner's repositories and follows
 // pagination (up to OwnerReposMaxPages full pages) using the credential that
 // already worked. It reports truncated=true when more pages remain past the cap.
 func (e *GitHub) collectOwnerRepos(ctx context.Context, owner string, isUser bool, token string, firstBody []byte) (repos []GHRepo, truncated bool, err error) {
@@ -287,7 +287,7 @@ func (e *GitHub) FetchRedirectTarget(ctx context.Context, target string, maxByte
 	return e.doRequestOn(ctx, e.hc, http.MethodGet, target, "", "", nil, maxBytes)
 }
 
-// doRequest performs one GitHub API call with a single credential. A non-nil
+// doRequest performs GitHub API call with a single credential. A non-nil
 // body is sent as JSON.
 func (e *GitHub) doRequest(ctx context.Context, method, target, token, accept string, body []byte) (GHResponse, error) {
 	return e.doRequestCapped(ctx, method, target, token, accept, body, GitHubMaxResponseBytes)
@@ -299,7 +299,7 @@ func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, acc
 }
 
 // doRequestOn is doRequestCapped on a named client, which is how a caller that
-// must see a 3xx rather than follow it gets one.
+// must see a 3xx rather than follow it gets.
 func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, target, token, accept string, body []byte, MaxBytes int64) (GHResponse, error) {
 	var rd io.Reader
 	if body != nil {

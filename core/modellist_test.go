@@ -59,12 +59,12 @@ func TestDecodeModelListReadsPublishedRates(t *testing.T) {
 	assert.InDelta(t, 0.00003, opus.CacheWrite1h, 1e-12)
 }
 
-// One document, one decode: the dialect and the rates come out of the same pass
-// rather than two functions parsing the same bytes.
+// document, decode: the dialect and the rates come out of the same pass
+// rather than functions parsing the same bytes.
 func TestDecodeModelListNamesTheDialectFromTheSamePass(t *testing.T) {
 	assert.Equal(t, DialectOpenAI, decoded(t, openRouterModelList).Dialect)
 
-	// The ENVELOPE decides first, because a list with no models at all still identifies its server.
+	// The ENVELOPE decides, because a list with no models at all still identifies its server.
 	assert.Equal(t, DialectOpenAI, decoded(t, `{"object":"list","data":[]}`).Dialect)
 	assert.Equal(t, DialectAnthropic, decoded(t, `{"has_more":false,"data":[]}`).Dialect)
 
@@ -75,7 +75,7 @@ func TestDecodeModelListNamesTheDialectFromTheSamePass(t *testing.T) {
 	assert.Equal(t, DialectAuto, decoded(t, `{"models":["a"]}`).Dialect,
 		"a document of neither shape places neither dialect, and that is not an error here")
 
-	// An endpoint serving /v1/responses answers the same model list as one that
+	// An endpoint serving /v1/responses answers the same model list as that
 	// does not, so detection cannot ever name it. Using it is a choice.
 	assert.Equal(t, DialectOpenAI,
 		decoded(t, `{"object":"list","data":[{"id":"gpt-x","object":"model"}]}`).Dialect,
@@ -91,7 +91,7 @@ func TestAMissingCacheRateFallsBackToThePromptRate(t *testing.T) {
 	assert.InDelta(t, 0.00000125, r.CacheWrite1h, 1e-12)
 }
 
-// Zero is a price and absence is not: a free model is priced at zero, a silent one is missing.
+// is a price and absence is not: a free model is priced at, a silent is missing.
 func TestAFreeModelIsPricedAndAnUnpricedOneIsAbsent(t *testing.T) {
 	list := decoded(t, openRouterModelList)
 
@@ -115,7 +115,7 @@ func TestADocumentThatWillNotParseIsAnError(t *testing.T) {
 }
 
 // A rate that parses to nothing usable leaves the model unpriced rather than
-// priced at zero. That is not a malformed document — the envelope is fine.
+// priced at. That is not a malformed document — the envelope is fine.
 func TestAnUnusableRateLeavesTheModelUnpriced(t *testing.T) {
 	list := decoded(t, `{"object":"list","data":[{"id":"x","pricing":{"prompt":"nonsense"}}]}`)
 	assert.Empty(t, list.Prices)
@@ -124,7 +124,7 @@ func TestAnUnusableRateLeavesTheModelUnpriced(t *testing.T) {
 	assert.Empty(t, list.Prices, "a negative rate is a document nobody should bill from")
 }
 
-// crofAIModelList: crof.ai rates are strings, already USD per MILLION tokens, not per token.
+// crofAIModelList: crof.ai rates are strings, already USD per tokens, not per token.
 const crofAIModelList = `{
   "object": "list",
   "data": [
@@ -168,7 +168,7 @@ func TestFetchModelListReadsTheEndpoint(t *testing.T) {
 	assert.Equal(t, defaultAnthropicVersion, gotVersion)
 }
 
-// The two chat dialects disagree about a trailing /v1, so the model list accepts both spellings.
+// The chat dialects disagree about a trailing /v1, so the model list accepts both spellings.
 func TestTheModelListURLAcceptsEitherBaseSpelling(t *testing.T) {
 	for _, suffix := range []string{"", "/v1", "/v1/"} {
 		var gotPath string
@@ -185,7 +185,7 @@ func TestTheModelListURLAcceptsEitherBaseSpelling(t *testing.T) {
 		srv.Close()
 	}
 
-	// A path that merely CONTAINS /v1 keeps it: only the trailing one is the
+	// A path that merely CONTAINS /v1 keeps it: only the trailing is the
 	// dialects' disagreement.
 	url, err := modelListURL("https://gw.example.com/v1/openai")
 	require.NoError(t, err)

@@ -62,7 +62,7 @@ func (h *anSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// minimalAnEvents is a bare valid stream: one text block.
+// minimalAnEvents is a bare valid stream: text block.
 func minimalAnEvents(text string) [][2]string {
 	body, err := json.Marshal(map[string]any{
 		"type": "content_block_delta", "index": 0,

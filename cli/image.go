@@ -13,8 +13,8 @@ import (
 
 // imagePart reads an image file into the part that carries it. The media type
 // is sniffed from the bytes rather than taken from the extension: a file named
-// .png that is really a JPEG would otherwise be announced as something it is
-// not, and the upstream is the one that finds out.
+//.png that is really a JPEG would otherwise be announced as something it is
+// not, and the upstream is the that finds out.
 func imagePart(path string) (commonai.Part, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

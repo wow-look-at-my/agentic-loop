@@ -196,7 +196,7 @@ func TestWebFetchSummaryPath(t *testing.T) {
 }
 
 // The summary is a real model call whose only visible output is text, so
-// OnCompletion is the one route out for what it cost -- a host without it
+// OnCompletion is the route out for what it cost -- a host without it
 // charges every summarized fetch as free.
 func TestWebFetchOnCompletionReportsTheSummaryCall(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

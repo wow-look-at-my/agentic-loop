@@ -8,7 +8,7 @@ import (
 	"github.com/wow-look-at-my/xml-validator/validator"
 )
 
-// Decoding goes through xml-validator, which accepts &#0; and can check against the schema.
+// Decoding goes through xml-validator, which accepts &#; and can check against the schema.
 
 // DecodeRequest reads a <request> document.
 func DecodeRequest(data []byte) (Request, error) {
@@ -193,7 +193,7 @@ func completionFrom(root *validator.Element) (*Completion, error) {
 	return comp, failure
 }
 
-// messageFrom builds one transcript entry.
+// messageFrom builds transcript entry.
 func messageFrom(el *validator.Element) (Message, error) {
 	if el.Local != elMessage {
 		return Message{}, fmt.Errorf("commonai: <messages> holds <%s>, which is not a message", el.Local)
@@ -227,8 +227,8 @@ func partsFrom(el *validator.Element) ([]Part, error) {
 	return out, nil
 }
 
-// partFrom reads one content part, returning nil for an element that is not
-// one.
+// partFrom reads content part, returning nil for an element that is not
+//.
 func partFrom(el *validator.Element) (Part, error) {
 	if !isCore(el) {
 		return nil, nil
@@ -262,7 +262,7 @@ func partFrom(el *validator.Element) (Part, error) {
 	return nil, nil
 }
 
-// toolFrom reads one advertised tool.
+// toolFrom reads advertised tool.
 func toolFrom(el *validator.Element) (ToolDecl, error) {
 	if el.Local != elTool {
 		return ToolDecl{}, fmt.Errorf("commonai: <tools> holds <%s>, which is not a tool", el.Local)
@@ -293,7 +293,7 @@ func toolFrom(el *validator.Element) (ToolDecl, error) {
 	return t, nil
 }
 
-// usageFrom reads one usage report.
+// usageFrom reads usage report.
 func usageFrom(el *validator.Element) (Usage, error) {
 	u := Usage{
 		PromptTokens:     intAttrOf(el, "prompt-tokens"),
@@ -327,7 +327,7 @@ func usageFrom(el *validator.Element) (Usage, error) {
 	return u, nil
 }
 
-// timingsFrom reads one timings snapshot.
+// timingsFrom reads timings snapshot.
 func timingsFrom(el *validator.Element) Timings {
 	return Timings{
 		PromptN:     intAttrOf(el, "prompt-n"),
@@ -373,7 +373,7 @@ func paramsFrom(el *validator.Element) ([]Param, error) {
 	return out, nil
 }
 
-// paramFrom reads one param node.
+// paramFrom reads param node.
 func paramFrom(el *validator.Element) (Param, error) {
 	p := Param{Name: attrOf(el, "name"), Type: attrOf(el, "type")}
 	switch p.Type {
@@ -509,13 +509,13 @@ func attrOfNS(el *validator.Element, ns, name string) (string, bool) {
 	return "", false
 }
 
-// intAttrOf reads an int attribute, defaulting to 0.
+// intAttrOf reads an int attribute, defaulting to.
 func intAttrOf(el *validator.Element, name string) int {
 	n, _ := strconv.Atoi(attrOf(el, name))
 	return n
 }
 
-// floatAttrOf reads a float attribute, defaulting to 0.
+// floatAttrOf reads a float attribute, defaulting to.
 func floatAttrOf(el *validator.Element, name string) float64 {
 	f, _ := strconv.ParseFloat(attrOf(el, name), 64)
 	return f

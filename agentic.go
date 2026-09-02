@@ -1,6 +1,6 @@
 // Package agentic is the module-root package: the agentic tool loop,
 // re-exported from the implementation in internal/loop so the module
-// root stays one small forwarding file.
+// root stays small forwarding file.
 //
 // Everything the loop package exposes — the Run loop, tools, approval,
 // the wire half (aliases of the client types), compaction, sub-agent and

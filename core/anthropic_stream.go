@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// anEvent is one decoded Messages API stream event; the payload's type field
+// anEvent is decoded Messages API stream event; the payload's type field
 // discriminates, so the SSE event name is not needed.
 type anEvent struct {
 	Type         string          `json:"type"`
@@ -50,7 +50,7 @@ type anDelta struct {
 
 // anUsage is the wire usage of message_start / message_delta. input_tokens
 // EXCLUDES cached tokens on this dialect; the cache fields are pointers so an
-// absent field is distinguishable from an explicit zero.
+// absent field is distinguishable from an explicit.
 type anUsage struct {
 	InputTokens              int  `json:"input_tokens"`
 	OutputTokens             *int `json:"output_tokens"`
@@ -65,7 +65,7 @@ type anError struct {
 
 // anthropicErrorStatus maps a stream error event's error type onto the HTTP
 // status Anthropic documents for it, so an in-stream error classifies for
-// retry exactly like its non-2xx counterpart. Unrecognized types map to 500:
+// retry exactly like its non-2xx counterpart. Unrecognized types map to:
 // an unknown in-stream failure is a server-side abort, and treating it as
 // transient is the safe default.
 func anthropicErrorStatus(errType string) int {
@@ -90,7 +90,7 @@ func anthropicErrorStatus(errType string) int {
 	return 500
 }
 
-// anBlock accumulates one content block across start/delta/stop events.
+// anBlock accumulates content block across start/delta/stop events.
 type anBlock struct {
 	typ       string
 	id        string
@@ -102,7 +102,7 @@ type anBlock struct {
 	data      string
 }
 
-// part renders one content block as the part it is, or nil when the block
+// part renders content block as the part it is, or nil when the block
 // carried nothing worth keeping.
 func (b *anBlock) part() Part {
 	switch b.typ {
@@ -120,7 +120,7 @@ func (b *anBlock) part() Part {
 	return nil
 }
 
-// anStream accumulates one streamed Messages API response.
+// anStream accumulates streamed Messages API response.
 type anStream struct {
 	ev *StreamEvents
 	// blocks+order preserve the content-block sequence; a mid-stream cut still yields its partial.
@@ -148,7 +148,7 @@ func (st *anStream) blockFor(index int, typ string) *anBlock {
 	return b
 }
 
-// onData decodes one stream payload. Unparseable payloads are tolerated
+// onData decodes stream payload. Unparseable payloads are tolerated
 // silently; ping events are ignored; an error event aborts the stream with
 // the server's message.
 func (st *anStream) onData(data []byte) error {
@@ -211,7 +211,7 @@ func (st *anStream) onData(data []byte) error {
 		}
 	case "content_block_stop":
 		st.sawData = true
-		// The finished block is the only one with everything; a thinking signature arrives after its text.
+		// The finished block is the only with everything; a thinking signature arrives after its text.
 		if b := st.blocks[msg.Index]; b != nil {
 			if p := b.part(); p != nil {
 				return st.ev.EmitPart(p)
@@ -267,7 +267,7 @@ func (st *anStream) currentUsage() Usage {
 	return u
 }
 
-// completion assembles the final (or partial) result from every block, the one
+// completion assembles the final (or partial) result from every block, the
 // cut off mid-stream included: what a block accumulated before the connection
 // dropped is output the caller already watched arrive. A missing stop_reason
 // falls back to tool_use when calls were
@@ -300,7 +300,7 @@ func (st *anStream) completion() *Completion {
 	msg.SyncViews()
 	comp := &Completion{Message: msg, StopReason: stop, Streamed: true}
 	if st.haveUsage {
-		// Usage fragments (input+cache at start, output at delta) join into one; Raw is the wire shape.
+		// Usage fragments (input+cache at start, output at delta) join into; Raw is the wire shape.
 		u := st.currentUsage()
 		u.Raw = anRawUsageJSON(st.inputTokens, st.outputTokens, st.cacheRead, st.cacheWrite)
 		comp.Usages = []Usage{u}
