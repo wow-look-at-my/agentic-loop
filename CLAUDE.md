@@ -362,6 +362,11 @@ side of that line it falls on — do not put it on both.
   normalizes the empty string, and both wire writers apply it again for a
   transcript that came from the host's storage. `omitempty` on `arguments`
   is what made Z.AI 400 the turn — forever, since the call is persisted.
+  **Arguments that are not valid JSON are replayed as `{}` too**
+  (`replayToolArgs`; Anthropic's `parseToolInput` always did): the loop and
+  the tool still see the model's raw text, and the tool result after it says
+  what was wrong, but a backend rejects the raw text on every later turn of
+  the conversation — the same forever-400, from a different field.
 - **The Responses dialect exists for exactly one thing** (`core/responses.go` +
   `core/responses_wire.go`): a reasoning model's chain of thought surviving a
   tool call, which standard chat-completions has no field for (OpenRouter's

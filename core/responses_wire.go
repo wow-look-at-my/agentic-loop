@@ -81,7 +81,7 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 			}
 			for _, tc := range m.ToolCalls {
 				out = append(out, respItem{
-					Type: respItemFuncCall, CallID: tc.ID, Name: tc.Name, Arguments: toolArgs(tc.Arguments),
+					Type: respItemFuncCall, CallID: tc.ID, Name: tc.Name, Arguments: replayToolArgs(tc.Arguments),
 				})
 			}
 		default:

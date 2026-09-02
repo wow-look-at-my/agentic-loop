@@ -43,6 +43,66 @@ func TestOpenAIReplaysZeroArgumentToolCall(t *testing.T) {
 	assert.Equal(t, "{}", args, "no arguments is the empty object, not a missing field")
 }
 
+// malformedArgTranscript is one assistant turn whose tool call carried text
+// that is not JSON, as a host replays it out of storage. The tool result after
+// it already told the model what was wrong.
+func malformedArgTranscript() []Message {
+	return []Message{
+		{Role: RoleUser, Content: "search"},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "call_1", Name: "grep", Arguments: `{"pattern": "x`}}},
+		{Role: RoleTool, ToolCallID: "call_1", ToolIsError: true, Content: "invalid grep arguments: unexpected end of JSON input"},
+	}
+}
+
+// A tool call whose arguments are not valid JSON is replayed as {}: the
+// backend rejects the raw text with 400 "function.arguments must be valid
+// JSON", and since the call is persisted, every later turn of that
+// conversation would fail the same way. The transcript itself keeps the
+// model's text; only the wire copy is repaired.
+func TestOpenAIReplaysMalformedToolArgumentsAsEmptyObject(t *testing.T) {
+	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	transcript := malformedArgTranscript()
+	_, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{
+		Model:    "m",
+		Messages: transcript,
+	}, nil)
+	require.NoError(t, err)
+
+	msgs := bodyMap(t, h.body)["messages"].([]any)
+	fn := msgs[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)["function"].(map[string]any)
+	assert.Equal(t, "{}", fn["arguments"])
+	assert.Equal(t, `{"pattern": "x`, transcript[1].ToolCalls[0].Arguments, "the transcript keeps what the model said")
+}
+
+// The Responses dialect repairs the same call the same way.
+func TestResponsesReplaysMalformedToolArgumentsAsEmptyObject(t *testing.T) {
+	h, base := respServer(t, respCompletedEvent(jsonObj{"status": "completed"}))
+
+	_, err := respTestProvider(t, base, false).Complete(context.Background(), Request{
+		Model:    "m",
+		Messages: malformedArgTranscript(),
+	}, nil)
+	require.NoError(t, err)
+
+	call := bodyMap(t, h.body)["input"].([]any)[1].(map[string]any)
+	require.Equal(t, "function_call", call["type"])
+	assert.Equal(t, "{}", call["arguments"])
+}
+
+// Valid JSON that is not an object (a model answering a bare string) is still
+// what the model said, and still valid on this wire: it is sent as it is.
+func TestReplayToolArgsKeepsValidJSON(t *testing.T) {
+	assert.Equal(t, `{"a":1}`, replayToolArgs(`{"a":1}`))
+	assert.Equal(t, `"x"`, replayToolArgs(`"x"`))
+	assert.Equal(t, "{}", replayToolArgs(""))
+	assert.Equal(t, "{}", replayToolArgs("   "))
+	assert.Equal(t, "{}", replayToolArgs(`{"a":`))
+	assert.Equal(t, "{}", replayToolArgs("not json"))
+}
+
 // The Responses dialect answers for the same call the same way.
 func TestResponsesReplaysZeroArgumentToolCall(t *testing.T) {
 	h, base := respServer(t, respCompletedEvent(jsonObj{"status": "completed"}))

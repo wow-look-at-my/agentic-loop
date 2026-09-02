@@ -41,6 +41,19 @@ func toolArgs(args string) string {
 	return args
 }
 
+// replayToolArgs is toolArgs for a call sent BACK to a model: arguments that
+// are not valid JSON become "{}". The model's own text stays in the transcript,
+// and the tool result after it says what was wrong; but a transcript replayed
+// with the raw text is rejected on every later turn, forever, since the call
+// is persisted. The Anthropic writer already does this (parseToolInput).
+func replayToolArgs(args string) string {
+	s := toolArgs(args)
+	if !json.Valid([]byte(s)) {
+		return "{}"
+	}
+	return s
+}
+
 // Message is one entry in a conversation transcript. Thinking and ToolCalls
 // are meaningful only on assistant messages; ToolCallID and ToolIsError only
 // on tool messages.

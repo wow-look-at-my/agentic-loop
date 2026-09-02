@@ -105,7 +105,7 @@ func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMe
 			wm.ToolCalls = append(wm.ToolCalls, oaToolCall{
 				ID:       tc.ID,
 				Type:     "function",
-				Function: oaFunctionCall{Name: tc.Name, Arguments: toolArgs(tc.Arguments)},
+				Function: oaFunctionCall{Name: tc.Name, Arguments: replayToolArgs(tc.Arguments)},
 			})
 		}
 		out = append(out, wm)
