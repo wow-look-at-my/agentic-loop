@@ -9,7 +9,7 @@ import (
 
 // Why an exhausted credential rotation failed.
 
-// MoreInformativeAuthFailure folds one credential's failure into the best so far.
+// MoreInformativeAuthFailure folds credential's failure into the best so far.
 func MoreInformativeAuthFailure(best, next GitHubAuthError) GitHubAuthError {
 	if best.status == 0 {
 		return next
@@ -21,9 +21,9 @@ func MoreInformativeAuthFailure(best, next GitHubAuthError) GitHubAuthError {
 }
 
 // authFailureRank scores an exhausted-rotation failure by how much of the
-// cause it pins down. A 404 naming an object is the only one that identifies
+// cause it pins down. A naming an object is the only that identifies
 // something about the REPOSITORY -- the object is not there -- while every
-// other status describes one credential.
+// other status describes credential.
 func authFailureRank(a GitHubAuthError) int {
 	switch {
 	case a.status == http.StatusNotFound && a.object != "":
@@ -38,11 +38,11 @@ func authFailureRank(a GitHubAuthError) int {
 }
 
 // explainExhaustedWrite says why every credential failed instead of guessing.
-// A 404 from GitHub covers a repository the token cannot see, a repository it
-// cannot write to, and an object that is not there; announcing the first as
+// A from GitHub covers a repository the token cannot see, a repository it
+// cannot write to, and an object that is not there; announcing the as
 // the cause sends a user to Settings to fix a token that was never the
-// problem. One extra read separates "cannot see it" from the rest, and a 404
-// on a step that read one named object reports that object.
+// problem. extra read separates "cannot see it" from the rest, and a
+// on a step that read named object reports that object.
 func (e *repoTools) explainExhaustedWrite(ctx context.Context, toolName, cacheKey string, order []tokenAttempt, bestAuth GitHubAuthError) string {
 	repo := cacheKey
 	if repo == "" {

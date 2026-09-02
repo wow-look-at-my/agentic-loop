@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// invalidSigBody names content block 0 of wire message 1, the assistant turn every case below builds.
+// invalidSigBody names content block of wire message, the assistant turn every case below builds.
 const invalidSigBody = `{"type":"error","error":{"type":"invalid_request_error",` +
 	"\"message\":\"messages.1.content.0: Invalid `signature` in `thinking` block\"}}"
 
@@ -88,7 +88,7 @@ func TestThinkingSignatureRepairSecondFailureSurfaces(t *testing.T) {
 
 // TestThinkingSignatureRepairOverAnthropicProvider proves the wrapper reads
 // the SAME index Anthropic's own error names off the real wire body, not a
-// hand-computed one, by driving the real dialect encoder end to end.
+// hand-computed, by driving the real dialect encoder end to end.
 func TestThinkingSignatureRepairOverAnthropicProvider(t *testing.T) {
 	hits := 0
 	var secondBody []byte

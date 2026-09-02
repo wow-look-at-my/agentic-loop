@@ -37,7 +37,7 @@ func TestReadDocumentSplitsAStream(t *testing.T) {
 }
 
 // A stream cut mid-document must not read as a document: half an answer that
-// parses is worse than one that says it is half.
+// parses is worse than that says it is half.
 func TestReadDocumentRejectsATruncatedStream(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader(`<?xml version="1.1"?><a><b>one`))
 	_, err := ReadDocument(r)

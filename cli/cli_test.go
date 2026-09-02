@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// upstream is an OpenAI-compatible server that streams one answer and records
+// upstream is an OpenAI-compatible server that streams answer and records
 // the bodies it was sent.
 func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 	t.Helper()
@@ -45,7 +45,7 @@ func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	// One process runs every case, so each invocation starts from the defaults; a prior case's flag must not leak.
+	// process runs every case, so each invocation starts from the defaults; a prior case's flag must not leak.
 	resetFlags()
 	root.SetOut(&out)
 	root.SetErr(&errOut)
@@ -137,8 +137,8 @@ func TestAskNeedsAnEndpointAndAModel(t *testing.T) {
 	assert.Contains(t, err.Error(), "model")
 }
 
-// The stored conversation is what makes the second question land in the same
-// conversation as the first, and it is kept as the format's own document.
+// The stored conversation is what makes the question land in the same
+// conversation as the, and it is kept as the format's own document.
 func TestChatKeepsTheConversation(t *testing.T) {
 	srv, bodies := upstream(t, "first answer")
 	dir := t.TempDir()

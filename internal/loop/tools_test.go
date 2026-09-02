@@ -19,7 +19,7 @@ type fakeExec struct {
 	results  map[string]ToolResult
 }
 
-// registry is the flat toolset, one Tool per declaration.
+// registry is the flat toolset, Tool per declaration.
 func (f *fakeExec) registry() Tools {
 	var out Tools
 	for _, d := range f.tools {
@@ -28,7 +28,7 @@ func (f *fakeExec) registry() Tools {
 	return out
 }
 
-// fakeTool is one of a fakeExec's tools.
+// fakeTool is of a fakeExec's tools.
 type fakeTool struct {
 	owner *fakeExec
 	decl  ToolDecl
@@ -65,9 +65,9 @@ func TestToolsDeclsAndFind(t *testing.T) {
 	assert.False(t, ok, "an unoffered name simply is not there; the loop teaches the model")
 }
 
-// Two sources concatenate, and the first to claim a name answers it -- so a
+// sources concatenate, and the to claim a name answers it -- so a
 // host appending its own tools to the library's gets a deterministic toolset
-// rather than one that depends on map iteration.
+// rather than that depends on map iteration.
 func TestFindResolvesToTheFirstClaimant(t *testing.T) {
 	a := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	b := &fakeExec{tools: []ToolDecl{{Name: "alpha"}, {Name: "beta"}}}

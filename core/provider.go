@@ -33,7 +33,7 @@ type RetryAttempt struct {
 type StreamEvents struct {
 	OnText      func(string) error
 	OnReasoning func(string) error
-	// OnPart fires when a content part is COMPLETE, delivered exactly once, in finished-message order.
+	// OnPart fires when a content part is COMPLETE, delivered exactly, in finished-message order.
 	OnPart     func(Part) error
 	OnUsage    func(Usage) error
 	OnProgress func(PromptProgress) error
@@ -113,7 +113,7 @@ func (ev *StreamEvents) EmitRetry(a RetryAttempt) error {
 	return wrapCallbackErr(ev.OnRetry(a))
 }
 
-// Extra merges FIRST so core fields win; MaxTokens 0 omits for OpenAI, REQUIRES Anthropic
+// Extra merges so core fields win; MaxTokens omits for OpenAI, REQUIRES Anthropic
 type Request struct {
 	Model    string
 	System   string
@@ -123,11 +123,11 @@ type Request struct {
 	SystemParts []Part
 	MaxTokens   int
 	Extra       map[string]any
-	// DialectExtra is provider-specific parameters for ONE dialect, so a request can carry both.
+	// DialectExtra is provider-specific parameters for dialect, so a request can carry both.
 	DialectExtra map[Dialect]map[string]any
 	CacheKey     string
 
-	// AutoCompact is the fraction (0..1) of the context window at which the loop compacts; 0 disables it.
+	// AutoCompact is the fraction (..) of the context window at which the loop compacts; disables it.
 	AutoCompact float64
 }
 
@@ -168,7 +168,7 @@ const (
 	StopMaxTokens = "max_tokens"
 )
 
-// Completion is the outcome of one model call: the message, usage reports, and the stop reason.
+// Completion is the outcome of model call: the message, usage reports, and the stop reason.
 type Completion struct {
 	Message    Message
 	Usages     []Usage
@@ -177,7 +177,7 @@ type Completion struct {
 	StopReason string
 }
 
-// Provider runs one streaming model call; after data arrives, returns partial Completion + error.
+// Provider runs streaming model call; after data arrives, returns partial Completion + error.
 type Provider interface {
 	Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error)
 }

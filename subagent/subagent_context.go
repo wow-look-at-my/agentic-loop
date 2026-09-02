@@ -18,7 +18,7 @@ const subagentSummaryTimeout = 2 * time.Minute
 // RenderTranscript renders parent-conversation messages into a readable,
 // role-labeled transcript suitable for handing to a sub-agent as background
 // context. Tool calls are summarized inline; the result is rune-capped. It is
-// deliberately plain text (not replayed messages) so any subset — even one that
+// deliberately plain text (not replayed messages) so any subset — even that
 // would split a tool_call/tool_result pair — is always well-formed.
 func RenderTranscript(msgs []agentic.Message) string {
 	var b strings.Builder
@@ -77,7 +77,7 @@ func capRunesTail(s string, maxRunes int) string {
 }
 
 // SelectLastN returns the last n messages of msgs (all of them when n exceeds
-// the length, nil when n <= 0).
+// the length, nil when n <=).
 func SelectLastN(msgs []agentic.Message, n int) []agentic.Message {
 	if n <= 0 || len(msgs) == 0 {
 		return nil
@@ -88,8 +88,8 @@ func SelectLastN(msgs []agentic.Message, n int) []agentic.Message {
 	return msgs[len(msgs)-n:]
 }
 
-// SelectByEndIndices returns the messages at the given 1-based-from-the-end
-// indices (1 = most recent), in chronological order, de-duplicated. Indices that
+// SelectByEndIndices returns the messages at the given -based-from-the-end
+// indices ( = most recent), in chronological order, de-duplicated. Indices that
 // fall outside the range are ignored.
 func SelectByEndIndices(msgs []agentic.Message, indices []int) []agentic.Message {
 	chosen := set.New[int](len(indices))
@@ -118,7 +118,7 @@ const contextSummarySystemPrompt = "You condense a conversation into a briefing 
 	"Be faithful and concise; omit pleasantries and meta-commentary. Output only the briefing."
 
 // generateContextSummary asks the same model to summarize a parent
-// conversation into a briefing a sub-agent can use: one bounded
+// conversation into a briefing a sub-agent can use: bounded
 // (subagentSummaryTimeout), tool-less call with no retry, via OneShot. An
 // empty transcript yields an empty summary and a nil completion, with no model
 // call. The completion is returned rather than dropped because this briefing is

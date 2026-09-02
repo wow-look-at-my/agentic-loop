@@ -19,7 +19,7 @@ const (
 	ParamArray   = "array"
 )
 
-// Param is one node of the value tree: a named object member, an unnamed array item, or the root.
+// Param is node of the value tree: a named object member, an unnamed array item, or the root.
 type Param struct {
 	Name     string
 	Type     string
@@ -27,9 +27,9 @@ type Param struct {
 	Children []Param
 }
 
-// ParamFromJSON converts one JSON value into a Param named name. Numbers keep
+// ParamFromJSON converts JSON value into a Param named name. Numbers keep
 // their literal text and object members keep their order, so the value that
-// comes back out of JSON is the one that went in.
+// comes back out of JSON is the that went in.
 func ParamFromJSON(name string, raw []byte) (Param, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -59,7 +59,7 @@ func ParamsFromJSONObject(raw []byte) ([]Param, error) {
 	return p.Children, nil
 }
 
-// decodeParam reads one value from dec, which must be positioned at its first
+// decodeParam reads value from dec, which must be positioned at its
 // token.
 func decodeParam(dec *json.Decoder, name string) (Param, error) {
 	tok, err := dec.Token()
@@ -69,7 +69,7 @@ func decodeParam(dec *json.Decoder, name string) (Param, error) {
 	return decodeParamFrom(dec, name, tok)
 }
 
-// decodeParamFrom builds a Param from an already-read first token.
+// decodeParamFrom builds a Param from an already-read token.
 func decodeParamFrom(dec *json.Decoder, name string, tok json.Token) (Param, error) {
 	switch v := tok.(type) {
 	case json.Delim:
@@ -142,12 +142,12 @@ func (p Param) JSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// ParamsJSON renders a list of named params as one JSON object.
+// ParamsJSON renders a list of named params as JSON object.
 func ParamsJSON(params []Param) ([]byte, error) {
 	return Param{Type: ParamObject, Children: params}.JSON()
 }
 
-// writeJSON renders one value.
+// writeJSON renders value.
 func (p Param) writeJSON(b *bytes.Buffer) error {
 	switch p.Type {
 	case ParamObject:

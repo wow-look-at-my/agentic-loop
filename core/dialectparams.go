@@ -20,7 +20,7 @@ var dialectPrefix = map[Dialect]string{
 
 // knownAttrs is, per dialect, the scalar parameters that ride as qualified
 // attributes: the wire name a provider expects, mapped to the attribute's
-// local name. The two differ only in spelling -- underscores are not how XML
+// local name. The differ only in spelling -- underscores are not how XML
 // names read -- and the mapping is what keeps the round trip exact.
 var knownAttrs = map[Dialect]map[string]string{
 	DialectAnthropic: {
@@ -45,7 +45,7 @@ var knownAttrs = map[Dialect]map[string]string{
 	},
 }
 
-// attrToWire is the reverse of knownAttrs, built once so decoding does not scan.
+// attrToWire is the reverse of knownAttrs, built so decoding does not scan.
 var attrToWire = buildAttrToWire()
 
 // buildAttrToWire inverts knownAttrs.

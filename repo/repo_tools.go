@@ -9,11 +9,11 @@ import (
 )
 
 // The repo tools give the model real GitHub capability. A required "what"
-// selector picks the read, and every one of them is history or metadata the
-// REST API serves: commits, one commit's diff, pull requests, issues, CI. A
+// selector picks the read, and every of them is history or metadata the
+// REST API serves: commits, commit's diff, pull requests, issues, CI. A
 // repository's FILES are not here -- they are a filesystem the host mounts at
 // /repos, listed, read, found and grepped with the file tools (files.go),
-// which share this client's credentials and caching. Two approval-gated write
+// which share this client's credentials and caching. approval-gated write
 // tools (a single-file commit and PR creation) stay separate: they reach
 // GitHub, they use ONLY the write credential list, and they never fall through
 // to unauthenticated.
@@ -22,14 +22,14 @@ const (
 	RepoFileWriteToolName = "repo_file_write"
 	RepoPRCreateToolName  = "repo_pr_create"
 
-	// RepoFileMaxRunes caps the text of one file fed back to the model.
+	// RepoFileMaxRunes caps the text of file fed back to the model.
 	RepoFileMaxRunes = 200_000
 
 	repoListDefaultPerPage = 10      // default page size for the list reads
 	repoListMaxPerPage     = 30      // hard cap on a list read's per_page
 	RepoDiffMaxRunes       = 200_000 // cap on a commit/PR diff fed back to the model
-	repoBodyMaxRunes       = 20_000  // cap on one PR/issue body
-	repoCommentMaxRunes    = 5_000   // cap on one issue comment body
+	repoBodyMaxRunes       = 20_000  // cap on PR/issue body
+	repoCommentMaxRunes    = 5_000   // cap on issue comment body
 
 	repoReadDescription = "Reads a GitHub repository's HISTORY and METADATA — the parts of a repository that are not files — selected by the required \"what\": " +
 		"commits (commit list), commit (one commit with its diff), prs (pull request list), pr (one pull request with changed files), " +
@@ -52,7 +52,7 @@ type RepoToolsConfig struct {
 	Blocked func(org, repo string) *agentic.ToolResult
 }
 
-// NewRepoTools returns repo_read plus the two writes. The writes are not
+// NewRepoTools returns repo_read plus the writes. The writes are not
 // Readonly, which is the whole of what they declare: they reach GitHub and no
 // undo exists, so Config.Approver decides each call and a run with no Approver
 // refuses them.
@@ -77,13 +77,13 @@ func NewRepoTools(cfg RepoToolsConfig) agentic.Tools {
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoPRCreateToolName, Description: repoPRCreateDescription,
 			InputSchema: repoPRCreateSchema,
-			// Opening a pull request adds one and destroys nothing.
+			// Opening a pull request adds and destroys nothing.
 			Destructive: agentic.Bool(false), OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.prCreate)),
 	}
 }
 
-// repoTools is the shared state behind the three tools.
+// repoTools is the shared state behind the tools.
 type repoTools struct {
 	gh      *GitHub
 	blocked func(org, repo string) *agentic.ToolResult

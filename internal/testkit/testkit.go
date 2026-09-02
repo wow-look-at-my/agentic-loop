@@ -11,7 +11,7 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// ScriptStep is one scripted provider response.
+// ScriptStep is scripted provider response.
 type ScriptStep struct {
 	Comp *agentic.Completion
 	Err  error
@@ -38,7 +38,7 @@ func (p *ScriptProvider) Complete(_ context.Context, req agentic.Request, ev *ag
 	return step.Comp, step.Err
 }
 
-// AssistantComp is a one-shot assistant completion for tests.
+// AssistantComp is a -shot assistant completion for tests.
 func AssistantComp(content string, calls ...agentic.ToolCall) *agentic.Completion {
 	stop := agentic.StopEndTurn
 	if len(calls) > 0 {
@@ -60,7 +60,7 @@ type FakeExec struct {
 	Results  map[string]agentic.ToolResult
 }
 
-// Registry is the flat toolset, one Tool per declaration.
+// Registry is the flat toolset, Tool per declaration.
 func (f *FakeExec) Registry() agentic.Tools {
 	var out agentic.Tools
 	for _, d := range f.Tools {

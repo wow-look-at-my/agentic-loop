@@ -28,7 +28,7 @@ func kinds(parts []Part) []PartKind {
 	return out
 }
 
-// sseServer replays SSE payloads as one event stream.
+// sseServer replays SSE payloads as event stream.
 func sseServer(t *testing.T, payloads ...string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -42,7 +42,7 @@ func sseServer(t *testing.T, payloads ...string) *httptest.Server {
 	return srv
 }
 
-// A part is announced once, in the order it occupies in the finished message.
+// A part is announced, in the order it occupies in the finished message.
 // A host writing the answer out as it arrives depends on both.
 func TestOnPartDeliversEveryPartOnceInOrder(t *testing.T) {
 	srv := sseServer(t,

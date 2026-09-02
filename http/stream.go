@@ -12,7 +12,7 @@ type streamWriter struct {
 	rw *commonai.ResponseWriter
 	// sent counts the parts written from OnPart, so finish can write the tail of the completion.
 	sent int
-	// pending is text streamed into the open <text> element, so the finished TextPart is the same one.
+	// pending is text streamed into the open <text> element, so the finished TextPart is the same.
 	pending string
 	role    commonai.Role
 }
@@ -24,7 +24,7 @@ func newStreamWriter(w http.ResponseWriter) *streamWriter {
 // started reports whether any of the document has been written.
 func (s *streamWriter) started() bool { return s.rw != nil }
 
-// begin opens the response document and commits the 200.
+// begin opens the response document and commits the.
 func (s *streamWriter) begin(role commonai.Role) {
 	if s.rw != nil {
 		return
@@ -39,7 +39,6 @@ func (s *streamWriter) begin(role commonai.Role) {
 }
 
 // flush pushes what has been written so far to the client, which is what makes
-// this a stream rather than a slow buffer.
 func (s *streamWriter) flush() {
 	if f, ok := s.w.(http.Flusher); ok {
 		f.Flush()
@@ -83,7 +82,7 @@ func (s *streamWriter) events() *commonai.StreamEvents {
 
 // finish writes what the events never announced and closes the document: the
 // parts of a call that did not stream at all (a server that ignored
-// stream:true), and the tail of one that was cut off mid-part.
+// stream:true), and the tail of that was cut off mid-part.
 func (s *streamWriter) finish(comp *commonai.Completion, callErr error) {
 	defer s.flush()
 	if comp == nil {

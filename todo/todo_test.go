@@ -24,7 +24,7 @@ func (r *recordingTodos) write(_ context.Context, todos []Todo) error {
 	return r.fails
 }
 
-// todoTools builds the four real tools round a recording host store, then
+// todoTools builds the real tools round a recording host store, then
 // returns the store and a map from advertised name to the actual agentic.Tool.
 func todoTools(t *testing.T, rec *recordingTodos) map[string]agentic.Tool {
 	t.Helper()
@@ -37,7 +37,7 @@ func todoTools(t *testing.T, rec *recordingTodos) map[string]agentic.Tool {
 	return byName
 }
 
-// run executes one tool against the real Execute, asserting it is not a Go error.
+// run executes tool against the real Execute, asserting it is not a Go error.
 func run(t *testing.T, tool agentic.Tool, args string) agentic.ToolResult {
 	t.Helper()
 	res, err := tool.Execute(context.Background(), json.RawMessage(args))
@@ -60,7 +60,7 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 			"%s writes host state the host shows; a sub-agent inheriting it would overwrite its parent's plan", name)
 	}
 
-	// The state enum is the only thing stopping a model inventing a fourth
+	// The state enum is the only thing stopping a model inventing a
 	// state. It lives on todo_add and todo_edit; the id-only tools have none.
 	for _, name := range []string{TodoAddToolName, TodoEditToolName} {
 		var schema struct {
@@ -90,7 +90,7 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 	}
 }
 
-// todo_add appends exactly one task, mints a fresh id, and answers with the new
+// todo_add appends exactly task, mints a fresh id, and answers with the new
 // full list both as rendered text and as a todo_list part whose JSON equals the
 // list the host just stored.
 func TestTodoAddAppendsOneTaskAndReturnsTheNewFullList(t *testing.T) {
@@ -112,7 +112,7 @@ func TestTodoAddAppendsOneTaskAndReturnsTheNewFullList(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(res.Parts[0].Text), &carried))
 	assert.Equal(t, rec.got[0], carried, "the todo_list part JSON equals the host's stored list")
 
-	// A second add keeps id 1 and hands the new task id 2.
+	// A add keeps id and hands the new task id.
 	res = run(t, byName[TodoAddToolName], `{"title":"ship it"}`)
 	require.False(t, res.IsError, res.Content)
 	require.Len(t, rec.got, 2)
@@ -134,8 +134,8 @@ func TestAMissingAddStateIsPending(t *testing.T) {
 	assert.Equal(t, []Todo{{ID: 1, Title: "no state given", State: TodoPending}}, rec.got[0])
 }
 
-// The heart of the change: edit/cancel/complete address ONE task by its stable
-// id and change only that one, leaving every sibling's id, title and state
+// The heart of the change: edit/cancel/complete address task by its stable
+// id and change only that, leaving every sibling's id, title and state
 // byte-for-byte unchanged, across several interleaved mutations. The model
 // never resends the parts it did not touch.
 func TestInterleavedMutationsTouchOnlyTheNamedTask(t *testing.T) {
@@ -146,20 +146,20 @@ func TestInterleavedMutationsTouchOnlyTheNamedTask(t *testing.T) {
 		res := run(t, byName[TodoAddToolName], jsontest.Must(jsontest.Obj{"title": title}))
 		require.False(t, res.IsError, res.Content)
 	}
-	// Host now holds one..four with ids 1..4, all pending.
+	// Host now holds.. with ids.., all pending.
 	require.Len(t, rec.got, 4)
 	require.Equal(t, []int{1, 2, 3, 4}, idsOf(rec.got[3]))
 
-	// Mark #2 in_progress.
+	// Mark # in_progress.
 	res := run(t, byName[TodoEditToolName], `{"id":2,"state":"in_progress"}`)
 	require.False(t, res.IsError, res.Content)
-	// Rename #4.
+	// Rename #.
 	res = run(t, byName[TodoEditToolName], `{"id":4,"title":"four re"}`)
 	require.False(t, res.IsError, res.Content)
-	// Complete #1.
+	// Complete #.
 	res = run(t, byName[TodoCompleteToolName], `{"id":1}`)
 	require.False(t, res.IsError, res.Content)
-	// Cancel #3.
+	// Cancel #.
 	res = run(t, byName[TodoCancelToolName], `{"id":3}`)
 	require.False(t, res.IsError, res.Content)
 
@@ -203,7 +203,7 @@ func TestEverySuccessfulMutationCarriesTheRenderedTextAndTheList(t *testing.T) {
 		require.Falsef(t, res.IsError, "step %d (%s): %s", i, step.name, res.Content)
 		// The rendered text is non-empty and says how many tasks.
 		assert.NotEmpty(t, res.Content)
-		// Exactly one part: the whole list, ids included, equal to host's store.
+		// Exactly part: the whole list, ids included, equal to host's store.
 		require.Len(t, res.Parts, 1, step.name)
 		assert.Equal(t, TodoListPartType, res.Parts[0].Type)
 		var carried []Todo
@@ -253,9 +253,9 @@ func TestAnUnknownIdIsRefused(t *testing.T) {
 }
 
 // Ids are unique by construction, so an ambiguous address cannot arise through
-// the tools; the resolver still refuses one on a damaged store rather than
+// the tools; the resolver still refuses on a damaged store rather than
 // silently editing the wrong task. This drives the real resolve on a store
-// corrupted to hold two tasks with one id.
+// corrupted to hold tasks with id.
 func TestAnAmbiguousIdIsRefused(t *testing.T) {
 	rec := &recordingTodos{}
 	exec := NewTodoTools(TodoConfig{Write: rec.write})
@@ -339,7 +339,7 @@ func TestUnparseableArgumentsAreRefused(t *testing.T) {
 	assert.Empty(t, rec.got)
 }
 
-// The list caps at 100 tasks; the 101st add is refused, and the store keeps 100.
+// The list caps, so an add past the cap is refused and the store keeps what it had.
 func TestATooLongListIsRefused(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -377,7 +377,7 @@ func TestNoWriterMeansTheToolsRefuse(t *testing.T) {
 	}
 }
 
-// Two AddCalls in a row hand out distinct ids; ids never collide across adds.
+// AddCalls in a row hand out distinct ids; ids never collide across adds.
 func TestAddMintsMonotonicIds(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -403,8 +403,8 @@ func TestEditChangesTitleAndOrState(t *testing.T) {
 }
 
 // A host that keeps the list between runs hands it back, and the tools carry
-// on from it. Without this the list is not merely forgotten: the first
-// mutation of the new run persists a list holding only that one task, and
+// on from it. Without this the list is not merely forgotten: the
+// mutation of the new run persists a list holding only that task, and
 // every task the previous run wrote is gone with nothing reporting a failure.
 func TestTodoInitialRestoresAListAcrossRuns(t *testing.T) {
 	rec := &recordingTodos{}
@@ -449,7 +449,7 @@ func TestTodoInitialIsCopied(t *testing.T) {
 	assert.Equal(t, TodoPending, kept[0].State, "the caller's slice is untouched")
 }
 
-// No Initial is the ordinary first run: an empty list, ids from 1.
+// No Initial is the ordinary run: an empty list, ids from.
 func TestTodoWithoutInitialStartsEmpty(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)

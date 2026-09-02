@@ -13,7 +13,7 @@ import (
 )
 
 // embeddingsServer serves /v1/embeddings, answering with reply if it is
-// non-nil and otherwise with one unit vector per input, recording the request.
+// non-nil and otherwise with unit vector per input, recording the request.
 func embeddingsServer(t *testing.T, status int, reply any) (*httptest.Server, *[]embeddingsRequest) {
 	t.Helper()
 	var got []embeddingsRequest
@@ -105,8 +105,8 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 		assert.Equal(t, "search: embeddings: status 400: "+httpErr.Body, httpErr.Error())
 	})
 
-	// Some gateways answer 200 with an error object. Reading that as an empty
-	// data list would report "0 vectors" and lose the reason given.
+	// Some gateways answer with an error object. Reading that as an empty
+	// data list would report " vectors" and lose the reason given.
 	t.Run("error object under a 200", func(t *testing.T) {
 		srv, _ := embeddingsServer(t, http.StatusOK, map[string]any{
 			"error": map[string]any{"message": "model not found"},
@@ -142,7 +142,7 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 
 // Retrieval is asymmetric in most modern embedding models: the stored passage
 // and the question that should find it are embedded differently, and the model
-// is told which it is being given. Applying one side's prefix to the other is
+// is told which it is being given. Applying side's prefix to the other is
 // invisible at runtime -- every call succeeds and the results are merely worse
 // -- so it is worth a test rather than a careful reading.
 func TestHTTPEmbedderPrefixesEachSideWithItsOwnTask(t *testing.T) {
@@ -175,7 +175,7 @@ func TestHTTPEmbedderSendsNoPrefixByDefault(t *testing.T) {
 }
 
 // The batch cap belongs to the endpoint, and endpoints disagree. Without the
-// split, an index batching more than one allows fails every pass forever --
+// split, an index batching more than allows fails every pass forever --
 // which reads as a broken index rather than a setting.
 func TestHTTPEmbedderSplitsABatchTheEndpointCannotTake(t *testing.T) {
 	srv, got := embeddingsServer(t, http.StatusOK, nil)
@@ -201,7 +201,7 @@ func TestHTTPEmbedderSendsNoRequestForNoInput(t *testing.T) {
 }
 
 // The index and a real endpoint, end to end: the embedder the package ships is
-// the one it is tested against.
+// the it is tested against.
 func TestIndexSearchesThroughTheShippedEmbedder(t *testing.T) {
 	ctx := context.Background()
 	srv, _ := embeddingsServer(t, http.StatusOK, nil)

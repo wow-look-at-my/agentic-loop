@@ -23,7 +23,6 @@ type StopListener struct {
 
 // Attach subscribes the listener to a run's stop boundary. ctx is the RUN's
 // context, which is what makes cancellation win, and msgs must be the queue the
-// run was configured with, or a blocked stop queues into nothing.
 func (l *StopListener) Attach(ctx context.Context, events *agentic.Events, msgs *agentic.MessageQueue) {
 	l.cb = func(agentic.StopEvent) error {
 		l.evaluate(ctx, msgs)

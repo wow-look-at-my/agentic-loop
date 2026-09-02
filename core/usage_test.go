@@ -25,8 +25,8 @@ func TestCachedTokens(t *testing.T) {
 	}
 }
 
-// nil and zero are different answers to "how many tokens came from cache", and
-// only one of them is a number the provider actually sent.
+// nil and are different answers to "how many tokens came from cache", and
+// only of them is a number the provider actually sent.
 func TestCacheCountsAreTriState(t *testing.T) {
 	assert.Nil(t, Usage{}.CacheReadTokens)
 	assert.NotNil(t, Usage{CacheReadTokens: intPtr(0)}.CacheReadTokens)

@@ -29,7 +29,7 @@ func execRepoTool(t *testing.T, reg agentic.Tools, name string, args any) agenti
 	return r
 }
 
-// ghCall is one recorded request against the fake GitHub server.
+// ghCall is recorded request against the fake GitHub server.
 type ghCall struct {
 	Method string
 	Path   string

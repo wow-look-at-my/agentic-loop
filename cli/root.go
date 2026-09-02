@@ -1,4 +1,4 @@
-// Package cli holds cai's commands, one per file, each registering itself.
+// Package cli holds cai's commands, per file, each registering itself.
 package cli
 
 import (
@@ -15,7 +15,7 @@ import (
 )
 
 // root is the command tree. Subcommands add themselves to it from their own
-// files, so adding one is adding a file.
+// files, so adding is adding a file.
 var root = &cobra.Command{
 	Use:   "cai",
 	Short: "Talk to a model",

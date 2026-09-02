@@ -11,10 +11,10 @@ import (
 )
 
 // what=commits and what=commit read a repository's history: a capped commit
-// listing (optionally scoped to a ref and/or path) and one commit's unified
+// listing (optionally scoped to a ref and/or path) and commit's unified
 // diff via the GitHub diff media type.
 
-// ghCommitEntry decodes one entry of a /repos/{o}/{r}/commits response.
+// ghCommitEntry decodes entry of a /repos/{o}/{r}/commits response.
 type ghCommitEntry struct {
 	SHA    string `json:"sha"`
 	Commit struct {
@@ -56,7 +56,7 @@ func (e *repoTools) commitList(ctx context.Context, in repoReadArgs) agentic.Too
 	return agentic.ToolResult{Content: formatCommits(in.Org, in.Repo, in.Ref, in.Path, commits)}
 }
 
-// formatCommits renders one commit per line: short SHA, ISO date, author, and
+// formatCommits renders commit per line: short SHA, ISO date, author, and
 // the message subject.
 func formatCommits(org, repo, ref, path string, commits []ghCommitEntry) string {
 	header := "commits of " + RepoPath(org, repo, "")
@@ -91,7 +91,7 @@ func formatCommits(org, repo, ref, path string, commits []ghCommitEntry) string 
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// commitRead (what=commit) fetches one commit's unified diff by SHA.
+// commitRead (what=commit) fetches commit's unified diff by SHA.
 func (e *repoTools) commitRead(ctx context.Context, in repoReadArgs) agentic.ToolResult {
 	if err := requireOrgRepo("repo_read what=commit", in.Org, in.Repo); err != nil {
 		return agentic.ToolResult{Content: err.Error(), IsError: true}

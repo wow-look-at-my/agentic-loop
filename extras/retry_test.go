@@ -109,9 +109,9 @@ func TestRetryingProvider(t *testing.T) {
 	})
 
 	t.Run("every retry is announced before its backoff", func(t *testing.T) {
-		// Ten attempts of uncapped backoff is minutes of silence otherwise;
+		// attempts of uncapped backoff is minutes of silence otherwise;
 		// the caller has to be able to show what failed and what it is waiting
-		// on. One event per retry, none for the attempt that succeeds.
+		// on. event per retry, none for the attempt that succeeds.
 		inner := &scriptProvider{steps: []scriptStep{
 			{err: &commonai.APIError{Status: 503, Body: "unavailable"}},
 			{err: &commonai.APIError{Status: 429, Body: "slow down"}},
@@ -203,7 +203,7 @@ func TestRetryingProvider(t *testing.T) {
 	})
 
 	t.Run("a streamed delta blocks the retry", func(t *testing.T) {
-		// Once a delta reached the sink, re-sending would duplicate it; the provider returns its partial completion.
+		// a delta reached the sink, re-sending would duplicate it; the provider returns its partial completion.
 		var got []string
 		partial := &commonai.Completion{
 			Message: commonai.NewMessage(commonai.RoleAssistant, commonai.TextPart{Text: "tok"}),
@@ -274,7 +274,7 @@ func TestRetryingProvider(t *testing.T) {
 			Complete(context.Background(), commonai.Request{Model: "m"}, nil)
 		require.Error(t, err)
 		assert.Len(t, inner.reqs, DefaultRetry.MaxAttempts)
-		// Uncapped doubling from the 500ms base, one delay per retry.
+		// Uncapped doubling from the 500ms base, delay per retry.
 		assert.Equal(t, []time.Duration{
 			500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 4 * time.Second,
 			8 * time.Second, 16 * time.Second, 32 * time.Second, 64 * time.Second,

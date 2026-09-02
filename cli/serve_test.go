@@ -17,7 +17,7 @@ import (
 )
 
 // serveInBackground starts `cai serve` with the given arguments and returns
-// once both listeners answer. The command runs until the returned stop is
+// both listeners answer. The command runs until the returned stop is
 // called, which is what a Ctrl-C does to it.
 func serveInBackground(t *testing.T, args ...string) (stop func()) {
 	t.Helper()
@@ -44,7 +44,7 @@ func serveInBackground(t *testing.T, args ...string) (stop func()) {
 }
 
 // freeAddr reserves a loopback port and gives it straight back, so serve can
-// bind the one address the test knows.
+// bind the address the test knows.
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -82,8 +82,8 @@ func requestDoc(t *testing.T, text string) []byte {
 	return data
 }
 
-// One serve carries both surfaces, and both answer the same document -- the
-// HTTP body and the unix socket are two ways to the one server, not two
+// serve carries both surfaces, and both answer the same document -- the
+// HTTP body and the unix socket are ways to the server, not
 // servers that happen to agree.
 func TestServeAnswersOnHTTPAndTheUnixSocket(t *testing.T) {
 	up, bodies := upstream(t, "hello there")
@@ -120,7 +120,7 @@ func TestServeAnswersOnHTTPAndTheUnixSocket(t *testing.T) {
 	assert.Contains(t, (*bodies)[1], "over the socket")
 }
 
-// The websocket route is mounted alongside the HTTP one, on the same server.
+// The websocket route is mounted alongside the HTTP, on the same server.
 func TestServeMountsTheWebSocketRoute(t *testing.T) {
 	up, _ := upstream(t, "hi")
 	addr := freeAddr(t)

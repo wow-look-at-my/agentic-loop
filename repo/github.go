@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultGitHubAPIBase = "https://api.github.com"
-	// GitHubMaxResponseBytes is the hard cap on one API response body.
+	// GitHubMaxResponseBytes is the hard cap on API response body.
 	GitHubMaxResponseBytes = 5 << 20
 	githubRequestTimeout   = 30 * time.Second
 	// OwnerReposPerPage and OwnerReposMaxPages bound an owner listing.
@@ -19,7 +19,7 @@ const (
 	OwnerReposMaxPages = 5
 )
 
-// GitHubToken is one configured PAT; AllowModelWrites opts it into model writes.
+// GitHubToken is configured PAT; AllowModelWrites opts it into model writes.
 type GitHubToken struct {
 	ID               string
 	Name             string
@@ -70,7 +70,7 @@ type GitHub struct {
 	onRateLimit func(RateLimitObservation)
 }
 
-// NewGitHub builds the client; the only constructor, so all callers share one cache.
+// NewGitHub builds the client; the only constructor, so all callers share cache.
 func NewGitHub(cfg GitHubConfig) *GitHub {
 	hc := cfg.HTTPClient
 	if hc == nil {
@@ -104,16 +104,17 @@ func (e *GitHub) Credentials(cacheKey string, NoAnonymous bool) []Credential {
 	return out
 }
 
-// Credential is one attempt's identity; an empty Token is the anonymous attempt.
+// Credential is attempt's identity; an empty Token is the anonymous attempt.
 type Credential struct {
 	ID    string
 	Name  string
 	Token string
 }
 
-// Remember records which credential reached a repository, so the next call starts with it.
+// Remember records which credential reached a repository, so the next call
+// starts with it. An anonymous win (empty credentialID) is not remembered: a
 func (e *GitHub) Remember(cacheKey, credentialID string) {
-	if e.cache != nil && cacheKey != "" {
+	if e.cache != nil && cacheKey != "" && credentialID != "" {
 		e.cache.Put(cacheKey, credentialID)
 	}
 }
@@ -143,7 +144,7 @@ func (e *GitHub) WriteCredentials(cacheKey string) []Credential {
 	return out
 }
 
-// Get performs one GET with ONE credential, for a host running its own rotation.
+// Get performs GET with credential, for a host running its own rotation.
 func (e *GitHub) Get(ctx context.Context, target, token, accept string) (GHResponse, error) {
 	return e.doGet(ctx, target, token, accept)
 }
@@ -151,10 +152,10 @@ func (e *GitHub) Get(ctx context.Context, target, token, accept string) (GHRespo
 // Status is the HTTP status behind a credential-specific failure.
 func (a GitHubAuthError) Status() int { return a.status }
 
-// Object names the git object a failing step read, if it read one.
+// Object names the git object a failing step read, if it read.
 func (a GitHubAuthError) Object() string { return a.object }
 
-// Do performs one request with ONE credential, for a host running its own rotation.
+// Do performs request with credential, for a host running its own rotation.
 func (e *GitHub) Do(ctx context.Context, method, target, token, accept string, body []byte) (GHResponse, error) {
 	return e.doRequest(ctx, method, target, token, accept, body)
 }

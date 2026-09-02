@@ -8,9 +8,9 @@ import (
 // A pure, line-based unified-diff engine producing standard hunks and size wording.
 const (
 	diffContextLines = 3
-	// diffMaxLines is the per-side guard; beyond it the file renders as one replace hunk.
+	// diffMaxLines is the per-side guard; beyond it the file renders as replace hunk.
 	diffMaxLines = 20_000
-	// diffMaxCells caps the LCS dynamic program; a bigger middle is one replace hunk.
+	// diffMaxCells caps the LCS dynamic program; a bigger middle is replace hunk.
 	diffMaxCells = 4_000_000
 )
 
@@ -44,7 +44,7 @@ func splitDiffLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
-// diffOp is one line of the edit script: kind ' ' (context), '-' (deleted
+// diffOp is line of the edit script: kind ' ' (context), '-' (deleted
 // from old), or '+' (added in new).
 type diffOp struct {
 	kind byte
@@ -52,8 +52,8 @@ type diffOp struct {
 }
 
 // diffOps computes the line-level edit script between a and b: common prefix
-// and suffix are matched first, and the remaining middle is aligned with an
-// LCS dynamic program when it fits the budget (one replace block otherwise).
+// and suffix are matched, and the remaining middle is aligned with an
+// LCS dynamic program when it fits the budget ( replace block otherwise).
 func diffOps(a, b []string) []diffOp {
 	// Common prefix.
 	p := 0
@@ -148,7 +148,7 @@ func lcsOps(a, b []string) []diffOp {
 
 // renderHunks groups an edit script into unified hunks with diffContextLines
 // lines of context, merging hunks whose context would touch or overlap. Counts
-// are always written explicitly ("-3,1" rather than "-3") for consistency.
+// are always written explicitly ("-," rather than "-") for consistency.
 func renderHunks(ops []diffOp) string {
 	if len(ops) == 0 {
 		return ""
@@ -215,7 +215,7 @@ func renderHunks(ops []diffOp) string {
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-// Plural renders "1 <one>" or "N <many>".
+// Plural renders " <>" or "N <many>".
 func Plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one
@@ -240,7 +240,7 @@ func UnifiedDiff(fromLabel, toLabel, oldText, newText string) string {
 	return unifiedDiff(fromLabel, toLabel, oldText, newText)
 }
 
-// CountLineChanges counts added and removed lines between two texts, using the
+// CountLineChanges counts added and removed lines between texts, using the
 // same edit script UnifiedDiff renders so a summary and its diff agree.
 func CountLineChanges(before, after string) (added, removed int) {
 	for _, op := range diffOps(splitDiffLines(before), splitDiffLines(after)) {

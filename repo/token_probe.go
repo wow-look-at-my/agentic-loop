@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// TestToken probes exactly one credential's real health against GitHub's /user endpoint, plus its repos and orgs.
+// TestToken probes exactly credential's real health against GitHub's /user endpoint, plus its repos and orgs.
 type TokenTestResult struct {
 	OK             bool            `json:"ok"`
 	Login          string          `json:"login,omitempty"`   // authenticated GitHub login, when ok
@@ -28,7 +28,7 @@ type TokenTestResult struct {
 	RateLimit RateLimitStatus `json:"rate_limit,omitempty"`
 }
 
-// TokenTestRepo is one repository visible to the tested token, with the
+// TokenTestRepo is repository visible to the tested token, with the
 // permission levels GitHub reports for it in a repo-list response's per-repo
 // "permissions" object (shared by /user/repos and /orgs/{org}/repos).
 type TokenTestRepo struct {
@@ -41,7 +41,7 @@ type TokenTestRepo struct {
 	Pull     bool   `json:"pull"`
 }
 
-// TokenTestOrg is one organization the tested token can see, with that org's
+// TokenTestOrg is organization the tested token can see, with that org's
 // own repository listing (a direct GET /orgs/{org}/repos, not an inference
 // from the flat Repos list).
 type TokenTestOrg struct {
@@ -111,7 +111,7 @@ const orgSweepMaxOrgs = 20
 // the cap, and a non-empty error string when a page could not be fetched (the
 // token itself already passed the /user check, so this is reported alongside
 // OK rather than failing the whole test). orgOwners collects the distinct
-// Organization-type repo owners seen, in first-seen order, as a fallback
+// Organization-type repo owners seen, in -seen order, as a fallback
 // source of organizations to sweep when the token can't self-report its org
 // memberships via /user/orgs.
 func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []TokenTestRepo, orgOwners []string, truncated bool, errMsg string) {
@@ -178,9 +178,9 @@ func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string
 	}
 }
 
-// mergeOrgLogins unions two organization-login lists, case-insensitively
+// mergeOrgLogins unions organization-login lists, case-insensitively
 // deduplicated, preferring discovered's casing (it comes straight from
-// GitHub's own org listing) and preserving first-seen order.
+// GitHub's own org listing) and preserving -seen order.
 func mergeOrgLogins(discovered, fromRepos []string) []string {
 	seen := set.New[string](len(discovered) + len(fromRepos))
 	var out []string
@@ -231,7 +231,7 @@ func (e *GitHub) listVisibleOrgs(ctx context.Context, token string) (logins []st
 	return logins, ""
 }
 
-// listOrgRepos lists one organization's repositories directly (GET
+// listOrgRepos lists organization's repositories directly (GET
 // /orgs/{org}/repos, type=all so it covers everything the token itself can
 // see rather than only public ones), paginated the same way as
 // listVisibleRepos.
@@ -260,7 +260,7 @@ func (e *GitHub) listOrgRepos(ctx context.Context, token, org string) (repos []T
 	return repos, true, ""
 }
 
-// ghUserRepo is one repository from a repo-list response (/user/repos or
+// ghUserRepo is repository from a repo-list response (/user/repos or
 // /orgs/{org}/repos), including the permissions object GitHub reports for the
 // authenticated credential and the owner GitHub attributes it to.
 type ghUserRepo struct {

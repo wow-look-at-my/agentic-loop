@@ -12,7 +12,7 @@ func WithToolCallID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, toolCallIDKey{}, id)
 }
 
-// ToolCallID is the id of the tool call being executed, or "" outside one.
+// ToolCallID is the id of the tool call being executed, or "" outside.
 func ToolCallID(ctx context.Context) string {
 	id, _ := ctx.Value(toolCallIDKey{}).(string)
 	return id

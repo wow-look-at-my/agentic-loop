@@ -15,7 +15,7 @@ type respTool struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-// respItem is one item on the Responses wire, in either direction.
+// respItem is item on the Responses wire, in either direction.
 type respItem struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
@@ -32,11 +32,11 @@ type respItem struct {
 	EncryptedContent string        `json:"encrypted_content,omitempty"`
 }
 
-// respContent is one part of a message or reasoning summary.
+// respContent is part of a message or reasoning summary.
 type respContent struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
-	// ImageURL carries an input image, as a URI: the supplied one, or a data: URI built from bytes.
+	// ImageURL carries an input image, as a URI: the supplied, or a data: URI built from bytes.
 	ImageURL string `json:"image_url,omitempty"`
 }
 
@@ -81,7 +81,7 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 			}
 			for _, tc := range m.ToolCalls {
 				out = append(out, respItem{
-					Type: respItemFuncCall, CallID: tc.ID, Name: tc.Name, Arguments: toolArgs(tc.Arguments),
+					Type: respItemFuncCall, CallID: tc.ID, Name: tc.Name, Arguments: replayToolArgs(tc.Arguments),
 				})
 			}
 		default:
@@ -97,7 +97,7 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 	return out, nil
 }
 
-// respInputContent builds a user message's content list: text alone is one input_text.
+// respInputContent builds a user message's content list: text alone is input_text.
 func respInputContent(m Message) ([]respContent, error) {
 	if !hasImage(m) {
 		return []respContent{{Type: respTextInput, Text: m.Content}}, nil

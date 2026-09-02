@@ -10,7 +10,7 @@ import (
 )
 
 // stepClock returns a clock that hands out the given instants in order, then
-// repeats the last one.
+// repeats the last.
 func stepClock(times ...time.Time) func() time.Time {
 	i := 0
 	return func() time.Time {
@@ -92,17 +92,17 @@ func TestRunElapsedNoticeRidesEveryCall(t *testing.T) {
 	assert.Equal(t, Message{Role: RoleUser, Kind: ElapsedKind,
 		Content: "Current time is 3:14 AM on 8/26/2026, 2hrs have passed"}, first[1])
 
-	// The second call measures from the FIRST call, not from Since.
+	// The call measures from the call, not from Since.
 	second := provider.reqs[1].Messages
 	require.NotEmpty(t, second)
 	assert.Equal(t, Message{Role: RoleUser, Kind: ElapsedKind,
 		Content: "Current time is 3:14 AM on 8/26/2026, 30secs have passed"}, second[len(second)-1])
 
-	// The notice is per-call: the durable transcript never holds one.
+	// The notice is per-call: the durable transcript never holds.
 	for _, m := range res.Messages {
 		assert.NotEqual(t, ElapsedKind, m.Kind, "a stored notice is false the moment it is replayed")
 	}
-	// Neither does the transcript the second call replayed.
+	// Neither does the transcript the call replayed.
 	for _, m := range second[:len(second)-1] {
 		assert.NotEqual(t, ElapsedKind, m.Kind)
 	}

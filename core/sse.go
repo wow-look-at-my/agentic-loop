@@ -14,7 +14,7 @@ import (
 // "[DONE]" or EOF. Only data lines are processed; comments, event: lines and
 // blank separators are skipped (event-named streams like Anthropic's carry the
 // discriminator inside the JSON payload as well). The scanner allows long
-// lines — 64 KiB initial buffer, 8 MiB max — because tool-call argument
+// lines — KiB initial buffer, MiB max — because tool-call argument
 // deltas and base64 payloads can far exceed bufio's default. onData errors
 // abort the stream and propagate.
 func scanSSE(r io.Reader, onData func(data []byte) error) error {
@@ -43,7 +43,7 @@ func scanSSE(r io.Reader, onData func(data []byte) error) error {
 }
 
 // readAPIError turns a non-2xx response into an *APIError, reading at most
-// 4 KiB of the body. The bounded body is what downstream matchers (the
+// KiB of the body. The bounded body is what downstream matchers (the
 // param-strip regexes, the context-overflow detector) run against; an empty
 // body falls back to the HTTP status text.
 func readAPIError(resp *http.Response) *APIError {
@@ -61,7 +61,7 @@ func readAPIError(resp *http.Response) *APIError {
 }
 
 // readCapped reads at most max bytes, reporting whether it stopped early. A
-// truncated read is trimmed back to a UTF-8 boundary so the caller never has
+// truncated read is trimmed back to a UTF- boundary so the caller never has
 // to reason about a half-decoded rune.
 func readCapped(r io.Reader, max int64) (data []byte, truncated bool, err error) {
 	var b bytes.Buffer

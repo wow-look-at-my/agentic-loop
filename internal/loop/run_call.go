@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// runModelCall executes one model call, counting it as one turn (internal retries included).
+// runModelCall executes model call, counting it as turn (internal retries included).
 func runModelCall(
 	ctx context.Context, cfg *Config,
 	req Request, turn int, msgs []Message, tools []ToolDecl, res *Result, el *elapsedTracker,

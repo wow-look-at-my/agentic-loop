@@ -1,6 +1,6 @@
 // Package agentic is the module-root package: the agentic tool loop,
 // re-exported from the implementation in internal/loop so the module
-// root stays one small forwarding file.
+// root stays small forwarding file.
 //
 // Everything the loop package exposes — the Run loop, tools, approval,
 // the wire half (aliases of the client types), compaction, sub-agent and
@@ -121,7 +121,6 @@ var CountLineChanges = loop.CountLineChanges
 var CountLines = loop.CountLines
 
 // Bool addresses a boolean, for ToolDecl's tri-state behaviour fields:
-// Destructive and OpenWorld distinguish "false" from "not stated".
 var Bool = loop.Bool
 var DecodeModelList = loop.DecodeModelList
 var Dialects = loop.Dialects
@@ -150,9 +149,7 @@ var UnifiedDiff = loop.UnifiedDiff
 var WithToolCallID = loop.WithToolCallID
 
 // EnumSchema is forwarded from internal/loop. A generic function cannot
-// be re-exported as a value, so this is a thin wrapper.
 func EnumSchema[In any](enums map[string][]string) json.RawMessage { return loop.EnumSchema[In](enums) }
 
 // InferSchema is forwarded from internal/loop. A generic function cannot
-// be re-exported as a value, so this is a thin wrapper.
 func InferSchema[In any]() json.RawMessage { return loop.InferSchema[In]() }

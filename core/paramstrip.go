@@ -10,20 +10,20 @@ import (
 )
 
 // This file implements provider-agnostic recovery from a "rejected parameter"
-// 400. Extra params are forwarded verbatim (faithful passthrough), but some
+//. Extra params are forwarded verbatim (faithful passthrough), but some
 // upstreams reject a parameter another upstream accepts (e.g. xAI rejects
 // reasoning_effort). When the upstream rejects a parameter at request time —
-// a 400 returned before any token streams — the middleware parses the
-// offending parameter name out of the error text (which embeds the HTTP 400
-// body via APIError), strips that one key from the request's Extra, and
-// retries the same request once. Params are thus still sent by default; only
-// one is dropped, and only after the upstream said no.
+// a returned before any token streams — the middleware parses the
+// offending parameter name out of the error text (which embeds the HTTP
+// body via APIError), strips that key from the request's Extra, and
+// retries the same request. Params are thus still sent by default; only
+// is dropped, and only after the upstream said no.
 
 // rejectParamPatterns matches common OpenAI-compatible phrasings for a rejected/unsupported parameter, capturing the parameter name.
 var rejectParamPatterns = []*regexp.Regexp{
-	// xAI: Model grok-build-0.1 does not support parameter reasoningEffort.
+	// xAI: Model grok-build- does not support parameter reasoningEffort.
 	regexp.MustCompile(`(?i)does not support parameter\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
-	// OpenAI: Unsupported parameter: 'reasoning_effort' ... / unsupported parameter reasoning_effort
+	// OpenAI: Unsupported parameter: 'reasoning_effort'... / unsupported parameter reasoning_effort
 	regexp.MustCompile(`(?i)unsupported parameter:?\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
 	// OpenAI/strict JSON: unknown field "reasoning_effort"
 	regexp.MustCompile(`(?i)unknown field\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
@@ -61,7 +61,7 @@ type paramStripper struct {
 	stripped set.Set[string] // normalized names of params already stripped
 }
 
-// Strips a named param from Extra and retries ONCE; never on cancel or streamed calls.
+// Strips a named param from Extra and retries; never on cancel or streamed calls.
 func NewParamStripper(p Provider) Provider {
 	return &paramStripper{inner: p, stripped: set.New[string]()}
 }

@@ -7,7 +7,7 @@ import (
 	"regexp"
 )
 
-// APIError is a non-2xx provider response: Body holds up to 4 KiB, ContextOverflow flags a permanent 400.
+// APIError is a non-2xx provider response: Body holds up to KiB, ContextOverflow flags a permanent.
 type APIError struct {
 	Status          int
 	Body            string
@@ -29,7 +29,7 @@ func IsContextOverflow(err error) bool {
 	return errors.As(err, &ae) && ae.ContextOverflow
 }
 
-// IsTransient reports if err is retryable: 408/429/5xx or network errors; never cancellation, other 4xx, or callbacks
+// IsTransient reports if err is retryable: //5xx or network errors; never cancellation, other 4xx, or callbacks
 func IsTransient(err error) bool {
 	if err == nil {
 		return false

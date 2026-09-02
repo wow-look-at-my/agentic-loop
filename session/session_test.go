@@ -12,7 +12,7 @@ import (
 )
 
 // stores is every backend, so the contract is checked against all of them
-// rather than against whichever one a test happened to pick.
+// rather than against whichever a test happened to pick.
 func stores(t *testing.T) map[string]Store {
 	t.Helper()
 	f, err := NewFile(t.TempDir())
@@ -93,7 +93,7 @@ func TestStoreHandsBackACopy(t *testing.T) {
 	}
 }
 
-// An id is part of a file path, so a store that takes one has to say no to the
+// An id is part of a file path, so a store that takes has to say no to the
 // ones that would leave its directory.
 func TestFileStoreRejectsAWanderingID(t *testing.T) {
 	dir := t.TempDir()

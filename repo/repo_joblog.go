@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// what=job_log reads one Actions job's own log, where the failing assertion lives.
+// what=job_log reads Actions job's own log, where the failing assertion lives.
 
 const (
-	// jobLogMaxBytes caps one log read.
+	// jobLogMaxBytes caps log read.
 	jobLogMaxBytes = 24 << 20
 	// jobLogTailLines is how much of an over-long log is returned when no window is asked.
 	jobLogTailLines = 400
@@ -116,7 +116,7 @@ func renderJobLog(in repoReadArgs, resource string, lines []string, truncated bo
 	return b.String()
 }
 
-// jobLogWindow resolves the requested line window. offset is 1-based to match
+// jobLogWindow resolves the requested line window. offset is -based to match
 // what the header prints, so a reader can page by quoting the numbers back.
 func jobLogWindow(offset, limit, total int) (start, end int, tailed bool) {
 	if offset <= 0 && limit <= 0 {

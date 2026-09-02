@@ -4,7 +4,7 @@ import agentic "github.com/wow-look-at-my/agentic-loop"
 
 // What the model is told about each file tool. Every string here is contract:
 // they are the whole of what a model knows about the filesystem before it uses
-// one, and the host appends only its own MountsBlurb and per-tool Notes.
+//, and the host appends only its own MountsBlurb and per-tool Notes.
 
 const (
 	listDirDescription  = "Lists a directory."
@@ -26,7 +26,7 @@ const (
 )
 
 // The schemas, each inferred from the struct its handler decodes (schema.go),
-// so an argument cannot exist in one and not the other.
+// so an argument cannot exist in and not the other.
 var (
 	pathOnlySchema = agentic.InferSchema[pathArgs]()
 	readSchema     = agentic.InferSchema[readArgs]()
