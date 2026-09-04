@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -40,12 +41,18 @@ func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 	return srv, &bodies
 }
 
+// cliMu serializes the tests that drive the command tree, which is package
+// state: its flags, its args, and where it writes.
+var cliMu sync.Mutex
+
 // run drives the command tree the way a shell does, and returns what a user
 // would see on stdout.
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
+	cliMu.Lock()
+	defer cliMu.Unlock()
 	var out, errOut bytes.Buffer
-	// process runs every case, so each invocation starts from the defaults; a prior case's flag must not leak.
+	// Each invocation starts from the defaults; a prior case's flag must not leak.
 	resetFlags()
 	root.SetOut(&out)
 	root.SetErr(&errOut)

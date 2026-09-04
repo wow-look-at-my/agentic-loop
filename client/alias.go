@@ -90,6 +90,8 @@ var (
 	Unsupported       = commonai.Unsupported
 	ErrorKind         = commonai.ErrorKind
 	IsBadRequest      = commonai.IsBadRequest
+	// DialectRefused: see docs/dialect-refusal.md
+	DialectRefused = commonai.DialectRefused
 )
 
 // Error constructors; a caller's own marker for refusal would be classified transient and re-sent.

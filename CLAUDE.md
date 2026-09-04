@@ -156,6 +156,16 @@ side of that line it falls on — do not put it on both.
   `core.NewThinkingSignatureRepair`, which strips the one signature Anthropic
   named and retries once, else the same messages 400 forever regardless of
   model or attempt count. Depth: USAGE.md's "Retry and error classification".
+- **A protocol is a property of the MODEL, not only of the host.** One endpoint
+  serves one model over chat completions and refuses another on the same path,
+  naming where it belonged (`This model is not supported in
+  v1/chat/completions. Use v1/responses instead.`). `DialectRefused` reads that
+  direction off a 400/404/405/422 body -- a path counts only after a directive
+  phrase, so the refused path in that same sentence is not mistaken for the
+  answer -- and it reads **no model name**: a name-to-dialect table is today's
+  lineup frozen into code and wrong for every gateway that renames one.
+  Classifying is all it does; re-running and remembering are the host's, the
+  same split as `IsTransient`. Depth: `docs/dialect-refusal.md`.
 - **A tool is an individual thing, and nothing groups them.** `Tool` is
   `Decl`/`Execute`, and a run's toolset is a flat `Tools`
   slice `Run` indexes by advertised name. There is no `ToolExecutor`, no
@@ -395,6 +405,8 @@ side of that line it falls on — do not put it on both.
 - `docs/search.md` — the conversation index: the Source seam, why the vectors
   are scanned in Go, what that costs measured, and how lag is reported.
 - `docs/nul-char.md` — `&#0;`, and the one deviation from XML 1.1's `Char`.
+- `docs/dialect-refusal.md` — a refusal that names an endpoint: what
+  `DialectRefused` reads, which statuses it accepts, and why no model name.
 
 ## Fix the bug. Never build around it.
 

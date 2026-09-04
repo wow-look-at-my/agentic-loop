@@ -91,6 +91,9 @@ const DialectResponses = loop.DialectResponses
 var IsTransient = loop.IsTransient
 var IsContextOverflow = loop.IsContextOverflow
 
+// DialectRefused: see docs/dialect-refusal.md
+var DialectRefused = loop.DialectRefused
+
 const ResourceAdded = loop.ResourceAdded
 const ResourceModified = loop.ResourceModified
 const ResourceRemoved = loop.ResourceRemoved

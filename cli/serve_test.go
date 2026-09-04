@@ -25,6 +25,7 @@ func serveInBackground(t *testing.T, args ...string) (stop func()) {
 	done := make(chan error, 1)
 	var out, errOut bytes.Buffer
 
+	cliMu.Lock() // held while serve runs: it owns the command tree throughout
 	resetFlags()
 	root.SetOut(&out)
 	root.SetErr(&errOut)
@@ -32,6 +33,7 @@ func serveInBackground(t *testing.T, args ...string) (stop func()) {
 	go func() { done <- root.ExecuteContext(ctx) }()
 
 	t.Cleanup(func() {
+		defer cliMu.Unlock()
 		cancel()
 		select {
 		case err := <-done:
