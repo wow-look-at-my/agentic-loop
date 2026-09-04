@@ -70,14 +70,32 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 // 2xx it records the winning token id in the cache (an empty cacheKey
 // disables caching) and returns the response.
 //
+// A registered VFS mount is consulted FIRST: a path a mount owns is answered
+// by that mount and never reaches GitHub or the token rotation.
+//
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
 // last: the last attempt is the anonymous, whose says only that no
 // credential was sent. Returning that hid the actual reason a configured token
 // was refused — a spent code-search rate limit reads as " Requires
 // authentication", so a transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
+	// A virtual filesystem owns this path: answer from it, never GitHub.
+	if e.vfs != nil {
+		if vfs, rest, ok := e.vfs.Resolve(target); ok {
+			return vfs.Read(ctx, rest, opt)
+		}
+	}
 	var best GHResponse
 	bestRank := rankNone
+	// bestAuthed is the most informative failure produced by a TOKEN attempt.
+	// It is kept separate from best so an anonymous failure can never
+	// supersede it: when a configured PAT was tried and produced a failure,
+	// the caller must be told about THAT, never "this was anonymous." The
+	// anonymous attempt runs last, so without this separation its (typically
+	// less informative) 401/403 would overwrite the token's answer on the
+	// last-write-wins tiebreak.
+	var bestAuthed GHResponse
+	bestAuthedRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, opt.NoAnonymous) {
 		res, err := e.doGetOpts(ctx, target, att.token, accept, opt)
@@ -92,9 +110,24 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 		}
 		res.authed = att.token != ""
 		res.credentialName = att.name
-		if r := failureRank(res); r > bestRank {
+		r := failureRank(res)
+		// A token's failure outranks any anonymous one: an anonymous result
+		// says only "no credential was sent", so when a PAT was configured
+		// and tried, its answer is what the caller must see.
+		if att.token != "" {
+			if r > bestAuthedRank {
+				bestAuthedRank, bestAuthed = r, res
+			}
+			continue
+		}
+		if r > bestRank {
 			bestRank, best = r, res
 		}
+	}
+	// If any token produced a failure, that is the answer: never report an
+	// anonymous outcome when a configured PAT was tried and failed.
+	if bestAuthedRank != rankNone {
+		return bestAuthed, nil
 	}
 	if best.status == 0 && lastErr != nil {
 		return GHResponse{}, lastErr
