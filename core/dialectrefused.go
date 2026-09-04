@@ -11,7 +11,13 @@ import (
 
 // dialectRefusalRe finds the endpoint an error body DIRECTS the caller to.
 // see docs/dialect-refusal.md
-var dialectRefusalRe = regexp.MustCompile(`(?i)(?:use|only (?:supported|available|works?) (?:in|on|with|via)|supported only (?:in|on|via)|available only (?:in|on|via)|switch to|call)\s+(?:the\s+)?["'` + "`" + `]?/?(v\d+/(?:responses|messages|chat/completions))`)
+var dialectRefusalRe = regexp.MustCompile(`(?i)(not|n't|never|no longer)?\s*(?:` +
+	// Told to go somewhere.
+	`use|switch to|call|try|post to|send (?:it )?to|belongs (?:on|in)|` +
+	// Told where it IS served, which is the same direction stated the other way.
+	`(?:must |should |can |may )?(?:be )?(?:called|requested|sent|invoked) (?:through|on|via|against)|` +
+	`(?:only |exclusively )?(?:supported|available|works?|served) (?:only )?(?:in|on|with|via|through)` +
+	`)\s+(?:the\s+)?["'` + "`" + `]?/?(v\d+/(?:responses|messages|chat/completions))`)
 
 // dialectOfPath maps an API path to the dialect that speaks it.
 func dialectOfPath(path string) Dialect {
@@ -41,7 +47,12 @@ func DialectRefused(err error) (Dialect, bool) {
 		return DialectAuto, false
 	}
 	for _, m := range dialectRefusalRe.FindAllStringSubmatch(ae.Body, -1) {
-		if d := dialectOfPath(m[1]); d != DialectAuto {
+		// A NEGATED phrase names the path that was refused, not the one to use:
+		// "not supported in v1/chat/completions" says only that this failed.
+		if m[1] != "" {
+			continue
+		}
+		if d := dialectOfPath(m[2]); d != DialectAuto {
 			return d, true
 		}
 	}

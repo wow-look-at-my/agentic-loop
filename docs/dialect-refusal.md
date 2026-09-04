@@ -22,12 +22,15 @@ next model and for every gateway that renames one.
 ## What it reads
 
 The body must DIRECT the caller somewhere. The pattern takes a path only after a
-directive phrase -- `use`, `only supported in`, `available only via`, `switch
-to`, `call`, and the `only works with` family -- so the refusal above yields
-`DialectResponses` and not `DialectOpenAI`, even though `v1/chat/completions`
-appears first in it. A body that names the refused path alone ("this model is not
-supported in v1/chat/completions.") reports nothing: it says the request failed,
-not where the request belongs.
+directive phrase -- `use`, `switch to`, `call`, `post to`, `belongs on`, `must be
+called through`, `only supported in`, `served via`, and their neighbours -- and a
+phrase carrying a NEGATION (`not`, `n't`, `never`, `no longer`) is skipped,
+because a negated phrase names the path that was refused rather than the one to
+use. Both rules are needed for one sentence: the refusal above says `not
+supported in v1/chat/completions` and then `Use v1/responses`, so it must answer
+`DialectResponses` while reading the same two paths. A body that names the refused
+path alone ("this model is not supported in v1/chat/completions.") reports
+nothing: it says the request failed, not where the request belongs.
 
 The path decides the dialect by its tail: `/responses` is `DialectResponses`,
 `/messages` is `DialectAnthropic`, `/chat/completions` is `DialectOpenAI`. The

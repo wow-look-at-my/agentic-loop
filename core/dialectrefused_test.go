@@ -66,6 +66,12 @@ func TestDialectRefusedReadsTheEndpointTheServerNamed(t *testing.T) {
 			want:   DialectAuto,
 		},
 		{
+			name:   "a negated phrase is the refused path, whatever the wording",
+			status: 400,
+			body:   `{"error":{"message":"this deployment isn't served on v1/messages"}}`,
+			want:   DialectAuto,
+		},
+		{
 			name:   "a 500 says nothing about a protocol",
 			status: 500,
 			body:   `upstream is confused; use v1/responses`,
