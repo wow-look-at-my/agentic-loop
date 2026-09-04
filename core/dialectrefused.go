@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// A model can be served by one protocol and refused by another on the same
-// host. see docs/dialect-refusal.md
+// A host can serve a model over a protocol while refusing it on another.
+// see docs/dialect-refusal.md
 
 // dialectRefusalRe finds the endpoint an error body DIRECTS the caller to.
 // see docs/dialect-refusal.md
@@ -32,22 +32,22 @@ func dialectOfPath(path string) Dialect {
 	return DialectAuto
 }
 
-// DialectRefused reports the protocol an endpoint NAMED as the one to use for
-// the request it just refused. see docs/dialect-refusal.md
+// DialectRefused reports the protocol an endpoint NAMED for the request it just
+// refused. see docs/dialect-refusal.md
 func DialectRefused(err error) (Dialect, bool) {
 	var ae *APIError
 	if !errors.As(err, &ae) {
 		return DialectAuto, false
 	}
-	// A refusal of THIS request. A 5xx says nothing about a protocol, and a 401
-	// is about the credential.
+	// A refusal of THIS request: a server failure says nothing about a protocol,
+	// and an auth failure is about the credential. see docs/dialect-refusal.md
 	switch ae.Status {
 	case 400, 404, 405, 422:
 	default:
 		return DialectAuto, false
 	}
 	for _, m := range dialectRefusalRe.FindAllStringSubmatch(ae.Body, -1) {
-		// A NEGATED phrase names the path that was refused, not the one to use:
+		// A NEGATED phrase names the refused path rather than the replacement:
 		// "not supported in v1/chat/completions" says only that this failed.
 		if m[1] != "" {
 			continue

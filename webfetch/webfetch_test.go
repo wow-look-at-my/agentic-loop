@@ -261,7 +261,9 @@ func TestWebFetchSummaryErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "content")
 	}))
-	defer srv.Close()
+	// Cleanup, never defer: a defer runs when this BODY returns, before a subtest
+	// the runner scheduled separately has fetched anything.
+	t.Cleanup(srv.Close)
 
 	t.Run("no model available", func(t *testing.T) {
 		exec := NewWebFetchTool(WebFetchConfig{})
@@ -293,7 +295,7 @@ func TestWebFetchTika(t *testing.T) {
 		w.Header().Set("Content-Type", "application/pdf")
 		_, _ = io.WriteString(w, "%PDF-raw-bytes")
 	}))
-	defer page.Close()
+	t.Cleanup(page.Close) // the subtests fetch it; see TestWebFetchSummaryErrors
 
 	t.Run("extraction wins", func(t *testing.T) {
 		var method, path, accept, ctype, body string
