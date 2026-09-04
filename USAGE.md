@@ -858,6 +858,25 @@ attempt count. The stripped signature is remembered for the life of the
 provider, so a later turn in the same conversation strips it up front
 instead of paying for a failing round trip again.
 
+**A refusal can name the endpoint the request belonged on.** One host serves
+one model over one protocol and refuses another model's request on the same
+path: OpenAI answers a chat-completions call for a Responses-only model with
+`This model is not supported in v1/chat/completions. Use v1/responses
+instead.` `DialectRefused(err) (Dialect, bool)` reads the protocol the body
+DIRECTED the caller to -- a path only counts after a directive phrase, so
+that reply reports `DialectResponses` and not the `v1/chat/completions` it
+also mentions. It accepts 400, 404, 405 and 422 only: a 5xx is the server
+failing and a 401 is the credential, neither of which says anything about a
+protocol. It reads no model NAME, because a name-to-dialect table is today's
+model lineup frozen into code and wrong for every gateway that renames one.
+
+Classification is all it does -- acting is the host's, which is the same split
+as `IsTransient`. A host typically re-runs the same request against the named
+dialect's provider and remembers the answer per model, so later turns start on
+the right endpoint. That re-run is safe by construction: every accepted status
+is a non-2xx response, so nothing streamed. Depth:
+`docs/dialect-refusal.md`.
+
 ### Rate limiting
 
 `ProviderConfig.RateLimiter`, when set, throttles the provider's outgoing

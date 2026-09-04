@@ -74,6 +74,8 @@ var DefaultRetry = client.DefaultRetry
 var (
 	IsTransient       = client.IsTransient
 	IsContextOverflow = client.IsContextOverflow
+	// DialectRefused: see docs/dialect-refusal.md
+	DialectRefused = client.DialectRefused
 )
 
 // NewOpenAIProvider builds the OpenAI chat-completions Provider; fails fast on an empty BaseURL.
