@@ -52,9 +52,15 @@ func TestAModelThatPublishesNoLimitIsAbsent(t *testing.T) {
 }
 
 func TestALimitThatIsNotACountFailsTheDecode(t *testing.T) {
-	for _, v := range []string{`"lots"`, `-1`, `1.5`, `true`, `1e12`} {
-		_, err := DecodeModelList([]byte(`{"object":"list","data":[{"id":"m","context_length":` + v + `}]}`))
-		assert.Error(t, err, v)
+	for _, doc := range []string{
+		`{"object":"list","data":[{"id":"m","context_length":"lots"}]}`,
+		`{"object":"list","data":[{"id":"m","context_length":-1}]}`,
+		`{"object":"list","data":[{"id":"m","context_length":1.5}]}`,
+		`{"object":"list","data":[{"id":"m","context_length":true}]}`,
+		`{"object":"list","data":[{"id":"m","max_tokens":1e12}]}`,
+	} {
+		_, err := DecodeModelList([]byte(doc))
+		assert.Error(t, err, doc)
 	}
 }
 

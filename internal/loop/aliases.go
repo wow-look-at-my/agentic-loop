@@ -41,7 +41,7 @@ type (
 	APIError       = client.APIError
 )
 
-// Normalized stop reasons. A provider maps its own vocabulary onto these, so a
+// Normalized stop reasons. A provider maps its own vocabulary onto these.
 const (
 	StopEndTurn   = client.StopEndTurn
 	StopToolUse   = client.StopToolUse
