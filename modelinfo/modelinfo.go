@@ -1,8 +1,10 @@
-// Package modelinfo answers what a modelinfo catalogue (https://modelinfo.pazer.ai) publishes about a model: its rates
-// and its token limits. It is the source a host falls back to when the endpoint's own model list does not say.
+// Package modelinfo answers what a modelinfo catalogue
+// (https://modelinfo.pazer.ai) publishes about a model: its rates and its
+// token limits. It is the source a host falls back to when the endpoint's own
+// model list does not say.
 //
-// A lookup asks the catalogue's /v1/models/{name} for the one model it names. The whole catalogue is tens of
-// megabytes, so it is never read in full.
+// A lookup asks the catalogue's /v1/models/{name} for the model it names. The
+// whole catalogue is tens of megabytes, so it is never read in full.
 package modelinfo
 
 import (

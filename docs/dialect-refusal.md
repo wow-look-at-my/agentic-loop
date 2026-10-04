@@ -15,7 +15,7 @@ That is the endpoint naming the protocol for that model, in its own words. It is
 
 The body must DIRECT the caller somewhere. The pattern takes a path only after a directive phrase -- `use`, `switch to`, `call`, `post to`, `belongs on`, `must be called through`, `only supported in`, `served via`, and their neighbours. And a phrase carrying a NEGATION (`not`, `n't`, `never`, `no longer`) is skipped, because a negated phrase names the path that was refused rather than the one to use. Both rules are needed for one sentence: the refusal above says `not supported in v1/chat/completions` and then `Use v1/responses`. As a result, it must answer `DialectResponses` while reading the same paths. A body that names the refused path alone ("this model is not supported in v1/chat/completions.") reports nothing: it says the request failed, not where the request belongs.
 
-The path decides the dialect by its tail: `/responses` is `DialectResponses`, `/messages` is `DialectAnthropic`, `/chat/completions` is `DialectOpenAI`. The version segment is matched but not read, so a `v2/responses` still answers.
+The path decides the dialect by its tail: `/responses` is `DialectResponses`, `/messages` is `DialectAnthropic`, `/chat/completions` is `DialectOpenAI`. The version segment is matched but not read. As a result, a `v2/responses` still answers.
 
 ## The statuses it accepts
 
