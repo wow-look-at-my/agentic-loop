@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,28 +13,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// catalogue is shaped like modelinfo's own answer: canonical undated ids, dated snapshots as aliases, rates in USD per
-// token as decimal strings, and limits.
-const catalogue = `{"object":"list","data":[
-  {"id":"anthropic/claude-sonnet-4-5",
-   "aliases":["claude-sonnet-4-5","anthropic/claude-sonnet-4-5-20250929","claude-sonnet-4-5-20250929"],
-   "pricing":{"prompt":"0.000003","completion":"0.000015","input_cache_read":"0.0000003","input_cache_write":"0.00000375"},
-   "context_length":1000000,"max_output_length":64000},
-  {"id":"some/unpriced","context_length":8192},
-  {"id":"some/garbage","pricing":{"prompt":"nonsense","completion":""}},
-  {"id":"some/free","pricing":{"prompt":"0","completion":"0"}},
-  {"id":"a/dupe","pricing":{"prompt":"0.000001"}},
-  {"id":"b/dupe","pricing":{"prompt":"0.000002"}}
-]}`
+// sonnet is a record shaped like modelinfo's own: a canonical undated id, rates in USD per token as decimal strings,
+// and limits.
+const sonnet = `{"id":"anthropic/claude-sonnet-4-5",
+  "aliases":["claude-sonnet-4-5","claude-sonnet-4-5-20250929"],
+  "pricing":{"prompt":"0.000003","completion":"0.000015","input_cache_read":"0.0000003","input_cache_write":"0.00000375"},
+  "max_input_tokens":1000000,"max_output_tokens":64000}`
 
-func serve(t *testing.T, body string) (*httptest.Server, *atomic.Int32) {
+var catalogue = map[string]string{
+	"anthropic/claude-sonnet-4-5":          sonnet,
+	"claude-sonnet-4-5":                    sonnet,
+	"anthropic/claude-sonnet-4-5-20250929": sonnet,
+	"claude-sonnet-4-5-20250929":           sonnet,
+	"some/unpriced":                        `{"id":"some/unpriced","context_length":8192}`,
+	"some/garbage":                         `{"id":"some/garbage","pricing":{"prompt":"nonsense","completion":""}}`,
+	"some/free":                            `{"id":"some/free","pricing":{"prompt":"0","completion":"0"}}`,
+	"a/dupe":                               `{"id":"a/dupe","pricing":{"prompt":"0.000001"}}`,
+	"b/dupe":                               `{"id":"b/dupe","pricing":{"prompt":"0.000002"}}`,
+}
+
+func serve(t *testing.T, records map[string]string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		assert.Equal(t, "/v1/models", r.URL.Path)
-		assert.Equal(t, "all", r.URL.Query().Get("mode"), "the default view drops every non-chat model")
-		_, _ = w.Write([]byte(body))
+		name, ok := strings.CutPrefix(r.URL.Path, "/v1/models/")
+		require.True(t, ok, "unexpected path %q", r.URL.Path)
+		rec, ok := records[name]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(rec))
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &hits
@@ -99,15 +110,18 @@ func TestANameTwoModelsClaimAnswersForNeither(t *testing.T) {
 	assert.True(t, ok)
 }
 
-func TestOneReadServesEveryLookup(t *testing.T) {
+func TestEachNameIsAskedOnce(t *testing.T) {
 	srv, hits := serve(t, catalogue)
 	c := New(srv.URL, srv.Client())
 	for range 3 {
 		_, ok, err := c.Lookup(context.Background(), "a/dupe")
 		require.NoError(t, err)
 		require.True(t, ok)
+		_, ok, err = c.Lookup(context.Background(), "nobody/knows")
+		require.NoError(t, err)
+		require.False(t, ok)
 	}
-	assert.Equal(t, int32(1), hits.Load())
+	assert.Equal(t, int32(2), hits.Load(), "a known model and an unknown one, each asked once")
 }
 
 func TestAFailedReadIsAnsweredUntilRetryAfter(t *testing.T) {
@@ -117,7 +131,7 @@ func TestAFailedReadIsAnsweredUntilRetryAfter(t *testing.T) {
 			http.Error(w, "down", http.StatusInternalServerError)
 			return
 		}
-		_, _ = w.Write([]byte(catalogue))
+		_, _ = w.Write([]byte(catalogue["a/dupe"]))
 	}))
 	defer srv.Close()
 	c := New(srv.URL, srv.Client())
@@ -137,10 +151,12 @@ func TestAFailedReadIsAnsweredUntilRetryAfter(t *testing.T) {
 	assert.Equal(t, int32(2), hits.Load())
 }
 
-func TestAnUnreadableCatalogueIsAnError(t *testing.T) {
-	srv, _ := serve(t, `<html>not a catalogue</html>`)
+func TestAnUnreadableRecordIsAnError(t *testing.T) {
+	srv, _ := serve(t, map[string]string{"m": `<html>not a record</html>`, "n": `{"name":"no id"}`})
 	_, _, err := New(srv.URL, srv.Client()).Lookup(context.Background(), "m")
-	require.Error(t, err)
+	require.ErrorContains(t, err, "not a model record")
+	_, _, err = New(srv.URL, srv.Client()).Lookup(context.Background(), "n")
+	require.ErrorContains(t, err, "names no id")
 }
 
 func TestALookupNeedsAURLAndAName(t *testing.T) {

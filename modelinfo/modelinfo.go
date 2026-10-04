@@ -1,10 +1,8 @@
 // Package modelinfo answers what a modelinfo catalogue (https://modelinfo.pazer.ai) publishes about a model: its rates
 // and its token limits. It is the source a host falls back to when the endpoint's own model list does not say.
 //
-// The catalogue folds a model to an undated canonical id ("anthropic/claude-sonnet-4-5"), while a provider names a dated
-// snapshot ("claude-sonnet-4-5-20250929") that the catalogue carries only as an alias. So a lookup answers by every name
-// a model answers to: its id, each alias, and the id without its "provider/" prefix. A name models both claim answers
-// for neither, because one model priced at another's rates is worse than no price.
+// A lookup asks the catalogue's /v1/models/{name} for the one model it names. The whole catalogue is tens of
+// megabytes, so it is never read in full.
 package modelinfo
 
 import (
@@ -13,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -23,8 +22,8 @@ import (
 // DefaultURL is the public catalogue.
 const DefaultURL = "https://modelinfo.pazer.ai"
 
-// maxBytes caps the read. The whole catalogue, every mode, is a few megabytes.
-const maxBytes = 16 << 20
+// maxBytes caps one model's record, which is a few kilobytes.
+const maxBytes = 1 << 20
 
 // Model is what the catalogue publishes about one model.
 type Model struct {
@@ -40,7 +39,8 @@ type Model struct {
 // RetryAfter is how long a Catalogue answers a failed read's error before it asks the catalogue again.
 const RetryAfter = time.Minute
 
-// Catalogue reads a modelinfo catalogue once and answers lookups from it.
+// Catalogue asks a modelinfo catalogue about each model once and keeps the
+// answer, a model it does not know included.
 type Catalogue struct {
 	base string
 	hc   *http.Client
@@ -60,109 +60,99 @@ func New(base string, hc *http.Client) *Catalogue {
 	return &Catalogue{base: strings.TrimRight(strings.TrimSpace(base), "/"), hc: hc, now: time.Now}
 }
 
-// Lookup answers what the catalogue publishes about model, by any name the model answers to. ok is false for a name
-// the catalogue does not know, or one that some of its models both claim.
+// Lookup answers what the catalogue publishes about model, by any name the catalogue resolves. ok is false for a name
+// it does not know, or one that several of its models claim.
 func (c *Catalogue) Lookup(ctx context.Context, model string) (Model, bool, error) {
 	name := strings.ToLower(strings.TrimSpace(model))
 	if name == "" {
 		return Model{}, false, fmt.Errorf("modelinfo: cannot look up a model with no id")
 	}
+	if c.base == "" {
+		return Model{}, false, fmt.Errorf("modelinfo: the catalogue has no URL")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.byName == nil {
-		if c.err != nil && c.now().Sub(c.failedAt) < RetryAfter {
-			return Model{}, false, c.err
+	if m, done := c.byName[name]; done {
+		if m == nil {
+			return Model{}, false, nil
 		}
-		byName, err := c.fetch(ctx)
-		if err != nil {
-			c.err, c.failedAt = err, c.now()
-			return Model{}, false, err
-		}
-		c.byName, c.err = byName, nil
+		return *m, true, nil
 	}
-	m := c.byName[name]
+	if c.err != nil && c.now().Sub(c.failedAt) < RetryAfter {
+		return Model{}, false, c.err
+	}
+	m, err := c.fetch(ctx, name)
+	if err != nil {
+		c.err, c.failedAt = err, c.now()
+		return Model{}, false, err
+	}
+	c.err = nil
+	if c.byName == nil {
+		c.byName = make(map[string]*Model)
+	}
+	c.byName[name] = m
 	if m == nil {
 		return Model{}, false, nil
 	}
 	return *m, true, nil
 }
 
-func (c *Catalogue) fetch(ctx context.Context) (map[string]*Model, error) {
-	if c.base == "" {
-		return nil, fmt.Errorf("modelinfo: the catalogue has no URL")
-	}
-	// mode=all: the bare endpoint answers only the chat modes, and drops every embedding model a host may also price.
-	url := c.base + "/v1/models?mode=all"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (c *Catalogue) fetch(ctx context.Context, name string) (*Model, error) {
+	endpoint := c.base + "/v1/models/" + url.PathEscape(name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("modelinfo: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("modelinfo: %s: %w", url, err)
+		return nil, fmt.Errorf("modelinfo: %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("modelinfo: %s answered %s", url, resp.Status)
+		return nil, fmt.Errorf("modelinfo: %s answered %s", endpoint, resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("modelinfo: %s: %w", url, err)
+		return nil, fmt.Errorf("modelinfo: %s: %w", endpoint, err)
 	}
 	if len(body) > maxBytes {
-		return nil, fmt.Errorf("modelinfo: %s answered more than %d bytes", url, maxBytes)
+		return nil, fmt.Errorf("modelinfo: %s answered more than %d bytes", endpoint, maxBytes)
 	}
-	byName, err := Decode(body)
+	m, err := Decode(body)
 	if err != nil {
-		return nil, fmt.Errorf("modelinfo: %s: %w", url, err)
+		return nil, fmt.Errorf("modelinfo: %s: %w", endpoint, err)
 	}
-	return byName, nil
+	return &m, nil
 }
 
-// Decode reads a catalogue document into a table keyed by every lower-cased name a model answers to. A name models
-// claim maps to nil. A document that will not parse is an error, never an empty table.
-func Decode(body []byte) (map[string]*Model, error) {
-	list, err := commonai.DecodeModelList(body)
+// Decode reads one model's record. A record that will not parse is an error, never an empty model.
+func Decode(body []byte) (Model, error) {
+	var rec struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &rec); err != nil {
+		return Model{}, fmt.Errorf("the answer is not a model record: %w", err)
+	}
+	id := strings.TrimSpace(rec.ID)
+	if id == "" {
+		return Model{}, fmt.Errorf("the model record names no id")
+	}
+	// The record is a model-list item, so the model list's decoder reads its rates and limits.
+	wrapped, err := json.Marshal(struct {
+		Object string            `json:"object"`
+		Data   []json.RawMessage `json:"data"`
+	}{"list", []json.RawMessage{body}})
 	if err != nil {
-		return nil, err
+		return Model{}, err
 	}
-	var doc struct {
-		Data []struct {
-			ID      string   `json:"id"`
-			Aliases []string `json:"aliases"`
-		} `json:"data"`
+	list, err := commonai.DecodeModelList(wrapped)
+	if err != nil {
+		return Model{}, err
 	}
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, fmt.Errorf("the catalogue is not JSON: %w", err)
-	}
-
-	byName := make(map[string]*Model, len(doc.Data)*2)
-	claim := func(name string, m *Model) {
-		name = strings.ToLower(strings.TrimSpace(name))
-		if name == "" {
-			return
-		}
-		if prior, taken := byName[name]; taken && prior != m {
-			byName[name] = nil
-			return
-		}
-		byName[name] = m
-	}
-	for _, d := range doc.Data {
-		id := strings.TrimSpace(d.ID)
-		if id == "" {
-			continue
-		}
-		rates, priced := list.Prices[id]
-		m := &Model{ID: id, Rates: rates, Priced: priced, Limits: list.Limits[id]}
-		claim(id, m)
-		for _, a := range d.Aliases {
-			claim(a, m)
-		}
-		if prefix, rest, ok := strings.Cut(id, "/"); ok && prefix != "" && rest != "" {
-			claim(rest, m)
-		}
-	}
-	return byName, nil
+	rates, priced := list.Prices[id]
+	return Model{ID: id, Rates: rates, Priced: priced, Limits: list.Limits[id]}, nil
 }
