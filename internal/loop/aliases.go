@@ -114,10 +114,18 @@ type (
 	ModelLimiter = client.ModelLimiter
 )
 
-// ModelLimitsOf asks p what its endpoint's model list publishes about model; ok is false when p cannot say.
+// ModelLimitsOf asks p what its endpoint's model list publishes about model; ok is false when p has no model list.
 func ModelLimitsOf(ctx context.Context, p Provider, model string) (Limits, bool, error) {
 	return client.ModelLimitsOf(ctx, p, model)
 }
+
+// ForwardModelLimits is a caller's decorator's ModelLimits; it answers ErrNoModelList when inner cannot say.
+func ForwardModelLimits(ctx context.Context, inner Provider, model string) (Limits, error) {
+	return client.ForwardModelLimits(ctx, inner, model)
+}
+
+// ErrNoModelList is what a decorator answers when the provider it wraps has no model list.
+var ErrNoModelList = client.ErrNoModelList
 
 // FetchModelList reads an endpoint's model list; unpriced models are ABSENT from Prices.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 	"github.com/wow-look-at-my/agentic-loop/extras"
@@ -29,23 +30,34 @@ func (a *downAdapter) Complete(ctx context.Context, req Request, ev *StreamEvent
 }
 
 func (a *upAdapter) ModelLimits(ctx context.Context, model string) (Limits, error) {
-	l, _, err := commonai.ModelLimitsOf(ctx, a.inner, model)
-	return l, err
+	return commonai.ForwardModelLimits(ctx, a.inner, model)
 }
 
 func (a *downAdapter) ModelLimits(ctx context.Context, model string) (Limits, error) {
-	l, _, err := ModelLimitsOf(ctx, a.inner, model)
-	return l, err
+	return ForwardModelLimits(ctx, a.inner, model)
 }
 
-// ModelLimitsOf asks p what its endpoint's model list publishes about model; ok is false when p cannot say.
+// ModelLimitsOf asks p what its endpoint's model list publishes about model; ok is false when p has no model list.
 func ModelLimitsOf(ctx context.Context, p Provider, model string) (l Limits, ok bool, err error) {
 	ml, ok := p.(ModelLimiter)
 	if !ok {
 		return Limits{}, false, nil
 	}
 	l, err = ml.ModelLimits(ctx, model)
+	if errors.Is(err, ErrNoModelList) {
+		return Limits{}, false, nil
+	}
 	return l, true, err
+}
+
+// ForwardModelLimits is a caller's decorator's ModelLimits: it asks inner, and answers ErrNoModelList when inner
+// cannot say.
+func ForwardModelLimits(ctx context.Context, inner Provider, model string) (Limits, error) {
+	l, ok, err := ModelLimitsOf(ctx, inner, model)
+	if !ok {
+		return Limits{}, ErrNoModelList
+	}
+	return l, err
 }
 
 // up presents a format-level provider as a Go-level.

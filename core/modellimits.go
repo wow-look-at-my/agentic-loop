@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -17,14 +18,29 @@ type ModelLimiter interface {
 	ModelLimits(ctx context.Context, model string) (Limits, error)
 }
 
-// ModelLimitsOf asks p for model's limits. ok is false when p is not a ModelLimiter and so has nobody to ask.
+// ErrNoModelList is what a decorator's ModelLimits answers when the provider it wraps has no model list to ask.
+var ErrNoModelList = errors.New("the provider has no model list")
+
+// ModelLimitsOf asks p for model's limits. ok is false when p has no model list to ask.
 func ModelLimitsOf(ctx context.Context, p Provider, model string) (l Limits, ok bool, err error) {
 	ml, ok := p.(ModelLimiter)
 	if !ok {
 		return Limits{}, false, nil
 	}
 	l, err = ml.ModelLimits(ctx, model)
+	if errors.Is(err, ErrNoModelList) {
+		return Limits{}, false, nil
+	}
 	return l, true, err
+}
+
+// ForwardModelLimits is a decorator's ModelLimits: it asks inner, and answers ErrNoModelList when inner cannot say.
+func ForwardModelLimits(ctx context.Context, inner Provider, model string) (Limits, error) {
+	l, ok, err := ModelLimitsOf(ctx, inner, model)
+	if !ok {
+		return Limits{}, ErrNoModelList
+	}
+	return l, err
 }
 
 // modelListCache reads an endpoint's model list once. A failed read is not kept, so the next question asks again.
@@ -65,13 +81,11 @@ func (a *anthropicProvider) ModelLimits(ctx context.Context, model string) (Limi
 }
 
 func (s *paramStripper) ModelLimits(ctx context.Context, model string) (Limits, error) {
-	l, _, err := ModelLimitsOf(ctx, s.inner, model)
-	return l, err
+	return ForwardModelLimits(ctx, s.inner, model)
 }
 
 func (r *thinkingSignatureRepair) ModelLimits(ctx context.Context, model string) (Limits, error) {
-	l, _, err := ModelLimitsOf(ctx, r.inner, model)
-	return l, err
+	return ForwardModelLimits(ctx, r.inner, model)
 }
 
 // modelListLimits is every spelling a model list uses for a model's token limits. Each provider picks its own name for

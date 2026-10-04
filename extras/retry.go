@@ -165,6 +165,5 @@ func (r *retryingProvider) Complete(ctx context.Context, req commonai.Request, e
 
 // ModelLimits implements commonai.ModelLimiter by asking the wrapped provider.
 func (r *retryingProvider) ModelLimits(ctx context.Context, model string) (commonai.Limits, error) {
-	l, _, err := commonai.ModelLimitsOf(ctx, r.inner, model)
-	return l, err
+	return commonai.ForwardModelLimits(ctx, r.inner, model)
 }
