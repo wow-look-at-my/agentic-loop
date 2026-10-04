@@ -159,6 +159,32 @@ func TestAnUnreadableRecordIsAnError(t *testing.T) {
 	require.ErrorContains(t, err, "names no id")
 }
 
+func TestLookupManyAnswersWhatResolved(t *testing.T) {
+	srv, hits := serve(t, catalogue)
+	c := New(srv.URL, srv.Client())
+
+	got, err := c.LookupMany(context.Background(), []string{"claude-sonnet-4-5", "some/free", "nobody/knows", "dupe"})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "anthropic/claude-sonnet-4-5", got["claude-sonnet-4-5"].ID)
+	assert.True(t, got["some/free"].Priced)
+	assert.Equal(t, int32(4), hits.Load())
+
+	_, err = c.LookupMany(context.Background(), []string{"claude-sonnet-4-5", "nobody/knows"})
+	require.NoError(t, err)
+	assert.Equal(t, int32(4), hits.Load(), "every answer, a 404 included, is kept")
+}
+
+func TestLookupManyJoinsEveryFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, srv.Client()).LookupMany(context.Background(), []string{"a", "b"})
+	require.ErrorContains(t, err, "502")
+	assert.Empty(t, got)
+}
+
 func TestALookupNeedsAURLAndAName(t *testing.T) {
 	_, _, err := New("", nil).Lookup(context.Background(), "m")
 	require.ErrorContains(t, err, "no URL")

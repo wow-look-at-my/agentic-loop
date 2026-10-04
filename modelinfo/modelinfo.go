@@ -8,6 +8,7 @@ package modelinfo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,17 +72,25 @@ func (c *Catalogue) Lookup(ctx context.Context, model string) (Model, bool, erro
 		return Model{}, false, fmt.Errorf("modelinfo: the catalogue has no URL")
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if m, done := c.byName[name]; done {
-		if m == nil {
-			return Model{}, false, nil
-		}
+	m, done := c.byName[name]
+	err := c.err
+	if err != nil && c.now().Sub(c.failedAt) >= RetryAfter {
+		err = nil
+	}
+	c.mu.Unlock()
+	switch {
+	case done && m == nil:
+		return Model{}, false, nil
+	case done:
 		return *m, true, nil
+	case err != nil:
+		return Model{}, false, err
 	}
-	if c.err != nil && c.now().Sub(c.failedAt) < RetryAfter {
-		return Model{}, false, c.err
-	}
-	m, err := c.fetch(ctx, name)
+
+	// No lock across the request, so lookups of different models run at once.
+	m, err = c.fetch(ctx, name)
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err != nil {
 		c.err, c.failedAt = err, c.now()
 		return Model{}, false, err
@@ -95,6 +104,39 @@ func (c *Catalogue) Lookup(ctx context.Context, model string) (Model, bool, erro
 		return Model{}, false, nil
 	}
 	return *m, true, nil
+}
+
+// lookupParallelism bounds the requests LookupMany has out at once.
+const lookupParallelism = 16
+
+// LookupMany looks up every name, several at a time, and answers the ones the catalogue resolved, keyed by the name as
+// given. The error joins every failed lookup; the names that did resolve are answered alongside it.
+func (c *Catalogue) LookupMany(ctx context.Context, names []string) (map[string]Model, error) {
+	out := make(map[string]Model, len(names))
+	var mu sync.Mutex
+	var errs []error
+	sem := make(chan struct{}, lookupParallelism)
+	var wg sync.WaitGroup
+	for _, name := range names {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			m, ok, err := c.Lookup(ctx, name)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
+			if ok {
+				out[name] = m
+			}
+		}()
+	}
+	wg.Wait()
+	return out, errors.Join(errs...)
 }
 
 func (c *Catalogue) fetch(ctx context.Context, name string) (*Model, error) {
