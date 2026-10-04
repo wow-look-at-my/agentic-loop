@@ -1,7 +1,11 @@
 package loop
 
 import (
+	"fmt"
+	"slices"
+
 	"github.com/wow-look-at-my/go-containers/event"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // MessageID is the loop's strong type for a transcript entry's identifier.
@@ -35,6 +39,13 @@ type StopEvent struct {
 type ToolCallEvent struct {
 	event.Args
 	Call *ToolCall
+}
+
+// ToolBatchEvent is the param to OnToolBatch. The hook may replace Calls, and
+// the turn then records, runs and answers the replacement.
+type ToolBatchEvent struct {
+	event.Args
+	Calls *[]ToolCall
 }
 
 // ToolResultEvent is the param to OnToolResult: executed call, result, and recorded message.
@@ -109,6 +120,7 @@ type Events struct {
 	OnTurnBegin         event.Event[TurnBeginEvent]
 	OnTurnEnd           event.Event[TurnEndEvent]
 	OnStop              event.Event[StopEvent]
+	OnToolBatch         event.Event[ToolBatchEvent]
 	OnToolCall          event.Event[ToolCallEvent]
 	OnToolResult        event.Event[ToolResultEvent]
 	OnAssistantMessage  event.Event[AssistantMessageEvent]
@@ -137,6 +149,27 @@ func (e *Events) emitTurnEnd(ev TurnEndEvent) error {
 // emitStop notifies listeners the model is about to stop; continue by queueing a message.
 func (e *Events) emitStop(ev StopEvent) {
 	_ = e.OnStop.Invoke(ev)
+}
+
+// emitToolBatch hands the model's batch to the host, which may replace it.
+// A replacement with an empty or repeated ID is refused, because a result
+// cannot answer it.
+func (e *Events) emitToolBatch(calls []ToolCall) ([]ToolCall, error) {
+	batch := slices.Clone(calls)
+	if err := wrapCallbackErr(e.OnToolBatch.Invoke(ToolBatchEvent{Calls: &batch})); err != nil {
+		return nil, err
+	}
+	if len(batch) == 0 {
+		return nil, wrapCallbackErr(fmt.Errorf("agentic: OnToolBatch left no calls in a turn that asked for tools"))
+	}
+	seen := set.New[string]()
+	for _, c := range batch {
+		if c.ID == "" || seen.Contains(c.ID) {
+			return nil, wrapCallbackErr(fmt.Errorf("agentic: OnToolBatch left a call with an empty or repeated id %q", c.ID))
+		}
+		seen.Add(c.ID)
+	}
+	return batch, nil
 }
 
 // emitToolCall forwards the call about to be handled; the hook may rewrite it.
