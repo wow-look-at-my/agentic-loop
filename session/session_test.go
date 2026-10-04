@@ -141,7 +141,7 @@ func TestFileStoreRefusesACorruptedDocument(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrNotFound)
 
 	// An id that does not match the file it sits in is the same class of problem.
-	require.NoError(t, os.WriteFile(path, []byte(`<?xml version="1.1"?><conversation id="somethingelse" model="m"/>`), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(`<?xml version="1.1"?><conversation xmlns="https://github.com/wow-look-at-my/common-ai-api/schema/v1" id="somethingelse" model="m"/>`), 0o644))
 	_, err = s.Get(id)
 	require.ErrorContains(t, err, "somethingelse")
 }
