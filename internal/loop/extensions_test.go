@@ -33,7 +33,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 		req.Messages = append(append([]Message{}, req.Messages...), msg)
 		return nil
 	}
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -80,7 +80,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 		errs = append(errs, err)
 		return nil
 	}
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -128,7 +128,7 @@ func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 				statuses = append(statuses, ev.Status)
 				return nil
 			}
-			events.OnFinalizeAssistant.Subscribe(&finalizeCb)
+			keep(t, &events.OnFinalizeAssistant, finalizeCb)
 			cfg := Config{Provider: provider, Events: &events}
 			_, err := Run(context.Background(), cfg, Request{
 				Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
@@ -147,7 +147,7 @@ func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 	}}
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { return sentinel }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -168,7 +168,7 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 	}}
 	events := Events{}
 	turnEndCb := func(ev TurnEndEvent) error { return sentinel }
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -195,8 +195,8 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
 	turnEndCb := func(ev TurnEndEvent) error { ends = append(ends, ev.Turn); return nil }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -223,7 +223,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	var internal, begins []int
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),

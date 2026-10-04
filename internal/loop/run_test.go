@@ -71,8 +71,8 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 		recorded = append(recorded, m)
 		return nil
 	}
-	events.OnToolCall.Subscribe(&toolCallCb)
-	events.OnToolResult.Subscribe(&toolResultCb)
+	keep(t, &events.OnToolCall, toolCallCb)
+	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),

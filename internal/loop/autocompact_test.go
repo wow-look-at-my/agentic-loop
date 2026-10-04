@@ -84,7 +84,7 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 		compactionMessages = ev.Messages
 		return nil
 	}
-	events.OnCompaction.Subscribe(&compactionCb)
+	keep(t, &events.OnCompaction, compactionCb)
 	cfg := Config{
 		Provider:      provider,
 		Tools:         exec.registry(),
@@ -167,13 +167,13 @@ func TestRunAutoCompactAttachesTheNextTurnToTheStoredSummary(t *testing.T) {
 		*ev.ID = "stored-summary-row"
 		return nil
 	}
-	events.OnCompaction.Subscribe(&compactionCb)
+	keep(t, &events.OnCompaction, compactionCb)
 	var parents []MessageID
 	mintCb := func(ev AssistantMessageEvent) error {
 		parents = append(parents, ev.ParentID)
 		return nil
 	}
-	events.OnAssistantMessage.Subscribe(&mintCb)
+	keep(t, &events.OnAssistantMessage, mintCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll,
 		Events: &events, ContextWindow: 10000}
 	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
@@ -195,7 +195,7 @@ func TestRunAutoCompactBelowThresholdDoesNotCompact(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider:      provider,
 		Events:        &events,
@@ -217,7 +217,7 @@ func TestRunAutoCompactZeroDisables(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider:      provider,
 		Events:        &events,
@@ -244,7 +244,7 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider:      provider,
 		Tools:         exec.registry(),
@@ -269,7 +269,7 @@ func TestRunAutoCompactWithoutContextWindowDoesNothing(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -299,8 +299,7 @@ func windowEvents(t *testing.T, events *Events) *[]ContextWindowEvent {
 	t.Helper()
 	var got []ContextWindowEvent
 	cb := func(ev ContextWindowEvent) error { got = append(got, ev); return nil }
-	events.OnContextWindow.Subscribe(&cb)
-	t.Cleanup(func() { _ = cb })
+	keep(t, &events.OnContextWindow, cb)
 	return &got
 }
 
@@ -317,7 +316,7 @@ func TestRunCompactsAgainstTheWindowTheModelListPublishes(t *testing.T) {
 	events := Events{}
 	var compacted bool
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	windows := windowEvents(t, &events)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
@@ -386,7 +385,7 @@ func TestAMissingWindowIsReportedWithItsReason(t *testing.T) {
 			events := Events{}
 			var compacted bool
 			cb := func(ev CompactionEvent) error { compacted = true; return nil }
-			events.OnCompaction.Subscribe(&cb)
+			keep(t, &events.OnCompaction, cb)
 			windows := windowEvents(t, &events)
 			req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 

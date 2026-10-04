@@ -24,7 +24,7 @@ func TestRunOnStopInjectsAndContinues(t *testing.T) {
 		}
 		return nil
 	}
-	events.OnStop.Subscribe(&stopCb)
+	keep(t, &events.OnStop, stopCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -60,7 +60,7 @@ func TestRunOnStopIsAskedAtEveryBoundary(t *testing.T) {
 		}
 		return nil
 	}
-	events.OnStop.Subscribe(&stopCb)
+	keep(t, &events.OnStop, stopCb)
 	cfg := Config{Provider: provider, Events: &events, Messages: q}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)

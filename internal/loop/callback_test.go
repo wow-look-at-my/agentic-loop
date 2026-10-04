@@ -68,7 +68,7 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 		}
 		return nil
 	}
-	events.OnToolCall.Subscribe(&toolCallCb)
+	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
@@ -94,7 +94,7 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	events := Events{}
 	toolResultCb := func(ev ToolResultEvent) error { return errSink }
-	events.OnToolResult.Subscribe(&toolResultCb)
+	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
@@ -126,7 +126,7 @@ func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
 		c.Arguments = `{"cmd":"ls"}`
 		return nil
 	}
-	events.OnToolCall.Subscribe(&toolCallCb)
+	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: approver, Events: &events}
 
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
@@ -155,7 +155,7 @@ func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
 	events := Events{}
 	toolCallCb := func(ev ToolCallEvent) error { c := ev.Call; c.ID = "hijacked"; return nil }
-	events.OnToolCall.Subscribe(&toolCallCb)
+	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
@@ -185,7 +185,7 @@ func TestRunOnToolResultCarriesTheRecordedMessage(t *testing.T) {
 		recorded = append(recorded, m)
 		return nil
 	}
-	events.OnToolResult.Subscribe(&toolResultCb)
+	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
@@ -223,7 +223,7 @@ func TestRunOnToolResultCarriesADeniedMessage(t *testing.T) {
 		recorded = append(recorded, m)
 		return nil
 	}
-	events.OnToolResult.Subscribe(&toolResultCb)
+	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
 	_, err := Run(context.Background(), cfg, Request{Model: "m"})

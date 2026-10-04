@@ -76,7 +76,7 @@ func TestRunWrapUpAnswerAsksTheStopHook(t *testing.T) {
 		}
 		return nil
 	}
-	m.events.OnStop.Subscribe(&stopCb)
+	keep(t, &m.events.OnStop, stopCb)
 	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &m.events, Messages: q},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}}})
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestRunReasoningOnlyAnswerAsksTheStopHook(t *testing.T) {
 		}
 		return nil
 	}
-	m.events.OnStop.Subscribe(&stopCb)
+	keep(t, &m.events.OnStop, stopCb)
 	res, err := Run(context.Background(), Config{Provider: provider, Events: &m.events, Messages: q}, Request{Model: "m"})
 	require.NoError(t, err)
 
