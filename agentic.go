@@ -68,6 +68,9 @@ type Timings = loop.Timings
 type Tool = loop.Tool
 type ToolCall = loop.ToolCall
 type ToolCallEvent = loop.ToolCallEvent
+
+// ToolBatchEvent is the param to Events.OnToolBatch.
+type ToolBatchEvent = loop.ToolBatchEvent
 type ToolContentPart = loop.ToolContentPart
 type ToolDecl = loop.ToolDecl
 type ToolMessageEvent = loop.ToolMessageEvent
