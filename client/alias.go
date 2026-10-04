@@ -40,6 +40,10 @@ type (
 	Rates     = commonai.Rates
 	ModelList = commonai.ModelList
 
+	// Limits is what a model can hold and produce; a ModelLimiter is a Provider that can say.
+	Limits       = commonai.Limits
+	ModelLimiter = commonai.ModelLimiter
+
 	// RetryPolicy and RateLimiter are the extras' policies, reachable here via ProviderConfig.
 	RetryPolicy = extras.RetryPolicy
 	RateLimiter = extras.RateLimiter

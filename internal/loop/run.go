@@ -17,6 +17,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		cfg.Events = &Events{}
 	}
 	advertised := cfg.Tools.Decls()
+	resolveContextWindow(ctx, &cfg, req)
 
 	// Output dedup: deduper for the whole run collapses unchanged read-only results.
 	var deduper *OutputDeduper

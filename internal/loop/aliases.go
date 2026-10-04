@@ -108,6 +108,17 @@ type (
 	ModelList = client.ModelList
 )
 
+// Limits is what a model can hold and produce; a ModelLimiter is a Provider that can say.
+type (
+	Limits       = client.Limits
+	ModelLimiter = client.ModelLimiter
+)
+
+// ModelLimitsOf asks p what its endpoint's model list publishes about model; ok is false when p cannot say.
+func ModelLimitsOf(ctx context.Context, p Provider, model string) (Limits, bool, error) {
+	return client.ModelLimitsOf(ctx, p, model)
+}
+
 // FetchModelList reads an endpoint's model list; unpriced models are ABSENT from Prices.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
 	return client.FetchModelList(ctx, cfg)

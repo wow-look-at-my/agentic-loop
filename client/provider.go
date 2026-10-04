@@ -28,6 +28,26 @@ func (a *downAdapter) Complete(ctx context.Context, req Request, ev *StreamEvent
 	return unfold(comp), err
 }
 
+func (a *upAdapter) ModelLimits(ctx context.Context, model string) (Limits, error) {
+	l, _, err := commonai.ModelLimitsOf(ctx, a.inner, model)
+	return l, err
+}
+
+func (a *downAdapter) ModelLimits(ctx context.Context, model string) (Limits, error) {
+	l, _, err := ModelLimitsOf(ctx, a.inner, model)
+	return l, err
+}
+
+// ModelLimitsOf asks p what its endpoint's model list publishes about model; ok is false when p cannot say.
+func ModelLimitsOf(ctx context.Context, p Provider, model string) (l Limits, ok bool, err error) {
+	ml, ok := p.(ModelLimiter)
+	if !ok {
+		return Limits{}, false, nil
+	}
+	l, err = ml.ModelLimits(ctx, model)
+	return l, true, err
+}
+
 // up presents a format-level provider as a Go-level.
 func up(p commonai.Provider) Provider {
 	if a, ok := p.(*downAdapter); ok {

@@ -78,7 +78,7 @@ type Config struct {
 	// DisableOutputDedup opts out of collapsing byte-identical read-only results.
 	DisableOutputDedup bool
 
-	// ContextWindow is the model's context window size; disables auto-compaction.
+	// ContextWindow is the model's context window size.
 	ContextWindow int
 
 	// ElapsedTime, when set, states how long has passed since the previous request on every call.

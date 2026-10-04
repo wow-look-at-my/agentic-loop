@@ -23,6 +23,7 @@ type openaiProvider struct {
 	promptCache     bool
 	replayReasoning bool
 	headers         map[string]string
+	models          modelListCache
 }
 
 // oaReserved are the Extra keys the typed core always overrides.

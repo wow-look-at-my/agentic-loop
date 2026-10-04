@@ -21,6 +21,7 @@ type anthropicProvider struct {
 	userAgent      string
 	disableCaching bool
 	headers        map[string]string
+	models         modelListCache
 }
 
 const defaultAnthropicVersion = "2023-06-01"
