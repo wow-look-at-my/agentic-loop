@@ -53,8 +53,7 @@ func TestParamStripperStripsAndRetries(t *testing.T) {
 	assert.NotContains(t, inner.reqs[1].Extra, "reasoning_effort", "the camelCase report matched the snake_case key")
 	assert.Contains(t, inner.reqs[1].Extra, "num_ctx", "only the rejected key is dropped")
 
-	// The strip is remembered: the next call drops the key up front, with a
-	// single inner call.
+	// The strip is remembered: the next call drops the key up front.
 	_, err = s.Complete(context.Background(), req, nil)
 	require.NoError(t, err)
 	require.Len(t, inner.reqs, 3)
@@ -93,8 +92,7 @@ func TestParamStripperNeverOnCancel(t *testing.T) {
 
 func TestParamStripperNeverAfterDelivery(t *testing.T) {
 	apiErr := &APIError{Status: 400, Body: "unsupported parameter: reasoning_effort"}
-	// A provider that streamed returns its partial completion with the error
-	// (Provider contract) — that is what marks the call unsafe to re-send.
+	// A provider that streamed returns its partial completion with the error, marking the call unsafe to re-send.
 	partial := &Completion{Message: Message{Role: RoleAssistant, Content: "half a token"}}
 	inner := &scriptProvider{steps: []scriptStep{
 		{comp: partial, err: apiErr, emit: func(ev *StreamEvents) { _ = ev.EmitText("half a token") }},

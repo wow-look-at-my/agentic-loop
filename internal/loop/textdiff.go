@@ -5,30 +5,16 @@ import (
 	"strings"
 )
 
-// A pure, line-based unified-diff engine producing standard hunks
-// (@@ -a,b +c,d @@ with 3 context lines), and the size wording that goes with
-// them. Newline handling is naive but consistent — content is split on "\n", a
-// trailing newline contributes no extra line, and no "\ No newline at end of
-// file" markers are emitted.
-//
-// It lives here because showing a model what CHANGED is a tool concern, not a
-// host one: the resource watcher renders its diffs with this, and so does any
-// file-editing tool.
+// A pure, line-based unified-diff engine producing standard hunks and size wording.
 const (
 	diffContextLines = 3
-	// diffMaxLines is the per-side guard: beyond it no line diff is attempted
-	// and the whole file is rendered as one replace hunk with a note.
+	// diffMaxLines is the per-side guard; beyond it the file renders as replace hunk.
 	diffMaxLines = 20_000
-	// diffMaxCells caps the LCS dynamic program (after common prefix/suffix
-	// trimming). A middle section bigger than this is rendered as one replace
-	// hunk instead of a minimal diff — still a valid unified diff, just not
-	// the smallest one.
+	// diffMaxCells caps the LCS dynamic program; a bigger middle is replace hunk.
 	diffMaxCells = 4_000_000
 )
 
-// unifiedDiff renders the unified diff between oldText and newText. fromLabel
-// and toLabel become the ---/+++ header lines (e.g. "a/path", "b/path", or
-// "/dev/null" for an added/deleted file). Identical inputs yield "".
+// unifiedDiff renders the unified diff; fromLabel/toLabel become the ---/+++ header lines.
 func unifiedDiff(fromLabel, toLabel, oldText, newText string) string {
 	if oldText == newText {
 		return ""
@@ -43,15 +29,13 @@ func unifiedDiff(fromLabel, toLabel, oldText, newText string) string {
 	}
 	body := renderHunks(diffOps(a, b))
 	if body == "" {
-		// The contents differ only by a trailing newline — no visible line
-		// change to show.
+		// The contents differ only by a trailing newline — no visible line change.
 		return ""
 	}
 	return header + body
 }
 
-// splitDiffLines splits content into lines for diffing. A trailing newline
-// yields no extra empty line; empty content has zero lines.
+// splitDiffLines splits content into lines; a trailing newline adds no line.
 func splitDiffLines(s string) []string {
 	if s == "" {
 		return nil
@@ -60,7 +44,7 @@ func splitDiffLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
-// diffOp is one line of the edit script: kind ' ' (context), '-' (deleted
+// diffOp is line of the edit script: kind ' ' (context), '-' (deleted
 // from old), or '+' (added in new).
 type diffOp struct {
 	kind byte
@@ -68,8 +52,8 @@ type diffOp struct {
 }
 
 // diffOps computes the line-level edit script between a and b: common prefix
-// and suffix are matched first, and the remaining middle is aligned with an
-// LCS dynamic program when it fits the budget (one replace block otherwise).
+// and suffix are matched, and the remaining middle is aligned with an
+// LCS dynamic program when it fits the budget ( replace block otherwise).
 func diffOps(a, b []string) []diffOp {
 	// Common prefix.
 	p := 0
@@ -164,7 +148,7 @@ func lcsOps(a, b []string) []diffOp {
 
 // renderHunks groups an edit script into unified hunks with diffContextLines
 // lines of context, merging hunks whose context would touch or overlap. Counts
-// are always written explicitly ("-3,1" rather than "-3") for consistency.
+// are always written explicitly ("-," rather than "-") for consistency.
 func renderHunks(ops []diffOp) string {
 	if len(ops) == 0 {
 		return ""
@@ -200,8 +184,7 @@ func renderHunks(ops []diffOp) string {
 		if start < 0 {
 			start = 0
 		}
-		// Extend the hunk over subsequent changes that fall within twice the
-		// context distance (their context regions would touch or overlap).
+		// Extend the hunk over changes whose context regions would touch or overlap.
 		cj := ci
 		for cj+1 < len(changes) && changes[cj+1]-changes[cj] <= 2*diffContextLines {
 			cj++
@@ -232,7 +215,7 @@ func renderHunks(ops []diffOp) string {
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-// Plural renders "1 <one>" or "N <many>".
+// Plural renders " <>" or "N <many>".
 func Plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one
@@ -252,14 +235,12 @@ func HumanSize(n int64) string {
 	}
 }
 
-// UnifiedDiff renders the unified diff between oldText and newText. fromLabel
-// and toLabel become the ---/+++ header lines (e.g. "a/path", "b/path", or
-// "/dev/null" for an added or deleted file). Identical inputs yield "".
+// UnifiedDiff renders the unified diff between oldText and newText.
 func UnifiedDiff(fromLabel, toLabel, oldText, newText string) string {
 	return unifiedDiff(fromLabel, toLabel, oldText, newText)
 }
 
-// CountLineChanges counts added and removed lines between two texts, using the
+// CountLineChanges counts added and removed lines between texts, using the
 // same edit script UnifiedDiff renders so a summary and its diff agree.
 func CountLineChanges(before, after string) (added, removed int) {
 	for _, op := range diffOps(splitDiffLines(before), splitDiffLines(after)) {
@@ -273,6 +254,5 @@ func CountLineChanges(before, after string) (added, removed int) {
 	return added, removed
 }
 
-// CountLines counts the lines in content, matching splitDiffLines' convention
-// (a trailing newline adds no line, empty content has none).
+// CountLines counts the lines in content, matching splitDiffLines' convention.
 func CountLines(s string) int { return len(splitDiffLines(s)) }

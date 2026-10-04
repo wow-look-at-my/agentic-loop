@@ -8,10 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Every advertised repo_read "what" against the arguments it declares. The
-// enum, the dispatch table and the per-what argument allowlist are three views
-// of one list, and a read present in one and missing from another is either a
-// tool the model is never told about or one that answers "unknown what".
+// Every advertised repo_read "what" against the arguments it declares.
 
 // repoReadArgValues is a plausible value for each argument repo_read
 // advertises, so a call can be assembled from any read's field list.
@@ -95,9 +92,9 @@ func TestRepoReadHasNoContentSearchWhat(t *testing.T) {
 	assert.NotContains(t, repoReadDescription, "code search")
 }
 
-// The advertised enum and the dispatch table are two views of one list; a read
+// The advertised enum and the dispatch table are views of list; a read
 // present in either and missing from the other is a tool the model calls and
-// gets "unknown what" from, or one it is never told about.
+// gets "unknown what" from, or it is never told about.
 func TestEveryAdvertisedWhatHasAHandler(t *testing.T) {
 	assert.Len(t, repoReadWhats, len(repoReadWhatOrder))
 	for _, what := range repoReadWhatOrder {

@@ -8,12 +8,12 @@ import (
 	"strings"
 )
 
-// The seven file tools' handlers: decode, route to the provider, render. Every
+// The file tools' handlers: decode, route to the provider, render. Every
 // failure is a recoverable teaching error -- a bad path is something the model
 // can correct, never something that ends a turn.
 
-// One argument struct per tool: each is both what the handler decodes and what
-// the advertised schema is inferred from (schema.go), so the two cannot
+// argument struct per tool: each is both what the handler decodes and what
+// the advertised schema is inferred from (schema.go), so the cannot
 // disagree. The `jsonschema` tag is the model-facing description of the field,
 // and a json tag without `omitempty` marks it required.
 type (

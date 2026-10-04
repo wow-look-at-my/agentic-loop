@@ -53,6 +53,36 @@ func TestRequestRoundTrip(t *testing.T) {
 	assert.Equal(t, "call_1", got.Messages[2].ToolCallID)
 }
 
+func TestAutoCompactRoundTrip(t *testing.T) {
+	tests := []float64{0.8, 0.5, 0.9, 0.75}
+	for _, f := range tests {
+		req := Request{Model: "m", AutoCompact: f}
+		got := roundTripRequest(t, req)
+		assert.InDelta(t, f, got.AutoCompact, 1e-9, "AutoCompact %v survived the round trip", f)
+	}
+}
+
+func TestAutoCompactZeroOmitted(t *testing.T) {
+	data, err := EncodeRequestBytes(Request{Model: "m", AutoCompact: 0})
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "auto-compact",
+		"AutoCompact=0 is omitted, not serialized as 0")
+}
+
+func TestAutoCompactConversationRoundTrip(t *testing.T) {
+	req := Request{Model: "m", System: "sys", AutoCompact: 0.8,
+		Messages: []Message{{Role: RoleUser, Content: "hi"}}}
+	var buf bytes.Buffer
+	require.NoError(t, EncodeConversation(&buf, "sess-1", req))
+	data := buf.Bytes()
+	require.NoError(t, Validate(data))
+
+	id, got, err := DecodeConversation(data)
+	require.NoError(t, err)
+	assert.Equal(t, "sess-1", id)
+	assert.InDelta(t, 0.8, got.AutoCompact, 1e-9)
+}
+
 // Order is the whole point of parts: a reply whose text brackets a thinking
 // block has to come back the same way round.
 func TestPartOrderSurvives(t *testing.T) {
@@ -73,7 +103,7 @@ func TestPartOrderSurvives(t *testing.T) {
 }
 
 // A tool result can be arbitrary bytes. NUL has no literal spelling and no
-// standard character reference, so the writer emits &#0; and our own parser
+// standard character reference, so the writer emits &#; and our own parser
 // reads it back.
 func TestNulByteSurvives(t *testing.T) {
 	req := Request{Model: "m", Messages: []Message{
@@ -102,8 +132,7 @@ func TestToolSchemaRoundTrip(t *testing.T) {
 	require.Len(t, got.Tools, 1)
 	assert.Equal(t, "grep", got.Tools[0].Name)
 	assert.True(t, got.Tools[0].Readonly)
-	// Byte-for-byte: member order and the 1.50 literal both survive, which is
-	// what makes the tree a lossless mapping rather than a lossy one.
+	// Byte-for-byte: member order and the literal both survive, a lossless mapping.
 	assert.Equal(t, schema, string(got.Tools[0].InputSchema))
 }
 
@@ -122,8 +151,7 @@ func TestDialectParamsRoundTrip(t *testing.T) {
 	data, err := EncodeRequestBytes(req)
 	require.NoError(t, err)
 	require.NoError(t, Validate(data), "document:\n%s", data)
-	// The scalar rides as a qualified attribute; the object rides as a
-	// namespaced element, because an attribute cannot hold an object.
+	// The scalar rides as a qualified attribute; the object as a namespaced element.
 	assert.Contains(t, string(data), `anthropic:top-k="40"`)
 	assert.Contains(t, string(data), `openai:reasoning-effort="high"`)
 	assert.Contains(t, string(data), "<anthropic:params>")
@@ -139,7 +167,7 @@ func TestDialectParamsRoundTrip(t *testing.T) {
 	assert.Contains(t, got.Extra, "temperature")
 }
 
-// ParamsFor is what stops one dialect's parameters reaching another's upstream.
+// ParamsFor is what stops dialect's parameters reaching another's upstream.
 func TestParamsForKeepsDialectsApart(t *testing.T) {
 	req := Request{
 		Extra: map[string]any{"temperature": 0.7},
@@ -193,7 +221,7 @@ func TestResponseRoundTrip(t *testing.T) {
 	assert.Equal(t, 12, got.Timings[0].PromptN)
 }
 
-// A provider that reported nothing and one that reported zeros are different
+// A provider that reported nothing and that reported zeros are different
 // facts, and attribute presence is how the format keeps them apart.
 func TestCacheTokensStayTriState(t *testing.T) {
 	zero := 0
@@ -208,8 +236,8 @@ func TestCacheTokensStayTriState(t *testing.T) {
 	assert.Nil(t, got.Usages[0].CacheWriteTokens)
 }
 
-// The streamed document and the buffered one are the same bytes. If they ever
-// diverge, a consumer that reads one cannot trust the other.
+// The streamed document and the buffered are the same bytes. If they ever
+// diverge, a consumer that reads cannot trust the other.
 func TestStreamedDocumentMatchesBuffered(t *testing.T) {
 	comp := &Completion{
 		Message: NewMessage(RoleAssistant,
@@ -247,7 +275,7 @@ func TestTruncatedStreamKeepsWhatArrived(t *testing.T) {
 	assert.Contains(t, buf.String(), "half an ans")
 }
 
-// A call that fails after producing output says both, in one document.
+// A call that fails after producing output says both, in document.
 func TestFailureAfterOutputIsOneDocument(t *testing.T) {
 	var buf bytes.Buffer
 	rw := NewResponseWriter(&buf, RoleAssistant)
@@ -327,8 +355,7 @@ func TestEscapesInvalidUTF8(t *testing.T) {
 }
 
 func TestEffectivePartsFallsBackToFlatFields(t *testing.T) {
-	// A caller that only ever set Content -- the shape every existing consumer
-	// uses -- still encodes correctly.
+	// A caller that only ever set Content -- the shape every consumer uses -- still encodes correctly.
 	m := Message{Role: RoleAssistant, Content: "hi", ToolCalls: []ToolCall{{ID: "c", Name: "n", Arguments: "{}"}}}
 	parts := m.EffectiveParts()
 	require.Len(t, parts, 2)
@@ -369,8 +396,8 @@ func TestUnsupportedErrorReadsPlainly(t *testing.T) {
 	assert.True(t, strings.HasPrefix(err.Error(), "commonai: "))
 }
 
-// Reasoning deltas coalesce into one <thinking> element the same way text
-// deltas coalesce into one <text>, and a part written afterwards closes it.
+// Reasoning deltas coalesce into <thinking> element the same way text
+// deltas coalesce into <text>, and a part written afterwards closes it.
 func TestResponseWriterReasoningDeltas(t *testing.T) {
 	var buf bytes.Buffer
 	rw := NewResponseWriter(&buf, RoleAssistant)
@@ -388,7 +415,7 @@ func TestResponseWriterReasoningDeltas(t *testing.T) {
 	assert.Equal(t, PartKindThinking, comp.Message.Parts[0].Kind())
 	assert.Equal(t, "answer", comp.Message.Content)
 
-	// An empty delta is not a part: a stream that sends one has said nothing.
+	// An empty delta is not a part: a stream that sends has said nothing.
 	var empty bytes.Buffer
 	rw = NewResponseWriter(&empty, RoleAssistant)
 	require.NoError(t, rw.Reasoning(""))

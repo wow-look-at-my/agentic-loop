@@ -9,9 +9,7 @@ import (
 	"strings"
 )
 
-// what=prs and what=pr read a repository's pull requests: a capped listing,
-// and one PR's metadata + body + changed files (optionally with the full diff
-// appended).
+// what=prs and what=pr read a repository's pull requests.
 const repoPRMaxFiles = 100 // changed files listed per PR read
 
 // ghPull decodes the slice of a pull request the reads surface.
@@ -37,7 +35,7 @@ type ghPull struct {
 	} `json:"base"`
 }
 
-// ghPRFile is one changed file of a PR.
+// ghPRFile is changed file of a PR.
 type ghPRFile struct {
 	Filename  string `json:"filename"`
 	Status    string `json:"status"`
@@ -69,7 +67,7 @@ func (e *repoTools) prList(ctx context.Context, in repoReadArgs) agentic.ToolRes
 	return agentic.ToolResult{Content: formatPRList(in.Org, in.Repo, state, pulls)}
 }
 
-// formatPRList renders one PR per line.
+// formatPRList renders PR per line.
 func formatPRList(org, repo, state string, pulls []ghPull) string {
 	header := fmt.Sprintf("pull requests of %s (state %s)", RepoPath(org, repo, ""), state)
 	if len(pulls) == 0 {
@@ -111,8 +109,7 @@ func (e *repoTools) prRead(ctx context.Context, in repoReadArgs) agentic.ToolRes
 		return agentic.ToolResult{Content: "repo_read what=pr: could not parse GitHub's response: " + uerr.Error(), IsError: true}
 	}
 
-	// Changed files and the optional diff are best-effort: a failure becomes a
-	// note in the output rather than failing the whole read.
+	// Changed files and the optional diff are best-effort: a failure becomes a note.
 	var files []ghPRFile
 	filesErr := ""
 	if fres, ferr := e.gh.FetchURL(ctx, key, fmt.Sprintf("%s/files?per_page=%d", prURL, repoPRMaxFiles), "application/vnd.github+json"); ferr != nil {
@@ -142,7 +139,7 @@ func (e *repoTools) prRead(ctx context.Context, in repoReadArgs) agentic.ToolRes
 	return agentic.ToolResult{Content: formatPR(in.Org, in.Repo, pr, files, filesErr, diff, diffNote)}
 }
 
-// formatPR renders one pull request: header, body (capped), changed files
+// formatPR renders pull request: header, body (capped), changed files
 // (capped with an explicit note), and the optional diff.
 func formatPR(org, repo string, pr ghPull, files []ghPRFile, filesErr, diff, diffNote string) string {
 	flags := pr.State

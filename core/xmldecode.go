@@ -8,10 +8,7 @@ import (
 	"github.com/wow-look-at-my/xml-validator/validator"
 )
 
-// Decoding goes through xml-validator rather than encoding/xml for two
-// reasons: it is the parser that accepts `&#0;`, and it is the one that can
-// check a document against the schema. Everything that arrives from outside is
-// validated before anything acts on it -- see Validate.
+// Decoding goes through xml-validator, which accepts &#; and can check against the schema.
 
 // DecodeRequest reads a <request> document.
 func DecodeRequest(data []byte) (Request, error) {
@@ -34,9 +31,7 @@ func DecodeConversation(data []byte) (string, Request, error) {
 	return id, req, err
 }
 
-// DecodeError reads a standalone <error> document back into the error it
-// describes, so a failure keeps its kind and its status across a transport
-// instead of arriving as a string a caller has to match on.
+// DecodeError reads a standalone <error> document back into the error it describes.
 func DecodeError(data []byte) error {
 	root, err := parseRoot(data, elError)
 	if err != nil {
@@ -62,10 +57,7 @@ func DecodeConversationIDs(data []byte) ([]string, error) {
 	return ids, nil
 }
 
-// DecodeResponse reads a <response> document. A document whose root never
-// closed is a stream that was cut: the parts that did arrive come back with an
-// error saying so, because throwing away output the caller already watched
-// arrive helps nobody.
+// DecodeResponse reads a <response> document; a cut stream returns the parts with an error.
 func DecodeResponse(data []byte) (*Completion, error) {
 	root, err := parseRoot(data, elResponse)
 	if err != nil {
@@ -97,6 +89,13 @@ func requestFrom(root *validator.Element) (Request, error) {
 	var req Request
 	req.Model = attrOf(root, "model")
 	req.CacheKey = attrOf(root, "cache-key")
+	if v := attrOf(root, "auto-compact"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return Request{}, fmt.Errorf("commonai: auto-compact %q is not a number", v)
+		}
+		req.AutoCompact = f
+	}
 	if v := attrOf(root, "max-tokens"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
@@ -194,7 +193,7 @@ func completionFrom(root *validator.Element) (*Completion, error) {
 	return comp, failure
 }
 
-// messageFrom builds one transcript entry.
+// messageFrom builds transcript entry.
 func messageFrom(el *validator.Element) (Message, error) {
 	if el.Local != elMessage {
 		return Message{}, fmt.Errorf("commonai: <messages> holds <%s>, which is not a message", el.Local)
@@ -228,8 +227,7 @@ func partsFrom(el *validator.Element) ([]Part, error) {
 	return out, nil
 }
 
-// partFrom reads one content part, returning nil for an element that is not
-// one.
+// partFrom reads content part, returning nil for an element that is not.
 func partFrom(el *validator.Element) (Part, error) {
 	if !isCore(el) {
 		return nil, nil
@@ -263,7 +261,7 @@ func partFrom(el *validator.Element) (Part, error) {
 	return nil, nil
 }
 
-// toolFrom reads one advertised tool.
+// toolFrom reads advertised tool.
 func toolFrom(el *validator.Element) (ToolDecl, error) {
 	if el.Local != elTool {
 		return ToolDecl{}, fmt.Errorf("commonai: <tools> holds <%s>, which is not a tool", el.Local)
@@ -294,7 +292,7 @@ func toolFrom(el *validator.Element) (ToolDecl, error) {
 	return t, nil
 }
 
-// usageFrom reads one usage report.
+// usageFrom reads usage report.
 func usageFrom(el *validator.Element) (Usage, error) {
 	u := Usage{
 		PromptTokens:     intAttrOf(el, "prompt-tokens"),
@@ -328,7 +326,7 @@ func usageFrom(el *validator.Element) (Usage, error) {
 	return u, nil
 }
 
-// timingsFrom reads one timings snapshot.
+// timingsFrom reads timings snapshot.
 func timingsFrom(el *validator.Element) Timings {
 	return Timings{
 		PromptN:     intAttrOf(el, "prompt-n"),
@@ -374,7 +372,7 @@ func paramsFrom(el *validator.Element) ([]Param, error) {
 	return out, nil
 }
 
-// paramFrom reads one param node.
+// paramFrom reads param node.
 func paramFrom(el *validator.Element) (Param, error) {
 	p := Param{Name: attrOf(el, "name"), Type: attrOf(el, "type")}
 	switch p.Type {
@@ -474,9 +472,7 @@ func dialectOfNS(ns string) (Dialect, bool) {
 	return DialectAuto, false
 }
 
-// isCore reports whether an element is in the core vocabulary. An element with
-// no namespace counts: a document that declares no default namespace is still
-// readable, and the schema is what decides whether it was valid.
+// isCore reports whether an element is in the core vocabulary; no namespace counts as core.
 func isCore(el *validator.Element) bool {
 	return el.Namespace == NS || el.Namespace == ""
 }
@@ -491,9 +487,7 @@ func attrOf(el *validator.Element, name string) string {
 	return ""
 }
 
-// optBoolOf reads a tri-state boolean attribute. An ABSENT attribute is nil
-// (unknown), which is a different answer from an explicit "false" — the caller
-// resolves unknown to whatever the cautious value is for that fact.
+// optBoolOf reads a tri-state boolean; an absent attribute is nil (unknown), not false.
 func optBoolOf(el *validator.Element, name string) *bool {
 	for _, a := range el.Attrs {
 		if a.Local == name && (a.Namespace == "" || a.Namespace == NS) {
@@ -514,21 +508,20 @@ func attrOfNS(el *validator.Element, ns, name string) (string, bool) {
 	return "", false
 }
 
-// intAttrOf reads an int attribute, defaulting to 0.
+// intAttrOf reads an int attribute, defaulting to.
 func intAttrOf(el *validator.Element, name string) int {
 	n, _ := strconv.Atoi(attrOf(el, name))
 	return n
 }
 
-// floatAttrOf reads a float attribute, defaulting to 0.
+// floatAttrOf reads a float attribute, defaulting to.
 func floatAttrOf(el *validator.Element, name string) float64 {
 	f, _ := strconv.ParseFloat(attrOf(el, name), 64)
 	return f
 }
 
 // ptrIntAttrOf reads a tri-state int attribute: absent stays nil, because
-// "the provider said nothing" and "the provider said zero" are different
-// facts.
+// "the provider said nothing" and "the provider said " are different facts.
 func ptrIntAttrOf(el *validator.Element, name string) *int {
 	for _, a := range el.Attrs {
 		if a.Local == name && (a.Namespace == "" || a.Namespace == NS) {

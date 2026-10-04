@@ -29,7 +29,7 @@ func execRepoTool(t *testing.T, reg agentic.Tools, name string, args any) agenti
 	return r
 }
 
-// ghCall is one recorded request against the fake GitHub server.
+// ghCall is recorded request against the fake GitHub server.
 type ghCall struct {
 	Method string
 	Path   string
@@ -40,14 +40,12 @@ type ghCall struct {
 }
 
 // fakeGitHub is a fake GitHub API that records every request (method, path,
-// token, accept, query, body) and answers via a per-test responder.
+// token, accept, query, body) and answers.
 type fakeGitHub struct {
 	mu      sync.Mutex
 	calls   []ghCall
 	respond func(c ghCall) (status int, body string)
-	// headers, when set, adds response headers to each answer. The rate-limit
-	// classification reads x-ratelimit-* / retry-after, so a test has to be
-	// able to send them.
+	// headers, when set, adds response headers the rate-limit classification reads.
 	headers func(c ghCall) http.Header
 }
 

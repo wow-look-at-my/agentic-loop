@@ -1,8 +1,6 @@
 package commonai
 
-// The chat-completions wire vocabulary on the way OUT: the tool and message
-// shapes, the transcript mapping, and the two prompt-cache breakpoints. The
-// transport and the stream decoding live in openai.go.
+// Outbound chat-completions wire vocabulary (shapes, mapping, cache); transport in openai.go.
 
 import (
 	"encoding/json"
@@ -32,58 +30,42 @@ type oaToolCall struct {
 	Function oaFunctionCall `json:"function"`
 }
 
-// oaFunctionCall is the function name and JSON-encoded arguments of a call.
-// Arguments carries no omitempty: a zero-argument call has empty arguments,
-// and a function object with no arguments field at all is what Z.AI rejects
-// with 400 "Invalid API parameter, please check the documentation". The call
-// is in the stored transcript, so that 400 repeats on every later turn.
+// oaFunctionCall has no omitempty on Arguments: a missing arguments field makes Z.AI reject with.
 type oaFunctionCall struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 
-// oaMessage is one chat message on the OpenAI wire. Its encoding is owned by
-// MarshalJSON, because the content field has a role-dependent presence rule
-// the standard omitempty cannot express, and because ContentBlocks (a prompt
-// cache_control block array) takes precedence over the plain Content string
-// when set. Reasoning carries the replayed gateway-extension reasoning text
-// (ReplayReasoning).
+// oaMessage is chat message; MarshalJSON owns encoding because content presence is role-dependent.
 type oaMessage struct {
-	Role          string
-	Content       string
-	ContentBlocks []map[string]any
-	ToolCalls     []oaToolCall
-	ToolCallID    string
-	Reasoning     string
+	Role             string
+	Content          string
+	ContentBlocks    []map[string]any
+	ToolCalls        []oaToolCall
+	ToolCallID       string
+	Reasoning        string
+	ReasoningDetails []oaReasoningDetail
 }
 
-// MarshalJSON serializes a message for an OpenAI-compatible request. The
-// OpenAI spec requires a content field on tool, user, and system messages
-// even when empty: a plain `content,omitempty` drops an empty tool result and
-// produces {"role":"tool","tool_call_id":...}, which upstreams reject with
-// "invalid message content type: <nil>" / a 400 -- failing the whole turn. So
-// content is always emitted, except for an assistant message that carries
-// tool_calls, where the spec makes content optional and the model originally
-// produced none; there an empty content is omitted to match what was
-// generated. A non-empty ContentBlocks array is emitted as the content field
-// (a block pointer is never "empty" to omitempty, so even an empty string
-// content survives -- the same trick as the *string below).
+// MarshalJSON always emits content so an empty tool result doesn't; assistant tool_calls may omit it.
 func (m oaMessage) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		Role       string       `json:"role"`
-		Content    any          `json:"content,omitempty"`
-		Reasoning  string       `json:"reasoning,omitempty"`
-		ToolCalls  []oaToolCall `json:"tool_calls,omitempty"`
-		ToolCallID string       `json:"tool_call_id,omitempty"`
+		Role             string              `json:"role"`
+		Content          any                 `json:"content,omitempty"`
+		Reasoning        string              `json:"reasoning,omitempty"`
+		ReasoningDetails []oaReasoningDetail `json:"reasoning_details,omitempty"`
+		ToolCalls        []oaToolCall        `json:"tool_calls,omitempty"`
+		ToolCallID       string              `json:"tool_call_id,omitempty"`
 	}
-	w := wire{Role: m.Role, Reasoning: m.Reasoning, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID}
+	w := wire{
+		Role: m.Role, Reasoning: m.Reasoning, ReasoningDetails: m.ReasoningDetails,
+		ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
+	}
 	if !(m.Role == "assistant" && m.Content == "" && len(m.ToolCalls) > 0) {
 		if len(m.ContentBlocks) > 0 {
 			w.Content = m.ContentBlocks
 		} else {
-			// A non-nil pointer (even to "") is always emitted by omitempty, so this
-			// forces a content field to appear; nil omits it for the assistant-with-
-			// tool-calls case above.
+			// A non-nil pointer forces the content field via omitempty; nil omits it for the tool-call case.
 			s := m.Content
 			w.Content = &s
 		}
@@ -92,12 +74,15 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 }
 
 // oaWireMessages maps the neutral transcript onto the OpenAI wire: the system
-// prompt (when non-empty) is prepended as a system message, assistant
-// tool calls are replayed as tool_calls, and tool results ride as role:"tool"
+// prompt (when non-empty) is prepended as a system message, assistant tool
+// calls are replayed as tool_calls, and tool results ride as role:"tool"
 // messages keyed by tool_call_id. Message.Thinking is not replayed on this
-// dialect by default (OpenAI-compatible APIs have no reasoning-replay field) --
-// only when replayReasoning is set, so a strict server never sees the unknown
-// field -- and Message.ToolIsError has no wire equivalent.
+// dialect by default (a strict OpenAI-compatible server rejects an unknown
+// field) -- only when replayReasoning is set, and then both the flattened
+// text (reasoning) and, when captured, the verbatim reasoning_details array
+// go out -- a gateway requiring the latter for tool-call continuity (see
+// oaReplayReasoningDetails) ignores the former, and a server that only knows
+// the ignores the latter. Message.ToolIsError has no wire equivalent.
 func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMessage, error) {
 	out := make([]oaMessage, 0, len(msgs)+1)
 	if system != "" {
@@ -114,12 +99,13 @@ func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMe
 		}
 		if replayReasoning && m.Role == RoleAssistant {
 			wm.Reasoning = reasoningText(m)
+			wm.ReasoningDetails = oaReplayReasoningDetails(m)
 		}
 		for _, tc := range m.ToolCalls {
 			wm.ToolCalls = append(wm.ToolCalls, oaToolCall{
 				ID:       tc.ID,
 				Type:     "function",
-				Function: oaFunctionCall{Name: tc.Name, Arguments: toolArgs(tc.Arguments)},
+				Function: oaFunctionCall{Name: tc.Name, Arguments: replayToolArgs(tc.Arguments)},
 			})
 		}
 		out = append(out, wm)
@@ -156,9 +142,7 @@ func oaContentBlocks(m Message) ([]map[string]any, error) {
 	return blocks, nil
 }
 
-// reasoningText concatenates an assistant message's accumulated reasoning. On
-// the openai dialect the provider always produces a single ThinkingBlock; the
-// concatenation keeps replay robust to a multi-block message regardless.
+// reasoningText concatenates an assistant's thinking, robust to multi-block messages.
 func reasoningText(m Message) string {
 	var b strings.Builder
 	for _, tb := range m.Thinking {
@@ -169,14 +153,50 @@ func reasoningText(m Message) string {
 	return b.String()
 }
 
-// oaMarkPromptCache applies the two Anthropic-style ephemeral prompt-cache
-// breakpoints to a per-request wire message list in openai shape: the leading
-// system message's string content becomes a marked one-block array (the static
-// breakpoint) and the last message's content gets the moving marker. It
-// operates on the freshly-built wire structures only (the caller's Messages
-// are never touched), and empty content passes through unmarked -- an empty
-// marked text block is rejected by upstreams and caching is an optimization,
-// never a correctness requirement.
+// oaReasoningDetail is item of an OpenRouter-style reasoning_details
+// array. A field this dialect never interprets (Signature, Format, Index) is
+// still captured and replayed, since a downstream gateway checks the whole
+// item, not the fields this library happens to read.
+type oaReasoningDetail struct {
+	Type      string  `json:"type"`
+	Text      string  `json:"text,omitempty"`
+	Summary   string  `json:"summary,omitempty"`
+	Data      string  `json:"data,omitempty"`
+	Signature *string `json:"signature,omitempty"`
+	ID        string  `json:"id,omitempty"`
+	Format    string  `json:"format,omitempty"`
+	Index     int     `json:"index,omitempty"`
+}
+
+// oaReasoningDetailsJSON marshals a captured reasoning_details array for
+// storage in a ThinkingBlock's Signature, or "" when none arrived.
+func oaReasoningDetailsJSON(details []oaReasoningDetail) string {
+	if len(details) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(details)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// oaReplayReasoningDetails decodes the reasoning_details array a Thinking
+// block's Signature holds, or nil for a block with none. See USAGE.md.
+func oaReplayReasoningDetails(m Message) []oaReasoningDetail {
+	for _, tb := range m.Thinking {
+		if tb.Signature == "" {
+			continue
+		}
+		var details []oaReasoningDetail
+		if err := json.Unmarshal([]byte(tb.Signature), &details); err == nil {
+			return details
+		}
+	}
+	return nil
+}
+
+// oaMarkPromptCache marks the system (static) and last (moving) messages; empties stay unmarked.
 func oaMarkPromptCache(msgs []oaMessage) {
 	if len(msgs) == 0 {
 		return
@@ -189,7 +209,7 @@ func oaMarkPromptCache(msgs []oaMessage) {
 
 // oaWithMarkedContent returns a copy of the message whose content carries the
 // ephemeral cache breakpoint: a non-empty block array gets the marker on its
-// last block, a non-empty string becomes a one-block array, and empty content
+// last block, a non-empty string becomes a -block array, and empty content
 // passes through unmarked.
 func oaWithMarkedContent(m oaMessage) oaMessage {
 	switch {

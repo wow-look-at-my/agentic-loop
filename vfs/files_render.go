@@ -27,7 +27,7 @@ func renderListing(where string, l Listing) string {
 	entries := l.Entries
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].Dir != entries[j].Dir {
-			return entries[i].Dir // directories first
+			return entries[i].Dir // directories
 		}
 		return entries[i].Name < entries[j].Name
 	})
@@ -70,9 +70,7 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 		fmt.Fprintf(&b, " (%s)", strings.Join(globs, ", "))
 	}
 	if len(res.Hits) == 0 {
-		// An empty result has to state what it proves. Every line of every file
-		// in scope was read, so the text really is absent from that scope --
-		// unless coverage was partial, which the note then says.
+		// An empty result states what it proves: every line in scope was read, so the text is genuinely absent.
 		b.WriteString(": no matches.\nEvery line of every file in scope was searched, so the text is genuinely absent from it — this is a real negative, not a search that gave up.")
 		if res.Note != "" {
 			b.WriteString("\n" + res.Note)
@@ -99,11 +97,11 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 }
 
 // SliceLines applies read_file's line window. A whole file is the default, but
-// reading one function out of a large file should not cost the whole file: one
-// unwindowed read of a 60,000-character source file added roughly 18,000
+// reading function out of a large file should not cost the whole file:
+// unwindowed read of a,-character source file added roughly,
 // tokens to a single turn.
 //
-// offset is 1-based and inclusive, matching the line numbers grep hands back.
+// offset is -based and inclusive, matching the line numbers grep hands back.
 func SliceLines(content string, offset, limit int) (body, note string) {
 	if offset <= 0 && limit <= 0 {
 		return content, ""
@@ -133,11 +131,7 @@ func SliceLines(content string, offset, limit int) (body, note string) {
 	return strings.Join(shown, "\n"), note + ")"
 }
 
-// MatchesPattern reports whether a path matches a find_files pattern. A pattern
-// carrying glob metacharacters is matched against both the base name and the
-// full path (so *.go and src/*.go both work); anything else is a
-// case-insensitive substring of the path. Exported for folders doing their own
-// filtering with the same rule.
+// MatchesPattern reports whether a path matches a find_files pattern (glob or case-insensitive substring).
 func MatchesPattern(p, pattern string) bool {
 	if !strings.ContainsAny(pattern, "*?[") {
 		return strings.Contains(strings.ToLower(p), strings.ToLower(pattern))
@@ -161,14 +155,7 @@ func WithinDir(p, dir string) (string, bool) {
 	return strings.TrimPrefix(p, dir+"/"), true
 }
 
-// WithinScope reports whether p falls inside a SEARCH scope, and returns the
-// name the globs are matched against.
-//
-// A search scope is a path, not a directory: grep names either a subtree or one
-// exact file, and both must work. WithinDir alone answers no for the file case
-// (a file is not a child of itself), which makes every single-file grep report
-// a false absence -- the searched file is skipped, and an empty result is then
-// presented as proof the text is not there.
+// WithinScope reports whether p falls inside a SEARCH scope (a path, not a directory) and returns the glob name.
 func WithinScope(p, scope string) (string, bool) {
 	if p == scope {
 		return path.Base(p), true

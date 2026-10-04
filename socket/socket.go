@@ -4,22 +4,10 @@
 // Both carry the same documents as every other way in. A document is
 // self-delimiting -- it ends when its root element closes -- so the unix
 // socket needs no framing layer at all: documents ride back-to-back in both
-// directions, and a reader knows where each one ends because XML already says
+// directions, and a reader knows where each ends because XML already says
 // so. The websocket has framing whether we want it or not, so each flush of
-// the answer is one text message, and a client concatenates them into the same
+// the answer is text message, and a client concatenates them into the same
 // document a unix-socket client reads byte for byte.
-//
-// Two operations, told apart by the root element the client sends:
-//
-//   - <request> runs one call and answers with a <response>.
-//   - <conversation id="..."> appends its messages to the stored conversation
-//     of that id (creating it when the id is new), runs the call over the whole
-//     transcript, and answers with a <response>. The assistant's turn is
-//     appended, so the next one sees it.
-//
-// A call that fails before it produced anything answers with an <error>
-// document; one that fails after says both, in the one <response> it had
-// already started.
 package socket
 
 import (
@@ -35,13 +23,9 @@ import (
 
 // Config builds a Server.
 type Config struct {
-	// Provider runs the calls and is required.
-	//
-	// It is the format's own Provider, not the Go client's: what the document
-	// says the provider reported has to be what the provider reported.
+	// Provider runs the calls and is required; it is the format's own Provider, not the Go client's.
 	Provider commonai.Provider
-	// Store holds conversations. Nil serves <request> only, and answers a
-	// <conversation> with an error rather than quietly running it statelessly.
+	// Store holds conversations; nil serves <request> only and errors on <conversation>.
 	Store session.Store
 }
 
@@ -78,7 +62,7 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 	}
 }
 
-// Handle reads documents from conn and answers each one, until the peer stops
+// Handle reads documents from conn and answers each, until the peer stops
 // sending or the context ends.
 func (s *Server) Handle(ctx context.Context, conn io.ReadWriter) {
 	r := bufio.NewReader(conn)
@@ -89,8 +73,7 @@ func (s *Server) Handle(ctx context.Context, conn io.ReadWriter) {
 		data, err := commonai.ReadDocument(r)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				// A stream that ended mid-document is worth saying out loud:
-				// the peer thinks it sent something.
+				// A stream that ended mid-document is worth saying out loud.
 				_ = commonai.EncodeError(conn, commonai.BadRequest(err.Error()))
 			}
 			return
@@ -101,7 +84,7 @@ func (s *Server) Handle(ctx context.Context, conn io.ReadWriter) {
 	}
 }
 
-// answer handles one document, reporting whether the connection is still good
+// answer handles document, reporting whether the connection is still good
 // for another.
 func (s *Server) answer(ctx context.Context, w io.Writer, data []byte) bool {
 	if err := commonai.Validate(data); err != nil {
@@ -120,10 +103,12 @@ func (s *Server) answer(ctx context.Context, w io.Writer, data []byte) bool {
 		}
 		stream.begin(comp.Message.Role)
 	}
-	stream.finish(comp, callErr)
+	// Record BEFORE closing the document: a caller told the turn is done reads
+	// the conversation next, and must not find the answer missing.
 	if id != "" && comp != nil {
 		_, _ = s.store.Append(id, comp.Message)
 	}
+	stream.finish(comp, callErr)
 	return true
 }
 

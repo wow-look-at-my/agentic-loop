@@ -9,11 +9,11 @@ import (
 )
 
 // The repo tools give the model real GitHub capability. A required "what"
-// selector picks the read, and every one of them is history or metadata the
-// REST API serves: commits, one commit's diff, pull requests, issues, CI. A
+// selector picks the read, and every of them is history or metadata the
+// REST API serves: commits, commit's diff, pull requests, issues, CI. A
 // repository's FILES are not here -- they are a filesystem the host mounts at
 // /repos, listed, read, found and grepped with the file tools (files.go),
-// which share this client's credentials and caching. Two approval-gated write
+// which share this client's credentials and caching. approval-gated write
 // tools (a single-file commit and PR creation) stay separate: they reach
 // GitHub, they use ONLY the write credential list, and they never fall through
 // to unauthenticated.
@@ -22,14 +22,14 @@ const (
 	RepoFileWriteToolName = "repo_file_write"
 	RepoPRCreateToolName  = "repo_pr_create"
 
-	// RepoFileMaxRunes caps the text of one file fed back to the model.
+	// RepoFileMaxRunes caps the text of file fed back to the model.
 	RepoFileMaxRunes = 200_000
 
 	repoListDefaultPerPage = 10      // default page size for the list reads
 	repoListMaxPerPage     = 30      // hard cap on a list read's per_page
 	RepoDiffMaxRunes       = 200_000 // cap on a commit/PR diff fed back to the model
-	repoBodyMaxRunes       = 20_000  // cap on one PR/issue body
-	repoCommentMaxRunes    = 5_000   // cap on one issue comment body
+	repoBodyMaxRunes       = 20_000  // cap on PR/issue body
+	repoCommentMaxRunes    = 5_000   // cap on issue comment body
 
 	repoReadDescription = "Reads a GitHub repository's HISTORY and METADATA — the parts of a repository that are not files — selected by the required \"what\": " +
 		"commits (commit list), commit (one commit with its diff), prs (pull request list), pr (one pull request with changed files), " +
@@ -46,19 +46,13 @@ var repoReadSchema = agentic.EnumSchema[repoReadArgs](map[string][]string{
 
 // RepoToolsConfig configures NewRepoTools.
 type RepoToolsConfig struct {
-	// GitHub is the client every read and write runs on. Nil yields no tools:
-	// a run with no GitHub access is never offered a tool that can only fail.
+	// GitHub is the client every read and write runs on; nil yields no tools.
 	GitHub *GitHub
-	// Blocked vetoes a WRITE whose repository the host has open some other way
-	// -- a working copy whose staged state a direct commit would bypass. It
-	// returns the model-facing refusal, naming what to use instead, or nil to
-	// allow. Reads are deliberately never asked: history, pull requests and CI
-	// are not things a working copy holds a version of, and gating them left a
-	// checked-out repository's own CI unreachable by any route.
+	// Blocked vetoes a WRITE the host has open some other way, e.g. a working copy.
 	Blocked func(org, repo string) *agentic.ToolResult
 }
 
-// NewRepoTools returns repo_read plus the two writes. The writes are not
+// NewRepoTools returns repo_read plus the writes. The writes are not
 // Readonly, which is the whole of what they declare: they reach GitHub and no
 // undo exists, so Config.Approver decides each call and a run with no Approver
 // refuses them.
@@ -71,28 +65,25 @@ func NewRepoTools(cfg RepoToolsConfig) agentic.Tools {
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoReadToolName, Description: repoReadDescription,
 			InputSchema: repoReadSchema, Readonly: true,
-			// GitHub is somebody else's machine, so every one of these reaches
-			// outside any domain this process controls.
+			// GitHub is somebody else's machine; every call reaches outside this process.
 			OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.repoRead)),
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoFileWriteToolName, Description: repoFileWriteDescription,
 			InputSchema: repoFileWriteSchema,
-			// Writing a path replaces what was there, and each write is its own
-			// commit, so repeating one is not free.
+			// Each write replaces what was there and is its own commit.
 			Destructive: agentic.Bool(true), OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.fileWrite)),
 		agentic.NewTool(agentic.ToolDecl{
 			Name: RepoPRCreateToolName, Description: repoPRCreateDescription,
 			InputSchema: repoPRCreateSchema,
-			// Opening a pull request adds one; it destroys nothing. Calling it
-			// again opens another.
+			// Opening a pull request adds and destroys nothing.
 			Destructive: agentic.Bool(false), OpenWorld: agentic.Bool(true),
 		}, wrapRepoTool(e.prCreate)),
 	}
 }
 
-// repoTools is the shared state behind the three tools.
+// repoTools is the shared state behind the tools.
 type repoTools struct {
 	gh      *GitHub
 	blocked func(org, repo string) *agentic.ToolResult
@@ -134,10 +125,7 @@ type repoReadArgs struct {
 	Limit       int    `json:"limit,omitempty" jsonschema:"For what=job_log: how many lines to return from offset."`
 }
 
-// repoReadWhatOrder is the one declaration of which reads exist and in what
-// order. The handler table, the schema's enum and the "must be one of" error
-// all derive from it, so a read cannot be added to one and missing from
-// another.
+// repoReadWhatOrder is the declaration of which reads exist, in order.
 var repoReadWhatOrder = []string{"commits", "commit", "prs", "pr", "issues", "issue", "status", "check_run", "job_log"}
 
 // repoReadWhats maps each valid "what" to its implementation.
@@ -156,7 +144,7 @@ var repoReadWhats = map[string]func(*repoTools, context.Context, repoReadArgs) a
 var repoReadWhatList = strings.Join(repoReadWhatOrder, ", ")
 
 // repoReadMovedWhats names the reads that became filesystem operations, so a
-// model still calling them by the old name is redirected rather than told the
+// model still calling them by the name is redirected rather than told the
 // what is merely unknown.
 var repoReadMovedWhats = map[string]string{
 	"tree":      `list_dir on the repository path, e.g. {"path": "/repos/<org>/<repo>/<dir>"}`,
@@ -187,11 +175,6 @@ func (e *repoTools) repoRead(ctx context.Context, args json.RawMessage) agentic.
 	if err := validateRepoReadArgs(what, args); err != nil {
 		return agentic.ToolResult{Content: err.Error(), IsError: true}
 	}
-	// Deliberately NOT gated by workspace mode. Every read here is history or
-	// metadata — commits, pull requests, issues, CI — and the workspace holds
-	// no version of any of it, so there is nothing a direct read could show
-	// staler than the workspace does. Gating them left the workspace
-	// repository's CI unreachable by any route at all; the files, which the
-	// workspace DOES hold, are gated in fs.go instead. see workspace_mode.go
+	// Deliberately NOT gated by workspace mode: history and metadata live only on GitHub.
 	return handler(e, ctx, in)
 }

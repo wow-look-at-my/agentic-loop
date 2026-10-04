@@ -6,29 +6,13 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// streamWriter turns a call's events into the response document, written down
-// a chunked body as they arrive.
-//
-// Nothing is written until the first event, which is what lets a call that
-// fails before producing anything be answered with a status and an <error>
-// document instead of a truncated answer. Once the root is open the status is
-// spent, so a later failure is appended INSIDE the document -- which is the
-// honest shape anyway: the caller has already seen the output.
-//
-// Text streams delta by delta, because that is what a reader watches. Every
-// other part is written when it is finished, from OnPart: a thinking block's
-// signature arrives after its text and cannot be added to an element already
-// open, so streaming reasoning too would produce a document that says
-// something different from the completion.
+// streamWriter turns a call's events into the response document down a chunked body as they arrive.
 type streamWriter struct {
 	w  http.ResponseWriter
 	rw *commonai.ResponseWriter
-	// sent counts the parts written from OnPart, so finish can write the tail
-	// of the completion that no event announced -- a block cut off mid-stream.
+	// sent counts the parts written from OnPart, so finish can write the tail of the completion.
 	sent int
-	// pending is the text streamed into the open <text> element, so the
-	// finished TextPart that follows is recognized as the same one rather than
-	// written twice.
+	// pending is text streamed into the open <text> element, so the finished TextPart is the same.
 	pending string
 	role    commonai.Role
 }
@@ -40,7 +24,7 @@ func newStreamWriter(w http.ResponseWriter) *streamWriter {
 // started reports whether any of the document has been written.
 func (s *streamWriter) started() bool { return s.rw != nil }
 
-// begin opens the response document and commits the 200.
+// begin opens the response document and commits the.
 func (s *streamWriter) begin(role commonai.Role) {
 	if s.rw != nil {
 		return
@@ -55,7 +39,6 @@ func (s *streamWriter) begin(role commonai.Role) {
 }
 
 // flush pushes what has been written so far to the client, which is what makes
-// this a stream rather than a slow buffer.
 func (s *streamWriter) flush() {
 	if f, ok := s.w.(http.Flusher); ok {
 		f.Flush()
@@ -99,7 +82,7 @@ func (s *streamWriter) events() *commonai.StreamEvents {
 
 // finish writes what the events never announced and closes the document: the
 // parts of a call that did not stream at all (a server that ignored
-// stream:true), and the tail of one that was cut off mid-part.
+// stream:true), and the tail of that was cut off mid-part.
 func (s *streamWriter) finish(comp *commonai.Completion, callErr error) {
 	defer s.flush()
 	if comp == nil {

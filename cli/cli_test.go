@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// upstream is an OpenAI-compatible server that streams one answer and records
+// upstream is an OpenAI-compatible server that streams answer and records
 // the bodies it was sent.
 func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 	t.Helper()
@@ -40,14 +41,17 @@ func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 	return srv, &bodies
 }
 
+// cliMu serializes the tests that drive the command tree, which is package state: its flags, its args.
+var cliMu sync.Mutex
+
 // run drives the command tree the way a shell does, and returns what a user
 // would see on stdout.
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
+	cliMu.Lock()
+	defer cliMu.Unlock()
 	var out, errOut bytes.Buffer
-	// One process runs every case, so each invocation starts from the defaults
-	// -- otherwise a flag one case passed is still set for the next, and a test
-	// for a MISSING flag passes because a previous case supplied it.
+	// Each invocation starts from the defaults; a prior case's flag must not leak.
 	resetFlags()
 	root.SetOut(&out)
 	root.SetErr(&errOut)
@@ -57,14 +61,7 @@ func run(t *testing.T, stdin string, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// resetFlags puts the per-execution state back: the flag variables, and the
-// context cobra caches on each command.
-//
-// The context matters as much as the flags here. Cobra fills a command's ctx
-// only when it is nil (command.go, ExecuteC), so a command executed a second
-// time in the same process keeps the FIRST run's context -- and a test that
-// cancels its own context then waits forever for a serve that never saw it.
-// One process runs every case here; a real cai executes the tree once.
+// resetFlags puts the per-execution state back: the flag variables, and the context cobra caches on each command.
 func resetFlags() {
 	flagEndpoint, flagDialect, flagModel, flagSystem = "", "", "", ""
 	flagMaxTok, flagTemp, flagImages, flagSessions = 0, -1, nil, ""
@@ -146,8 +143,8 @@ func TestAskNeedsAnEndpointAndAModel(t *testing.T) {
 	assert.Contains(t, err.Error(), "model")
 }
 
-// The stored conversation is what makes the second question land in the same
-// conversation as the first, and it is kept as the format's own document.
+// The stored conversation is what makes the question land in the same
+// conversation as the, and it is kept as the format's own document.
 func TestChatKeepsTheConversation(t *testing.T) {
 	srv, bodies := upstream(t, "first answer")
 	dir := t.TempDir()

@@ -7,62 +7,25 @@ import (
 )
 
 const (
-	// chunkRunes is the window one embedding covers. Every embedding model
-	// flattens its whole input to a single vector, so a window that is too
-	// wide averages several unrelated topics into a direction that matches
-	// none of them.
+	// chunkRunes is the window embedding covers; too wide a window averages unrelated topics into a direction that matches
 	chunkRunes = 1200
-	// chunkOverlap is how much of the previous window each chunk repeats, so a
-	// passage that straddles a boundary is whole inside one of the two.
+	// chunkOverlap is how much of the window each chunk repeats, so a straddling passage is whole in chunk.
 	chunkOverlap = 120
-	// maxChunksPerMessage caps what one message can cost. A 40 KB tool result
-	// would otherwise be 30-odd embeddings of build output. The cap is
-	// RECORDED per message (embed_status.chunks_total), so a partially
-	// embedded message is reported as partial; the text index covers all of
-	// it regardless.
+	// maxChunksPerMessage caps what message can cost; the cap is recorded per message (embed_status.chunks_total).
 	maxChunksPerMessage = 16
-	// embedBatchSize is how many chunks go in one request. A message's chunks
-	// never span two batches, so a batch that lands is a whole number of
-	// finished messages.
+	// embedBatchSize is how many chunks go in request; a message's chunks never span batches.
 	embedBatchSize = 64
 )
 
-// Embedder turns text into vectors.
-//
-// The two sides are separate methods because retrieval is ASYMMETRIC in most
-// modern embedding models: a stored passage and the question that should find
-// it are embedded differently, and the model is told which it is being given.
-// Nomic's text models require a task prefix on every input -- their card says
-// the prompt "must include a task instruction prefix" -- and the E5 and BGE
-// families have their own. Getting it wrong costs retrieval quality and costs
-// it SILENTLY: every call succeeds, every vector is well-formed, and the
-// results are quietly worse. One symmetric Embed method makes that mistake the
-// default and invisible, so there isn't one.
-//
-// An implementation for a symmetric model (OpenAI's, say) does the same thing
-// on both sides, which is a one-line method, not a burden.
-//
-// It is an interface because the index does no HTTP of its own and holds no
-// endpoint or key -- the same rule the rest of this module follows.
-// HTTPEmbedder is the implementation for an OpenAI-compatible /v1/embeddings
-// endpoint.
+// Embedder turns text into vectors; retrieval is asymmetric, so passages and queries embed separately.
 type Embedder interface {
-	// EmbedDocuments embeds text that is being STORED, to be found later. It
-	// must return exactly one vector per input, in the same order.
+	// EmbedDocuments embeds text being STORED; it must return exactly vector per input, in order.
 	EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)
-	// EmbedQuery embeds one search query.
+	// EmbedQuery embeds search query.
 	EmbedQuery(ctx context.Context, text string) ([]float32, error)
 }
 
-// chunkContent splits content into overlapping windows of runes. It returns
-// the windows to embed (at most maxChunksPerMessage) and total, the number the
-// content would have needed -- total > len(chunks) is the truncation the caller
-// has to record rather than swallow.
-//
-// Splitting is by rune count, not by sentence or paragraph. That is a
-// deliberate floor rather than a first attempt at something smarter: prose, a
-// stack trace, a diff and a JSON blob are all ordinary message content here,
-// and none of them share a boundary rule.
+// chunkContent splits content into overlapping rune windows, returning the chunks to embed and the total needed (total > len(chunks) is truncation).
 func chunkContent(content string) (chunks []string, total int) {
 	r := []rune(content)
 	if len(r) == 0 {
@@ -85,16 +48,16 @@ func chunkContent(content string) (chunks []string, total int) {
 	return chunks, total
 }
 
-// pending is one message awaiting embedding.
+// pending is message awaiting embedding.
 type pending struct {
 	id      string
 	content string
 }
 
 // PendingForModel returns up to limit of the owner's messages that have no
-// embedding under model, NEWEST FIRST.
+// embedding under model, NEWEST.
 //
-// Newest first is the load-bearing part of the ordering. A first-time backfill
+// Newest is the load-bearing part of the ordering. A -time backfill
 // over a long history drains over minutes, and during that time the covered
 // half should be the half most likely to be searched. It also means a caller
 // who never lets it finish still has a useful index.
@@ -129,7 +92,7 @@ func (i *Index) PendingForModel(ctx context.Context, owner, model string, limit 
 	return out, nil
 }
 
-// batch is a set of whole messages whose chunks fit in one embedding request.
+// batch is a set of whole messages whose chunks fit in embedding request.
 type batch struct {
 	texts []string
 	msgs  []batchMessage
@@ -187,8 +150,8 @@ func (i *Index) EmbedPending(ctx context.Context, owner, model string, e Embedde
 	return done, nil
 }
 
-// embedBatch makes one embedding request and writes every vector it returned,
-// with the per-message embed_status rows, in ONE transaction. That is what
+// embedBatch makes embedding request and writes every vector it returned,
+// with the per-message embed_status rows, in transaction. That is what
 // lets the pending query trust embed_status: a message either has its full set
 // of chunks stored, or it has no record at all and is picked up again.
 func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batch) (n int, err error) {
@@ -196,9 +159,7 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 	if err != nil {
 		return 0, fmt.Errorf("search: embed %d chunks with %q: %w", len(b.texts), model, err)
 	}
-	// A provider returning a different number of vectors than it was given
-	// inputs cannot be lined back up with the messages that produced them.
-	// Storing the overlap would attach one message's vector to another's id.
+	// A provider returning a different number of vectors than inputs cannot be matched back to their messages.
 	if len(vecs) != len(b.texts) {
 		return 0, fmt.Errorf("search: %q returned %d vectors for %d inputs", model, len(vecs), len(b.texts))
 	}
@@ -254,8 +215,8 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 
 // DropModel removes every vector stored under model and returns how many
 // messages it un-embedded. It is what changing embedding model costs: vectors
-// from two models are not comparable, so the old ones can never answer a query
-// again and are storage with no reader.
+// from models are not comparable, so the ones can never answer a query again
+// and are storage with no reader.
 func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) {
 	tx, err := i.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -284,9 +245,9 @@ func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) 
 	return int(affected), nil
 }
 
-// ModelsInUse lists every embedding model that currently has vectors stored.
-// It is what makes a model switch reportable: a model here that nobody is
-// asking with any more is storage being paid for and never read.
+// ModelsInUse lists every embedding model that has vectors stored. It is what
+// makes a model switch reportable: a model here that nobody is asking with
+// any more is storage being paid for and never read.
 func (i *Index) ModelsInUse(ctx context.Context) ([]string, error) {
 	rows, err := i.sql.QueryContext(ctx, `SELECT DISTINCT model FROM embeddings ORDER BY model`)
 	if err != nil {

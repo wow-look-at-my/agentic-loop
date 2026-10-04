@@ -11,12 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// scriptStep is one scripted provider response.
+// scriptStep is scripted provider response.
 type scriptStep struct {
 	comp *Completion
 	err  error
-	// emit, when set, fires stream events before returning (to exercise
-	// delivery tracking).
+	// emit, when set, fires stream events before returning (to exercise delivery tracking).
 	emit func(ev *StreamEvents)
 }
 
@@ -72,8 +71,8 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 		recorded = append(recorded, m)
 		return nil
 	}
-	events.OnToolCall.Subscribe(&toolCallCb)
-	events.OnToolResult.Subscribe(&toolResultCb)
+	keep(t, &events.OnToolCall, toolCallCb)
+	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -105,14 +104,12 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 	assert.Equal(t, "beta", calls[1].Name)
 	require.Len(t, results, 2)
 	assert.Equal(t, "ran alpha", results[0].Content)
-	// Each result event also carries the message the loop appended for it --
-	// here identical to the transcript's own entries.
+	// Each result event carries the message the loop appended for it (here identical to the transcript).
 	require.Len(t, recorded, 2)
 	assert.Equal(t, res.Messages[2], recorded[0])
 	assert.Equal(t, res.Messages[3], recorded[1])
 
-	// The loop advertises the executor's tools, overriding req.Tools; the
-	// second request replays the assistant tool calls and the tool results.
+	// The loop advertises the executor's tools; the request replays the tool calls and results.
 	require.Len(t, provider.reqs, 2)
 	require.Len(t, provider.reqs[0].Tools, 2)
 	assert.Equal(t, "alpha", provider.reqs[0].Tools[0].Name)
@@ -165,15 +162,10 @@ type approverFunc func(ctx context.Context, call ToolCall) (Approval, error)
 
 func (f approverFunc) Ask(ctx context.Context, call ToolCall) (Approval, error) { return f(ctx, call) }
 
-// allowAll is the toolset-wide yes a host with no policy of its own would
-// give. Every call reaches an Approver now, so a Run that means to execute
-// tools needs one.
+// allowAll is the toolset-wide yes a host with no policy of its own would give.
 var allowAll = approverFunc(func(context.Context, ToolCall) (Approval, error) { return Approval{OK: true}, nil })
 
-// A denial says WHY, and that reason is what the model is told: "the user
-// denied permission" is a false statement about a person when a policy, not a
-// person, refused -- and it sends the model to ask that person to reconsider a
-// decision they never made.
+// The reason is what the model is told; "the user denied permission" is false when a policy refused.
 func TestRunDenialCarriesItsReason(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", ToolCall{ID: "c1", Name: "danger", Arguments: "{}"})},
@@ -246,7 +238,7 @@ func TestRunNilApproverAllowsReadonlyAndDeniesTheRest(t *testing.T) {
 	assert.Equal(t, "look", exec.executed[0].Name)
 }
 
-// The whole point of item 4: a host's deny rules reach EVERY call. A tool that
+// The whole point of item: a host's deny rules reach EVERY call. A tool that
 // considers itself unremarkable used never to be asked about, so a deny rule
 // could not fire on it at all.
 func TestRunApproverIsAskedAboutReadonlyCallsToo(t *testing.T) {
@@ -304,10 +296,7 @@ func TestRunApprovalAskError(t *testing.T) {
 	assert.ErrorIs(t, err, interrupted)
 	require.NotNil(t, res, "partial Result returned alongside the error")
 
-	// The first call was approved and executed and its result was appended,
-	// then the second call's Ask failed: the batch is cleared — the assistant message
-	// keeps content and reasoning but loses its tool calls, and the executed
-	// result is dropped from the transcript so no orphans remain.
+	// The call ran and its result was appended; the 's Ask failed and the batch was cleared.
 	require.Len(t, res.Messages, 2)
 	final := res.Messages[1]
 	assert.Equal(t, "let me check", final.Content)
@@ -395,16 +384,11 @@ func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {
 	assert.Equal(t, "sorry", res.Final.Content)
 }
 
-// noTurnCapProbe is well past the 10-turn cap this loop used to carry, so a
-// regression that reintroduces one fails here instead of in production on the
-// one task that needed the 11th turn. The provider is the in-process
-// scriptProvider stub, so these turns cost microseconds.
+// noTurnCapProbe is well past the -turn cap, so a regression fails here, not in production.
 const noTurnCapProbe = 40
 
 func TestRunHasNoTurnCap(t *testing.T) {
-	// A model that keeps asking for tools is never cut off. Distinct arguments
-	// per turn: a model repeating itself is the stuck detector's business
-	// (TestRunStuckFailsAfterNudge); this test is about the absence of a cap.
+	// A model that keeps asking for tools is never cut off; this test is about the absence of a cap.
 	steps := make([]scriptStep, 0, noTurnCapProbe)
 	for i := 0; i < noTurnCapProbe-1; i++ {
 		steps = append(steps, scriptStep{comp: assistantComp("", ToolCall{ID: "c", Name: "alpha", Arguments: jsonMust(jsonObj{"i": i})})})
@@ -436,7 +420,7 @@ func TestRunContentAlongsideToolCallsStillRunsThem(t *testing.T) {
 }
 
 func TestRunRetriesTransientModelFailure(t *testing.T) {
-	// Retry is the provider's, so Run sees one call and counts one turn no
+	// Retry is the provider's, so Run sees call and counts turn no
 	// matter how many attempts it took underneath.
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: &APIError{Status: 503, Body: "unavailable"}},
@@ -475,12 +459,7 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 }
 
 func TestRetryTrustsTheProviderContract(t *testing.T) {
-	// "Did this call stream?" is answered by the Provider contract — a partial
-	// completion accompanies the error once data has arrived — and nothing
-	// watches the callbacks to second-guess it. The cost of that simplicity,
-	// pinned here so it is a known trade and not a surprise: a Provider that
-	// emits deltas and then returns a NIL completion has lied about streaming,
-	// and its call is re-sent.
+	// "Did this call stream?" is the Provider contract's answer; deltas then nil re-sends the call.
 	netErr := errors.New("reset")
 	provider := &scriptProvider{steps: []scriptStep{
 		{err: netErr, emit: func(ev *StreamEvents) { _ = ev.EmitText("leaked") }},
@@ -512,8 +491,7 @@ func TestRunRequiresProvider(t *testing.T) {
 	require.Error(t, err)
 }
 
-// repeatedCall is the batch a stuck model keeps asking for. The ID varies per
-// turn exactly as a provider would mint it — the fingerprint must ignore it.
+// repeatedCall is the batch a stuck model asks for, with a fresh ID per turn the fingerprint ignores.
 func repeatedCall(turn int) ToolCall {
 	return ToolCall{ID: fmt.Sprintf("c%d", turn), Name: "alpha", Arguments: `{"q":"same"}`}
 }
@@ -532,7 +510,7 @@ func TestRunStuckNudgeUnsticksTheLoop(t *testing.T) {
 	assert.Equal(t, "unstuck", res.Final.Content)
 	assert.Len(t, exec.executed, StuckNudgeAt, "every nudged batch still ran")
 
-	// The nudge is ONE user turn, after the repeated batch's tool results.
+	// The nudge is user turn, after the repeated batch's tool results.
 	last := provider.reqs[len(provider.reqs)-1].Messages
 	nudges := 0
 	for i, m := range last {
@@ -563,8 +541,7 @@ func TestRunStuckFailsAfterNudge(t *testing.T) {
 }
 
 func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
-	// Twice StuckFailAt tool turns, alternating between two batches: no two
-	// consecutive turns are identical, so the detector never fires.
+	// Alternating StuckFailAt batches: no consecutive are identical, so the detector never fires.
 	steps := make([]scriptStep, 0, 2*StuckFailAt+1)
 	for i := 0; i < 2*StuckFailAt; i++ {
 		call := repeatedCall(i)

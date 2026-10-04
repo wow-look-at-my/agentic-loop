@@ -6,26 +6,9 @@ import (
 	"strings"
 )
 
-// MCP resources are the protocol's second server primitive, and the one almost
-// nothing consumes: a tool is advertised in the model's context, while a
-// resource is not, so a model never learns a resource exists and never asks for
-// it. This is the host closing that gap. At every turn boundary the watcher
-// re-reads the run's resources, and anything that changed is announced as a
-// short automated notice -- names and change ids, never content.
-//
-// The notice is a POINTER, deliberately. Dumping a changed resource into the
-// thread would cost its full size on every subsequent turn and invalidate the
-// prompt cache each time; announcing it costs a line, and the model spends
-// tokens on the diff only if it decides the change matters. The change id is
-// what makes "whenever" true -- it resolves to the exact before/after the
-// watcher saw, however many further changes land in between.
-//
-// The library owns the watching and the words; a host supplies the SOURCE the
-// resources come from (ResourceSource) and where snapshots are kept
-// (ResourceSnapshots). Nothing here knows what MCP is.
+// MCP resources are announced as short automated notices of what changed, never content.
 
-// resourceNoticeHeader opens every notice so a model reading the transcript can
-// never mistake it for the user speaking.
+// resourceNoticeHeader opens every notice so the model never mistakes it for the user.
 const resourceNoticeHeader = "[automated notice -- the host is watching this conversation's MCP resources; this is not a message from the user]"
 
 // Resource change kinds, as reported to the model.
@@ -35,12 +18,9 @@ const (
 	ResourceRemoved  = "removed"
 )
 
-// ResourceChange is one detected change, already recorded by the watcher. It
-// carries no content: everything here is announced to the model, and the
-// before/after bytes stay in storage until mcp_resource_diff asks for them.
+// ResourceChange is detected change, already recorded by the watcher.
 type ResourceChange struct {
-	// ChangeID is the opaque id the model quotes back to mcp_resource_diff. It
-	// resolves to this exact change for the life of the conversation.
+	// ChangeID is the opaque id the model quotes back to mcp_resource_diff.
 	ChangeID string
 	// Server is the MCP server's display name.
 	Server string
@@ -48,50 +28,36 @@ type ResourceChange struct {
 	URI string
 	// Label is the resource's human name (title, name, or the URI again).
 	Label string
-	// Kind is one of the Resource* constants above.
+	// Kind is of the Resource* constants above.
 	Kind string
-	// Summary is a one-line shape-of-the-change, e.g. "4.1 KB -> 4.3 KB, +7 -2
-	// lines". Empty when there is nothing useful to say beyond the kind.
+	// Summary is a -line shape-of-the-change, e.g. " KB -> KB, + - lines".
 	Summary string
-	// Note is an accuracy caveat that must travel with the change, e.g. that the
-	// captured content was truncated. Empty when the capture was complete.
+	// Note is an accuracy caveat that must travel with the change.
 	Note string
 }
 
-// ResourcePoll is the outcome of one watch pass.
+// ResourcePoll is the outcome of watch pass.
 type ResourcePoll struct {
 	// Changes are the resources that differ from the last pass.
 	Changes []ResourceChange
-	// Warnings are servers or resources the pass could NOT account for -- a
-	// failed list, an unreadable resource, a listing cut off at the cap. They
-	// are delivered to the model even when nothing changed, because "no notice"
-	// otherwise reads as "nothing changed", and a hole must never pass for an
-	// absence.
+	// Warnings are servers or resources the pass could NOT account for.
 	Warnings []string
-	// Baseline marks the conversation's first pass, where every resource is
-	// new because nothing was being watched before. It changes only the
-	// wording: the model is being introduced to the resources, not told they
-	// just changed.
+	// Baseline marks the pass, where every resource is new; changes only the wording.
 	Baseline bool
 }
 
 // Empty reports whether the pass found nothing worth telling the model.
 func (p ResourcePoll) Empty() bool { return len(p.Changes) == 0 && len(p.Warnings) == 0 }
 
-// ResourceWatcher re-reads the conversation's MCP resources and reports what
-// changed since the previous pass. Implemented by tools.ResourceWatcher; the
-// interface lives here because chat may not import tools.
+// ResourceWatcher re-reads the conversation's MCP resources, reporting changes since last pass.
 type ResourceWatcher interface {
-	// Poll performs one pass. Remote failures are reported as Warnings rather
-	// than errors -- one broken server must not fail a chat turn. A returned
-	// error is a host-side failure (storage), and the caller still tells the
-	// model the watch did not run.
+	// Poll performs pass; remote failures are reported as Warnings, not errors.
 	Poll(ctx context.Context) (ResourcePoll, error)
 }
 
-// FormatResourceNotice renders one watch pass as the delivered message text.
+// FormatResourceNotice renders watch pass as the delivered message text.
 // diffTool is the advertised name of the diff tool, quoted so the model calls
-// the name it was actually given rather than the one this package assumed.
+// the name it was given rather than the this package assumed.
 func FormatResourceNotice(poll ResourcePoll, diffTool string) string {
 	var b strings.Builder
 	b.WriteString(resourceNoticeHeader)
@@ -129,7 +95,7 @@ func FormatResourceNotice(poll ResourcePoll, diffTool string) string {
 	return b.String()
 }
 
-// describeResourceChange renders one change as its own block: what it is, how it
+// describeResourceChange renders change as its own block: what it is, how it
 // moved, and the id that resolves to it.
 func describeResourceChange(c ResourceChange, baseline bool) string {
 	var b strings.Builder
@@ -149,7 +115,7 @@ func describeResourceChange(c ResourceChange, baseline bool) string {
 }
 
 // resourceTitle renders a change's subject as `"label" (uri, server "name")`,
-// collapsing the label when it is just the URI again.
+// collapsing the label when it is the URI again.
 func resourceTitle(c ResourceChange) string {
 	var b strings.Builder
 	if c.Label != "" && c.Label != c.URI {
@@ -164,7 +130,7 @@ func resourceTitle(c ResourceChange) string {
 	return b.String()
 }
 
-// plural renders "1 <one>" or "N <many>".
+// plural renders " <>" or "N <many>".
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one

@@ -6,11 +6,11 @@ import (
 )
 
 // The format's own types are the client's types. They are aliases, not
-// conversions: a value built here IS the core value, so a caller can hand one
+// conversions: a value built here IS the core value, so a caller can hand
 // to the encoder, a transport, or another client without a copy step, and
-// nothing has to be kept in sync between two declarations of the same thing.
+// nothing has to be kept in sync between declarations of the same thing.
 //
-// [Completion] is the one exception, and the reason this package exists -- see
+// [Completion] is the exception, and the reason this package exists -- see
 // completion.go.
 type (
 	Role                 = commonai.Role
@@ -36,13 +36,15 @@ type (
 	Dialect              = commonai.Dialect
 	Param                = commonai.Param
 
-	// Rates is what one model charges, per token, and ModelList is the document
-	// it comes out of — the same one that names the dialect.
+	// Rates is what model charges per token; ModelList is the document it comes out of.
 	Rates     = commonai.Rates
 	ModelList = commonai.ModelList
 
-	// RetryPolicy and RateLimiter are the extras' policies, reachable here
-	// because ProviderConfig carries them.
+	// Limits is what a model can hold and produce; a ModelLimiter is a Provider that can say.
+	Limits       = commonai.Limits
+	ModelLimiter = commonai.ModelLimiter
+
+	// RetryPolicy and RateLimiter are the extras' policies, reachable here via ProviderConfig.
 	RetryPolicy = extras.RetryPolicy
 	RateLimiter = extras.RateLimiter
 )
@@ -92,21 +94,20 @@ var (
 	Unsupported       = commonai.Unsupported
 	ErrorKind         = commonai.ErrorKind
 	IsBadRequest      = commonai.IsBadRequest
+	// DialectRefused: see docs/dialect-refusal.md
+	DialectRefused = commonai.DialectRefused
+	ErrNoModelList = commonai.ErrNoModelList
 )
 
-// Error constructors, for a caller building a layer of its own on top -- a
-// loop, a decorating Provider, a callback that fails. They exist because
-// IsTransient reads the CONCRETE type: a caller's own marker for "the sink
-// failed" or "I refused to send this" would be classified transient and
-// re-sent, which is the opposite of what it means.
+// Error constructors; a caller's own marker for refusal would be classified transient and re-sent.
 var (
 	BadRequest    = commonai.BadRequest
 	CallbackError = commonai.CallbackError
 )
 
 // Format entry points, for a caller that wants the document a call would
-// produce -- to store a conversation, to send one over a transport, or to
-// check one against the schema.
+// produce -- to store a conversation, to send over a transport, or to
+// check against the schema.
 var (
 	NewMessage           = commonai.NewMessage
 	Validate             = commonai.Validate

@@ -11,7 +11,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Part A extension 1: public per-turn hooks on Events
+// Part A extension: public per-turn hooks on Events
 // (OnTurnBegin / OnTurnEnd; the internal turnHook stays untouched)
 // ---------------------------------------------------------------------------
 
@@ -33,7 +33,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 		req.Messages = append(append([]Message{}, req.Messages...), msg)
 		return nil
 	}
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -48,7 +48,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
 
-	// Numbered 1..2, in order.
+	// Numbered.., in order.
 	assert.Equal(t, []int{1, 2}, begins)
 	// The mutation reached the provider's per-call request -- and only that call.
 	require.Len(t, provider.reqs, 2)
@@ -80,7 +80,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 		errs = append(errs, err)
 		return nil
 	}
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -91,8 +91,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 	res, err := Run(context.Background(), cfg, req)
 	require.Error(t, err)
 
-	// First call succeeded (comp non-nil, err nil); the second failed with the
-	// model's error (comp nil -- nothing was produced).
+	// call succeeded (comp non-nil); the failed (comp nil -- nothing produced).
 	assert.Equal(t, []int{1, 2}, turns)
 	require.NotNil(t, comps[0])
 	assert.NoError(t, errs[0])
@@ -107,9 +106,9 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 // "cancelled" when its error is a context cancellation, matching the
 // classification the mid-stream partial-completion path already applies.
 // Before the fix, a nil completion always finalized "error" regardless of
-// cause, so an outbound call torn down before it streamed a single byte
-// (e.g. "openai: Post ...: context canceled") persisted as a permanent
-// failure instead of the graceful cancellation it actually was.
+// cause, so an outbound call torn down before it streamed a single byte (e.g.
+// "openai: Post...: context canceled") persisted as a permanent failure
+// instead of the graceful cancellation it was.
 func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 	cases := []struct {
 		name string
@@ -129,7 +128,7 @@ func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 				statuses = append(statuses, ev.Status)
 				return nil
 			}
-			events.OnFinalizeAssistant.Subscribe(&finalizeCb)
+			keep(t, &events.OnFinalizeAssistant, finalizeCb)
 			cfg := Config{Provider: provider, Events: &events}
 			_, err := Run(context.Background(), cfg, Request{
 				Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
@@ -148,7 +147,7 @@ func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 	}}
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { return sentinel }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -169,7 +168,7 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 	}}
 	events := Events{}
 	turnEndCb := func(ev TurnEndEvent) error { return sentinel }
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -196,8 +195,8 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
 	turnEndCb := func(ev TurnEndEvent) error { ends = append(ends, ev.Turn); return nil }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -208,8 +207,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
-	// Turn 1 stalled, so the wrap-up is turn 2 -- the call it actually is. It
-	// used to be numbered maxTurns+1, naming a turn that never ran.
+	// Turn stalled, so the wrap-up is turn, not the maxTurns+.
 	assert.Equal(t, []int{1, 2}, begins)
 	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)
@@ -225,7 +223,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	var internal, begins []int
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -236,8 +234,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	res, err := Run(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
-	// Both fire once per numbered turn, in order -- the subagent telemetry seam
-	// (turnHook) is byte-for-byte unaffected by the new public hooks.
+	// Both fire per numbered turn, in order; turnHook is unaffected by the public hooks.
 	assert.Equal(t, []int{1, 2}, internal)
 	assert.Equal(t, []int{1, 2}, begins)
 }

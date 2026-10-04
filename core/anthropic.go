@@ -12,22 +12,7 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// anthropicProvider is the Provider for the Anthropic Messages API, built by
-// NewAnthropicProvider. baseURL is the API root; requests POST
-// to baseURL + "/v1/messages" with x-api-key and anthropic-version headers
-// (version empty defaults to "2023-06-01"). headers are applied after the
-// defaults so a caller-supplied header can override them.
-//
-// Unless disableCaching is set, every request carries exactly two ephemeral
-// prompt-cache breakpoints: a static one on the system block (the cache
-// hierarchy is tools → system → messages, so it covers the tools array too)
-// and a moving one on the last content block of the last message, so each
-// turn cache-hits everything through the previous turn's tail. Both markers
-// are applied to the per-request wire structures only — the caller's Messages
-// are never mutated, so the stored transcript stays marker-free.
-//
-// The fields are read-only during Complete, so a value is safe for concurrent
-// use.
+// anthropicProvider is a Messages API provider; fields are read-only so it is concurrent-safe.
 type anthropicProvider struct {
 	baseURL        string
 	apiKey         string
@@ -36,6 +21,7 @@ type anthropicProvider struct {
 	userAgent      string
 	disableCaching bool
 	headers        map[string]string
+	models         modelListCache
 }
 
 const defaultAnthropicVersion = "2023-06-01"
@@ -43,8 +29,7 @@ const defaultAnthropicVersion = "2023-06-01"
 // anReserved are the Extra keys the typed core always overrides.
 var anReserved = set.Of("model", "max_tokens", "stream", "system", "messages", "tools")
 
-// cacheEphemeral is the prompt-cache breakpoint marker. The Messages API
-// allows at most 4 breakpoints per request; this provider uses exactly 2.
+// cacheEphemeral is the prompt-cache marker; the API allows breakpoints max, this uses.
 var cacheEphemeral = map[string]string{"type": "ephemeral"}
 
 // Complete implements Provider over a streaming Messages API call. The
@@ -92,7 +77,7 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		return nil, readAPIError(resp)
 	}
 
-	// A 200 that is NOT an SSE stream is a plain JSON response -- the server
+	// A that is NOT an SSE stream is a plain JSON response -- the server
 	// ignored stream:true and answered with the non-streaming Messages shape.
 	// It is accepted transparently and reassembled into a Completion with
 	// Streamed false, like openai.
@@ -116,7 +101,7 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 }
 
 // buildBody assembles the Messages API request. Extra passthrough params are
-// merged FIRST so the typed core fields always win; reserved keys in Extra
+// merged so the typed core fields always win; reserved keys in Extra
 // (model, max_tokens, stream, system, messages, tools) are silently ignored.
 // The library does not gate thinking/temperature by model — deciding what to
 // send is the caller's job via Extra.
@@ -132,11 +117,7 @@ func (a *anthropicProvider) buildBody(req Request) ([]byte, error) {
 	body["max_tokens"] = req.MaxTokens
 	body["stream"] = true
 	if req.System != "" {
-		// system is a content-block array because cache_control lives on
-		// blocks, not string bodies. The static breakpoint on the (last)
-		// system block covers the tools array too via the cache hierarchy. No
-		// system prompt → no system field and no static breakpoint (the
-		// moving one still covers the whole prefix).
+		// cache_control lives on blocks, so system is a content-block array; the breakpoint covers tools too.
 		sys := map[string]any{"type": "text", "text": req.System}
 		if !a.disableCaching {
 			sys["cache_control"] = cacheEphemeral

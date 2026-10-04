@@ -27,7 +27,7 @@ func (l *updateLog) record(u agentic.SubagentUpdate) {
 // --- asynchronous launches --------------------------------------------------
 
 // With a registry configured, run_subagent hands back a receipt rather than an
-// answer -- which is what lets a model fan several out in one turn -- and the
+// answer -- which is what lets a model fan several out in turn -- and the
 // report arrives through the registry.
 func TestSubagentToolLaunchesAsynchronously(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("no defects found")}}}
@@ -108,7 +108,7 @@ func TestAsyncSubagentUsagesIncludeTheContextBriefing(t *testing.T) {
 	assert.Len(t, reports[0].Usages, 2, "the briefing call plus the run's one turn")
 }
 
-// A misused argument still teaches the model -- one delivery later, as the
+// A misused argument still teaches the model -- delivery later, as the
 // report, instead of as the launch's result.
 func TestAsyncSubagentMisuseArrivesAsTheReport(t *testing.T) {
 	runs := agentic.NewSubagentRuns(nil)

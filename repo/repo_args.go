@@ -11,17 +11,11 @@ import (
 
 // Per-"what" argument validation for repo_read.
 //
-// repo_read is one tool over an argument union, so its schema has to accept
+// repo_read is tool over an argument union, so its schema has to accept
 // every field for every read. That made a field the chosen read ignores
 // silently droppable — see the table below for what that cost.
 
-// repoReadFields lists the arguments each "what" actually reads. repo_read is
-// one tool with an argument union, so the schema has to accept every field for
-// every what — which meant a field the chosen read ignores was silently
-// dropped. {"what":"commits","query":"..."} returned the repository's newest
-// commits: a plausible-looking answer to a question nobody asked, and one that
-// looks identical however the query is reworded. Rejecting the call instead is
-// the only outcome that cannot be mistaken for a result.
+// repoReadFields lists the arguments each repo_read "what" reads.
 var repoReadFields = map[string][]string{
 	"commits":   {"org", "repo", "path", "ref", "per_page"},
 	"commit":    {"org", "repo", "sha"},
@@ -53,10 +47,10 @@ var repoReadFieldRedirect = map[string]string{
 }
 
 // validateRepoReadArgs rejects a call carrying arguments the chosen read
-// ignores. It decodes the raw object a second time because what matters is
-// which fields the caller actually supplied — a field carrying its zero value
-// states no intent (a client that marshals the whole argument struct sends
-// every key), so only a field with a value in it counts.
+// ignores. It decodes the raw object a time because what matters is which
+// fields the caller supplied — a field carrying its value states no intent
+// (a client that marshals the whole argument struct sends every key), so only
+// a field with a value in it counts.
 func validateRepoReadArgs(what string, raw json.RawMessage) error {
 	allowed, known := repoReadFields[what]
 	if !known {
@@ -92,8 +86,8 @@ func validateRepoReadArgs(what string, raw json.RawMessage) error {
 	return errors.New(b.String())
 }
 
-// isZeroJSON reports whether a raw argument value is one a caller could not
-// have meant anything by: absent-in-spirit rather than absent in fact.
+// isZeroJSON reports whether a raw argument value is a caller could not have
+// meant anything by: absent-in-spirit rather than absent.
 func isZeroJSON(raw json.RawMessage) bool {
 	switch strings.TrimSpace(string(raw)) {
 	case "", "null", `""`, "0", "false", "[]", "{}":

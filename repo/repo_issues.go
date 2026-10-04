@@ -10,10 +10,7 @@ import (
 	"strings"
 )
 
-// what=issues and what=issue read a repository's issues. GitHub's /issues
-// endpoints return pull requests too (a PR is an issue underneath); these
-// reads filter them out (list) or redirect to what=pr (read) so the model
-// gets true issues only.
+// what=issues and what=issue read a repository's issues; PRs are filtered out.
 const repoIssueMaxComments = 30 // comments shown per issue read
 
 // ghIssue decodes the slice of an issue the reads surface.
@@ -29,18 +26,17 @@ type ghIssue struct {
 	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
-	// PullRequest is present when the "issue" is actually a pull request (the
-	// issues API returns both kinds).
+	// PullRequest is present when the "issue" is a pull request.
 	PullRequest json.RawMessage `json:"pull_request"`
 }
 
-// isPR reports whether this issues-API entry is really a pull request.
+// isPR reports whether this issues-API entry is a pull request.
 func (i ghIssue) isPR() bool {
 	s := strings.TrimSpace(string(i.PullRequest))
 	return s != "" && s != "null"
 }
 
-// ghIssueComment is one issue comment.
+// ghIssueComment is issue comment.
 type ghIssueComment struct {
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
@@ -86,7 +82,7 @@ func (e *repoTools) issueList(ctx context.Context, in repoReadArgs) agentic.Tool
 	return agentic.ToolResult{Content: formatIssueList(in.Org, in.Repo, state, labels, kept)}
 }
 
-// formatIssueList renders one issue per line.
+// formatIssueList renders issue per line.
 func formatIssueList(org, repo, state, labels string, issues []ghIssue) string {
 	header := fmt.Sprintf("issues of %s (state %s", RepoPath(org, repo, ""), state)
 	if labels != "" {
@@ -154,7 +150,7 @@ func (e *repoTools) issueRead(ctx context.Context, in repoReadArgs) agentic.Tool
 	return agentic.ToolResult{Content: formatIssue(in.Org, in.Repo, is, comments, commentsErr)}
 }
 
-// formatIssue renders one issue: header, body (capped), and comments (each
+// formatIssue renders issue: header, body (capped), and comments (each
 // capped, count-capped with an explicit note).
 func formatIssue(org, repo string, is ghIssue, comments []ghIssueComment, commentsErr string) string {
 	var b strings.Builder

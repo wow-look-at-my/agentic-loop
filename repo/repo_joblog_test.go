@@ -41,8 +41,7 @@ func TestRepoJobLogReturnsTheTailOfALongLogAndSaysSo(t *testing.T) {
 	require.False(t, res.IsError, res.Content)
 	assert.Contains(t, res.Content, fmt.Sprintf("lines 51-%d of %d", jobLogTailLines+50, jobLogTailLines+50))
 	assert.Contains(t, res.Content, "the tail")
-	// The window is what it claims: the first 50 lines are absent, and the
-	// last one is present.
+	// The window is what it claims: the lines are absent, the last present.
 	assert.NotContains(t, res.Content, "\nline 50\n")
 	assert.Contains(t, res.Content, "line "+strconv.Itoa(jobLogTailLines+50))
 }
@@ -61,7 +60,7 @@ func TestRepoJobLogWindowIsAddressableSoTheWholeLogIsReachable(t *testing.T) {
 	assert.NotContains(t, res.Content, "line 11\n")
 }
 
-// GitHub does not serve the log from the API host: it answers 302 with a
+// GitHub does not serve the log from the API host: it answers with a
 // short-lived signed URL on storage. Following that is the whole read, and the
 // Authorization header must NOT cross to the other host -- the signature is the
 // credential there, and forwarding a PAT to storage would hand it over.
@@ -111,9 +110,9 @@ func TestRepoJobLogFailureExplainsItself(t *testing.T) {
 }
 
 // GitHub 404s the logs endpoint for a job that has not finished -- the log is
-// not archived to storage yet -- and that looks identical on the wire to a job
-// no token can see. The tool must tell them apart rather than call a job that
-// is simply still running "gone".
+// not archived to storage yet -- and that looks identical on the wire to a
+// job no token can see. The tool must tell them apart rather than call a job
+// that is still running "gone".
 func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -134,9 +133,9 @@ func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 }
 
 // A job GitHub reports as genuinely completed, whose log 404s anyway, must
-// NOT blame the tokens: the status re-read just proved the job exists and
-// these tokens can see it, so "none of those tokens can see it" would
-// contradict a read that just succeeded. The log itself is what is missing.
+// NOT blame the tokens: the status re-read proved the job exists and these
+// tokens can see it, so "none of those tokens can see it" would contradict a
+// read that succeeded. The log itself is what is missing.
 func TestRepoJobLogCompletedJobBlamesTheLogNotTheTokens(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -159,8 +158,8 @@ func TestRepoJobLogCompletedJobBlamesTheLogNotTheTokens(t *testing.T) {
 }
 
 // A job GitHub marks "skipped" never ran a step, so it never produced a log
-// -- the 404 is real and permanent, but it is not a permission problem, and
-// must not be reported as one.
+// -- the is real and permanent, but it is not a permission problem, and
+// must not be reported as.
 func TestRepoJobLogSkippedJobNeverHadOne(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {

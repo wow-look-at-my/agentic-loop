@@ -13,15 +13,14 @@ import (
 // --- vectors -------------------------------------------------------------
 
 func TestEncodeVectorNormalizes(t *testing.T) {
-	// A vector and the same vector scaled up land on the same direction, which
-	// is what makes the stored dot product a cosine similarity.
+	// A vector and the same vector scaled up land on the same direction, so the dot product is a cosine.
 	small, err := encodeVector([]float32{3, 4})
 	require.NoError(t, err)
 	large, err := encodeVector([]float32{300, 400})
 	require.NoError(t, err)
 	assert.Equal(t, small, large)
 
-	// Dotting against a basis vector reads one component back out: 3/5.
+	// Dotting against a basis vector reads component back out: /.
 	got, ok := dotBlob([]float32{1, 0}, small)
 	require.True(t, ok)
 	assert.InDelta(t, 0.6, got, 1e-6)
@@ -68,16 +67,14 @@ func TestChunkContentOverlapsAndReportsTruncation(t *testing.T) {
 	assert.Empty(t, chunks)
 	assert.Zero(t, total)
 
-	// Consecutive chunks share chunkOverlap runes, so a phrase on a boundary
-	// is whole inside one of them.
+	// Consecutive chunks share chunkOverlap runes, so a boundary phrase is whole in of them.
 	long := strings.Repeat("b", chunkRunes*2)
 	chunks, total = chunkContent(long)
 	require.GreaterOrEqual(t, len(chunks), 2)
 	assert.Equal(t, len(chunks), total, "nothing is truncated at this length")
 	assert.Len(t, []rune(chunks[0]), chunkRunes)
 
-	// Past the cap, what was embedded and what the content needed differ --
-	// and the difference is reported rather than dropped.
+	// Past the cap, the embedded/needed chunk counts differ and the difference is reported.
 	huge := strings.Repeat("c", chunkRunes*(maxChunksPerMessage+10))
 	chunks, total = chunkContent(huge)
 	assert.Len(t, chunks, maxChunksPerMessage)
@@ -95,8 +92,7 @@ func TestFTSQueryQuotesEveryTermAndPrefixesOnlyMidWord(t *testing.T) {
 	// FTS5's operators are text, not syntax.
 	assert.Equal(t, `"NEAR" "miss"*`, ftsQuery("NEAR miss"))
 	assert.Equal(t, `"c"`, ftsQuery("c++"))
-	// A double quote is a separator, so it ends a term rather than landing
-	// inside one -- which is why no term needs escaping in the wrapper.
+	// A double quote is a separator, so it ends a term rather than landing inside.
 	assert.Equal(t, `"say" "quoted" "x"*`, ftsQuery(`say "quoted"x`))
 	// Nothing to tokenize at all.
 	assert.Equal(t, "", ftsQuery("???"))
@@ -104,7 +100,7 @@ func TestFTSQueryQuotesEveryTermAndPrefixesOnlyMidWord(t *testing.T) {
 }
 
 func TestFuseRanksByPositionInBothLists(t *testing.T) {
-	// A result both halves agree on outranks one that only leads a single list.
+	// A result both halves agree on outranks that only leads a single list.
 	text := []candidate{{messageID: "a", score: -5}, {messageID: "b", score: -1}}
 	semantic := []candidate{{messageID: "c", score: 0.9}, {messageID: "b", score: 0.8}}
 	got := fuse(text, semantic)
@@ -115,7 +111,7 @@ func TestFuseRanksByPositionInBothLists(t *testing.T) {
 
 // --- search --------------------------------------------------------------
 
-// seeded builds an index over a small corpus owned by u1, plus one message
+// seeded builds an index over a small corpus owned by u1, plus message
 // with the same words belonging to somebody else.
 func seeded(t *testing.T) (*Index, *fakeSource) {
 	t.Helper()
@@ -158,8 +154,7 @@ func TestSearchCarriesEnoughToJumpToTheHit(t *testing.T) {
 
 func TestSearchFallsBackToSubstringForAFragmentInsideAWord(t *testing.T) {
 	idx, _ := seeded(t)
-	// "ploy" is inside "deployment" but is not a token of it, so FTS5 cannot
-	// match it and the literal scan is what answers.
+	// "ploy" is inside "deployment" but not a token of it, so the literal scan answers.
 	hits, mode, err := idx.Search(context.Background(), Query{Owner: "u1", Text: "ploy", Limit: 10})
 	require.NoError(t, err)
 	assert.Equal(t, ModeSubstring, mode)
@@ -177,8 +172,8 @@ func TestSearchTreatsQueryOperatorsAsText(t *testing.T) {
 	_, err := idx.Ingest(ctx, src)
 	require.NoError(t, err)
 
-	// Every one of these is a parse error against an unquoted MATCH, so this
-	// is the test that fails first if the quoting in ftsQuery is dropped.
+	// Every of these is a parse error against an unquoted MATCH, so this
+	// is the test that fails if the quoting in ftsQuery is dropped.
 	for _, q := range []string{"NEAR miss", "c++", `"quoted`, "a AND b OR NOT c", "(unbalanced", "-minus"} {
 		_, _, err := idx.Search(ctx, Query{Owner: "u1", Text: q, Limit: 10})
 		require.NoError(t, err, "query %q must not be a parse error", q)

@@ -3,7 +3,7 @@
 //
 // A stored conversation IS a request that has not been sent: the same model,
 // system prompt, tools and defaults, plus the transcript a next turn appends
-// to. That is why it is one <conversation> document rather than a schema of
+// to. That is why it is <conversation> document rather than a schema of
 // its own -- a session a caller can read, edit and hand back is worth more
 // than an opaque handle.
 package session
@@ -17,8 +17,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// ErrNotFound is returned for an id no store holds. It is a sentinel so a
-// transport can answer 404 rather than guessing from an error string.
+// ErrNotFound is returned for an id no store holds; it is a sentinel so a transport can answer.
 var ErrNotFound = errors.New("session: no conversation with that id")
 
 // Store holds conversations by id. Implementations must be safe for
@@ -26,19 +25,13 @@ var ErrNotFound = errors.New("session: no conversation with that id")
 type Store interface {
 	// Create stores req under a new id and returns it.
 	Create(req commonai.Request) (string, error)
-	// Put stores req under an id the CALLER chose, replacing whatever was
-	// there. A transport whose clients name their own sessions needs this: a
-	// store that only ever hands out its own ids cannot hold one, and the
-	// alternative is a caller keeping a map from its names to ours.
+	// Put stores req under an id the CALLER chose, replacing whatever was there.
 	Put(id string, req commonai.Request) error
 	// Get returns the stored conversation.
 	Get(id string) (commonai.Request, error)
-	// Append adds messages to the stored transcript and returns the
-	// conversation as it now stands.
+	// Append adds messages to the stored transcript and returns the conversation as it now stands.
 	Append(id string, msgs ...commonai.Message) (commonai.Request, error)
-	// Delete removes a conversation. Deleting one that is not there is an
-	// error: a caller that asked to delete something has a belief about what
-	// exists, and silence would leave it standing.
+	// Delete removes a conversation; deleting that is not there is an error.
 	Delete(id string) error
 	// List returns every id held, in a stable order.
 	List() ([]string, error)
@@ -46,7 +39,7 @@ type Store interface {
 
 // validID rejects an id that could escape a file store's directory or collide
 // with its naming. It is enforced by every store so a conversation created
-// through one is addressable through another.
+// through is addressable through another.
 func validID(id string) error {
 	if id == "" {
 		return fmt.Errorf("session: an id is required")

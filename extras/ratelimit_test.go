@@ -1,10 +1,9 @@
 // ratelimit_test.go pins the fixed-rate limiter and its transport wrapper:
-// request starts are spaced at least one interval apart (so n per minute is a
-// hard ceiling), the first caller is admitted immediately, a slow previous
-// call lets the gate catch up instead of blocking forever, context
-// cancellation aborts a wait, and the transport gates every request it
-// forwards. All timing is injected (a fake clock), so the suite is hermetic
-// and fast.
+// request starts are spaced at least interval apart (so n per minute is a
+// hard ceiling), the caller is admitted immediately, a slow previous call
+// lets the gate catch up instead of blocking forever, context cancellation
+// aborts a wait, and the transport gates every request it forwards. All
+// timing is injected (a fake clock), so the suite is hermetic and fast.
 package extras
 
 import (
@@ -66,7 +65,7 @@ func rateLimiter(clock *fakeClock, interval time.Duration) *RateLimiter {
 func TestNewRateLimiterClampsSubOne(t *testing.T) {
 	require.NotPanics(t, func() { NewRateLimiter(0) })
 	require.NotPanics(t, func() { NewRateLimiter(-3) })
-	// NewRateLimiter(12000) spaces requests 5ms apart (one minute / 12000).
+	// NewRateLimiter() spaces requests 5ms apart ( minute /).
 	require.Equal(t, 5*time.Millisecond, NewRateLimiter(12000).interval)
 }
 
@@ -74,19 +73,18 @@ func TestRateLimiterSpacesStartsAtLeastOneInterval(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
 	l := rateLimiter(clock, 10*time.Millisecond)
 
-	// 5 request starts, as fast as the gate allows.
+	// request starts, as fast as the gate allows.
 	started := make([]time.Time, 0, 5)
 	for i := 0; i < 5; i++ {
 		require.NoError(t, l.Wait(context.Background()))
 		started = append(started, clock.current())
 	}
-	// The first starts immediately; every following start is >= one interval
-	// after the previous one, so the observed rate can never exceed the limit.
+	// The starts immediately; every following start is >= interval after the previous.
 	assert.Equal(t, time.Unix(0, 0), started[0])
 	for i := 1; i < len(started); i++ {
 		assert.GreaterOrEqual(t, started[i].Sub(started[i-1]), 10*time.Millisecond)
 	}
-	// Four of the five waited (the first was admitted instantly).
+	// of the waited (the was admitted instantly).
 	require.Len(t, clock.waits, 4)
 }
 
@@ -94,12 +92,10 @@ func TestRateLimiterCatchUpAfterSlowCall(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
 	l := rateLimiter(clock, 10*time.Millisecond)
 
-	require.NoError(t, l.Wait(context.Background())) // start at t=0
+	require.NoError(t, l.Wait(context.Background())) // start at t=
 	require.NoError(t, l.Wait(context.Background())) // waits 10ms, start at t=10ms
 
-	// The first call is slow: it finishes at t=100ms, long after the gate
-	// opened. The next start is admitted immediately rather than held to a
-	// missed schedule -- the average rate still holds.
+	// The call is slow; the next start is admitted immediately rather than held to a missed schedule.
 	clock.advance(90 * time.Millisecond)
 	require.NoError(t, l.Wait(context.Background()))
 	assert.Equal(t, time.Unix(0, 0).Add(100*time.Millisecond), clock.current())
@@ -108,8 +104,8 @@ func TestRateLimiterCatchUpAfterSlowCall(t *testing.T) {
 
 func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
-	// An injected sleep that actually honors ctx, standing in for the real
-	// context-aware timer.
+	// An injected sleep that honors ctx, standing in for the real context-aware
+	// timer.
 	l := &RateLimiter{
 		interval: 10 * time.Millisecond,
 		now:      clock.current,
@@ -159,12 +155,11 @@ func TestRateLimitedTransportGatesEveryRequest(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	}
-	// All three reached the base transport...
+	// All reached the base transport...
 	base.mu.Lock()
 	assert.Equal(t, 3, base.calls)
 	base.mu.Unlock()
-	// ...but the second and third waited one interval each before being let
-	// through (request starts are spaced).
+	//...but the and waited interval each before being let through.
 	require.Len(t, clock.waits, 2)
 	for _, d := range clock.waits {
 		assert.Equal(t, 5*time.Millisecond, d)
@@ -185,8 +180,7 @@ func TestRateLimitedClientWrapsTheBaseTransport(t *testing.T) {
 	assert.Same(t, l, rt.limiter)
 	assert.NotNil(t, rt.base)
 
-	// A nil client wraps the default client's transport; a client with a nil
-	// transport wraps the default transport.
+	// A nil client wraps the default client's transport; a nil transport wraps the default transport.
 	def := RateLimitedClient(nil, l)
 	rt, ok = def.Transport.(*rateLimitedTransport)
 	require.True(t, ok)
@@ -197,8 +191,7 @@ func TestRateLimitedClientWrapsTheBaseTransport(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, rt.base)
 
-	// A nil limiter leaves the base client untouched (the common case: the
-	// caller that wants no limiter passes none).
+	// A nil limiter leaves the base client untouched (the caller that wants no limiter passes none).
 	require.Same(t, base, RateLimitedClient(base, nil))
 	require.Nil(t, RateLimitedClient(nil, nil))
 }

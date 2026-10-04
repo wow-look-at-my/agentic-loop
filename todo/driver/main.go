@@ -1,8 +1,8 @@
-// Command todo_driver is the entry-point launch check for the four task-list
+// Command todo_driver is the entry-point launch check for the task-list
 // tools. It drives the real NewTodoTools constructor and each tool's Execute
 // through a realistic mutation sequence, and verifies that the host's recorded
-// store reaches exactly the intended end state. It exits 0 only when the
-// shipped code behaved; running it twice must produce identical output.
+// store reaches exactly the intended end state. It exits only when the
+// shipped code behaved; running it must produce identical output.
 package main
 
 import (
@@ -13,8 +13,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/todo"
 )
 
-// recorder is a host store: it appends every post-mutation list the executor
-// hands it, so the driver can prove the host saw exactly the changes intended.
+// recorder is a host store: it appends every post-mutation list the executor hands it.
 type recorder struct {
 	snapshots [][]todo.Todo
 }
@@ -43,7 +42,7 @@ func main() {
 		return nil
 	}
 
-	// The realistic sequence: add two, edit one, complete one, cancel one.
+	// The realistic sequence: add, edit, complete, cancel.
 	for i, args := range []string{
 		`{"title":"write it"}`,
 		`{"title":"test it","state":"in_progress"}`,
@@ -58,12 +57,7 @@ func main() {
 		}
 	}
 
-	// The intended end state after the sequence above:
-	//   add "write it"        -> [#1 pending]
-	//   add "test it" in_prog -> [#1 pending, #2 in_progress]
-	//   edit #2 done          -> [#1 pending, #2 done]
-	//   complete #1           -> [#1 done, #2 done]
-	//   cancel #2             -> [#1 done]
+	// The intended end state after the sequence above is a single done task.
 	want := []todo.Todo{{ID: 1, Title: "write it", State: todo.TodoDone}}
 	got := rec.snapshots[len(rec.snapshots)-1]
 	if len(got) != len(want) {
@@ -77,7 +71,7 @@ func main() {
 		}
 	}
 
-	// Consistent, non-empty output that a second run reproduces exactly.
+	// Consistent, non-empty output that a run reproduces exactly.
 	fmt.Println("todo_driver: sequence passed; host stored", len(rec.snapshots), "lists, final list:")
 	for _, t := range got {
 		fmt.Println("  id", t.ID, t.State, t.Title)

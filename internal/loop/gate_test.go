@@ -22,7 +22,7 @@ func TestGateCapacity(t *testing.T) {
 	r2, err := g.Acquire(context.Background())
 	require.NoError(t, err, "capacity 2 admits two holders")
 
-	// The third acquire must block: prove it by cancelling.
+	// The acquire must block: prove it by cancelling.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	r3, err := g.Acquire(ctx)

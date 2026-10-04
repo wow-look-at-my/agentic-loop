@@ -145,10 +145,7 @@ func TestOpenAIMessageMarshalPin(t *testing.T) {
 	assert.JSONEq(t, `{"role":"tool","content":"","tool_call_id":"call_1"}`, string(b))
 }
 
-// rejectStreamOptionsHandler fails the first request with a Z.AI-shaped 400
-// that names no parameter at all, then serves a normal SSE stream on any
-// retry -- reproducing what Complete's stream_options retry must recover
-// from.
+// rejectStreamOptionsHandler 400s the call (no named parameter); retries stream normally.
 type rejectStreamOptionsHandler struct {
 	sseHandler
 	bodies [][]byte
@@ -276,10 +273,7 @@ func TestOpenAIStreamDecode(t *testing.T) {
 	require.Len(t, progresses, 1)
 	assert.Equal(t, PromptProgress{Processed: 50, Total: 100, Cache: 20, TimeMS: 123}, progresses[0])
 
-	// Every report the upstream sent, in the order it sent them. This dialect
-	// attaches a cumulative snapshot to each chunk (the xAI convention), and
-	// core does not fold them: which of them counts, and whether the trailing
-	// zeroed one is a correction or noise, is the reader's call.
+	// Every usage report the upstream sent is kept in order; which counts is the reader's call.
 	require.Len(t, comp.Usages, 7)
 	assert.Equal(t, 10, comp.Usages[0].PromptTokens)
 	assert.Equal(t, 0, comp.Usages[0].CompletionTokens)
@@ -288,6 +282,111 @@ func TestOpenAIStreamDecode(t *testing.T) {
 	assert.Equal(t, 8, *comp.Usages[5].CacheReadTokens)
 	assert.Equal(t, 0, comp.Usages[6].TotalTokens, "a regressing final report is reported, not swallowed")
 	assert.Equal(t, comp.Usages, usages, "OnUsage saw exactly what the completion carries")
+}
+
+// TestOpenAIReasoningDetailsStream reproduces the OpenRouter shape: a
+// reasoning.text item fragmented across deltas at the same index, then a
+// reasoning.encrypted item at the next index, both accumulated into the
+// turn's ThinkingBlock -- its Signature carries the whole captured array,
+// verbatim, for replay.
+func TestOpenAIReasoningDetailsStream(t *testing.T) {
+	h := &sseHandler{payloads: []string{
+		`{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"step ","id":"rs_1","format":"openai-responses-v1","index":0}]}}]}`,
+		`{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"one","index":0}]}}]}`,
+		`{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.encrypted","data":"cGF5bG9hZA==","id":"rs_2","format":"openai-responses-v1","index":1}]}}]}`,
+		`{"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}`,
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	p := oaProvider(t, srv.URL)
+	comp, err := p.Complete(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}}, nil)
+	require.NoError(t, err)
+
+	require.Len(t, comp.Message.Thinking, 1, "reasoning_details fragments merge into the turn's one block")
+	block := comp.Message.Thinking[0]
+	assert.Equal(t, "", block.Text, "no flat reasoning/reasoning_content field arrived on this turn")
+	var details []oaReasoningDetail
+	require.NoError(t, json.Unmarshal([]byte(block.Signature), &details))
+	require.Len(t, details, 2)
+	assert.Equal(t, "reasoning.text", details[0].Type)
+	assert.Equal(t, "step one", details[0].Text, "the two same-index fragments concatenated")
+	assert.Equal(t, "rs_1", details[0].ID)
+	assert.Equal(t, "reasoning.encrypted", details[1].Type)
+	assert.Equal(t, "cGF5bG9hZA==", details[1].Data)
+	assert.Equal(t, "rs_2", details[1].ID)
+}
+
+// TestOpenAIReplayReasoningDetails is the regression test for the bug: a
+// gateway fronting a Responses-only reasoning model needs the exact
+// reasoning_details array echoed back on the next turn to pair a
+// function_call with its output; replaying only the flattened text drops the
+// item ids and the gateway 400s with "No tool output found for function call
+// X" on the next turn after a tool call.
+func TestOpenAIReplayReasoningDetails(t *testing.T) {
+	details := []oaReasoningDetail{
+		{Type: "reasoning.text", Text: "step one", ID: "rs_1", Format: "openai-responses-v1"},
+		{Type: "reasoning.encrypted", Data: "cGF5bG9hZA==", ID: "rs_2", Format: "openai-responses-v1"},
+	}
+	raw, err := json.Marshal(details)
+	require.NoError(t, err)
+
+	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}, ReplayReasoning: true})
+	req := Request{
+		Model: "m",
+		Messages: []Message{
+			{Role: RoleUser, Content: "hi"},
+			{
+				Role:      RoleAssistant,
+				Thinking:  []ThinkingBlock{{Text: "step one", Signature: string(raw)}},
+				ToolCalls: []ToolCall{{ID: "call_1", Name: "srch", Arguments: "{}"}},
+			},
+			{Role: RoleTool, Content: "found it", ToolCallID: "call_1"},
+		},
+	}
+	_, err = p.Complete(context.Background(), req, nil)
+	require.NoError(t, err)
+
+	msgs := bodyMap(t, h.body)["messages"].([]any)
+	require.Len(t, msgs, 3)
+	assistant := msgs[1].(map[string]any)
+	assert.Equal(t, "step one", assistant["reasoning"])
+	assert.JSONEq(t, string(raw), jsonMust(assistant["reasoning_details"]),
+		"the array replays byte-for-byte -- a gateway pairs a function_call by these item ids")
+}
+
+// TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server
+// default still sends neither field: a server that never advertised
+// reasoning_details must not see it because a captured block happens to
+// carry.
+func TestOpenAINoReasoningDetailsWithoutReplay(t *testing.T) {
+	details := []oaReasoningDetail{{Type: "reasoning.text", Text: "step one", ID: "rs_1"}}
+	raw, err := json.Marshal(details)
+	require.NoError(t, err)
+
+	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	p := oaProvider(t, srv.URL) // ReplayReasoning defaults false
+	req := Request{
+		Model: "m",
+		Messages: []Message{
+			{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "step one", Signature: string(raw)}}, Content: "hi"},
+		},
+	}
+	_, err = p.Complete(context.Background(), req, nil)
+	require.NoError(t, err)
+
+	assistant := bodyMap(t, h.body)["messages"].([]any)[0].(map[string]any)
+	_, hasReasoning := assistant["reasoning"]
+	_, hasDetails := assistant["reasoning_details"]
+	assert.False(t, hasReasoning)
+	assert.False(t, hasDetails)
 }
 
 func TestOpenAIStopReasonMapping(t *testing.T) {
@@ -379,9 +478,7 @@ func TestOpenAIPartialOnCancel(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	// Cancel from the client side, the moment the first delta is delivered —
-	// deterministic, unlike signaling from the handler (the server may flush
-	// before the client has read anything).
+	// Cancel from the client the moment the delta lands — deterministic, unlike handler signaling.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ev := &StreamEvents{OnText: func(string) error { cancel(); return nil }}
@@ -411,7 +508,7 @@ func TestOpenAICleanEOFWithoutDone(t *testing.T) {
 func TestOpenAINetworkError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	url := srv.URL
-	srv.Close() // connection refused from now on
+	srv.Close()
 	p := oaProvider(t, url)
 	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 	assert.Nil(t, comp)

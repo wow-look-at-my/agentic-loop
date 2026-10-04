@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// jsonServer answers every request with one JSON body, which is what an
+// jsonServer answers every request with JSON body, which is what an
 // upstream that ignored stream:true (or a proxy that buffered the stream) hands
-// back: a 200 that is not an event stream.
+// back: a that is not an event stream.
 func jsonServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -84,8 +84,7 @@ func TestAnthropicNonStreamResponse(t *testing.T) {
 	assert.False(t, comp.Streamed)
 	assert.Equal(t, StopToolUse, comp.StopReason)
 
-	// The blocks keep the order they arrived in: a reply reads differently when
-	// its thinking sits after its text.
+	// The blocks keep the order they arrived in: a reply reads differently when its thinking sits after its text.
 	kinds := make([]PartKind, 0, len(comp.Message.Parts))
 	for _, p := range comp.Message.Parts {
 		kinds = append(kinds, p.Kind())

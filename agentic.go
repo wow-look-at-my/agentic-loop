@@ -1,6 +1,6 @@
 // Package agentic is the module-root package: the agentic tool loop,
 // re-exported from the implementation in internal/loop so the module
-// root stays one small forwarding file.
+// root stays small forwarding file.
 //
 // Everything the loop package exposes — the Run loop, tools, approval,
 // the wire half (aliases of the client types), compaction, sub-agent and
@@ -23,20 +23,26 @@ type Approver = loop.Approver
 type AssistantMessageEvent = loop.AssistantMessageEvent
 type CompactResult = loop.CompactResult
 type Completion = loop.Completion
+type CompactionEvent = loop.CompactionEvent
 type Config = loop.Config
+type ContextWindowEvent = loop.ContextWindowEvent
 type Dialect = loop.Dialect
+type ElapsedTime = loop.ElapsedTime
 type Events = loop.Events
 type FinalizeAssistantEvent = loop.FinalizeAssistantEvent
 type Gate = loop.Gate
 type Message = loop.Message
 type MessageID = loop.MessageID
 type MessageQueue = loop.MessageQueue
+type Limits = loop.Limits
+type ModelLimiter = loop.ModelLimiter
 type ModelList = loop.ModelList
 type OpenAIConfig = loop.OpenAIConfig
 type OutputDeduper = loop.OutputDeduper
 type PromptProgress = loop.PromptProgress
 type Provider = loop.Provider
 type ProviderConfig = loop.ProviderConfig
+type QueuedMessage = loop.QueuedMessage
 type RateLimiter = loop.RateLimiter
 type Rates = loop.Rates
 type Request = loop.Request
@@ -55,12 +61,16 @@ type SubagentReport = loop.SubagentReport
 type SubagentRuns = loop.SubagentRuns
 type SubagentState = loop.SubagentState
 type SubagentUpdate = loop.SubagentUpdate
+type SystemMessage = loop.SystemMessage
 type SystemMessageEvent = loop.SystemMessageEvent
 type ThinkingBlock = loop.ThinkingBlock
 type Timings = loop.Timings
 type Tool = loop.Tool
 type ToolCall = loop.ToolCall
 type ToolCallEvent = loop.ToolCallEvent
+
+// ToolBatchEvent is the param to Events.OnToolBatch.
+type ToolBatchEvent = loop.ToolBatchEvent
 type ToolContentPart = loop.ToolContentPart
 type ToolDecl = loop.ToolDecl
 type ToolMessageEvent = loop.ToolMessageEvent
@@ -70,6 +80,7 @@ type Tools = loop.Tools
 type TurnBeginEvent = loop.TurnBeginEvent
 type TurnEndEvent = loop.TurnEndEvent
 type Usage = loop.Usage
+type UserMessage = loop.UserMessage
 
 const RoleSystem = loop.RoleSystem
 const RoleUser = loop.RoleUser
@@ -86,6 +97,9 @@ const DialectResponses = loop.DialectResponses
 var IsTransient = loop.IsTransient
 var IsContextOverflow = loop.IsContextOverflow
 
+// DialectRefused: see docs/dialect-refusal.md
+var DialectRefused = loop.DialectRefused
+
 const ResourceAdded = loop.ResourceAdded
 const ResourceModified = loop.ResourceModified
 const ResourceRemoved = loop.ResourceRemoved
@@ -97,7 +111,11 @@ const SubagentDone = loop.SubagentDone
 const SubagentFailed = loop.SubagentFailed
 const SubagentAbandoned = loop.SubagentAbandoned
 const CompactRequestText = loop.CompactRequestText
+const CompactionHandoffPrefix = loop.CompactionHandoffPrefix
+const CompactionKind = loop.CompactionKind
+const DefaultAutoCompact = loop.DefaultAutoCompact
 const DeniedMessage = loop.DeniedMessage
+const ElapsedKind = loop.ElapsedKind
 const SubagentDeliveryHeader = loop.SubagentDeliveryHeader
 const SubagentReportKind = loop.SubagentReportKind
 const UnchangedPrefix = loop.UnchangedPrefix
@@ -112,12 +130,15 @@ var CountLineChanges = loop.CountLineChanges
 var CountLines = loop.CountLines
 
 // Bool addresses a boolean, for ToolDecl's tri-state behaviour fields:
-// Destructive and OpenWorld distinguish "false" from "not stated".
 var Bool = loop.Bool
 var DecodeModelList = loop.DecodeModelList
 var Dialects = loop.Dialects
-var DrainBoth = loop.DrainBoth
 var FetchModelList = loop.FetchModelList
+var ModelLimitsOf = loop.ModelLimitsOf
+var ForwardModelLimits = loop.ForwardModelLimits
+var ErrNoModelList = loop.ErrNoModelList
+var FormatElapsed = loop.FormatElapsed
+var FormatElapsedNotice = loop.FormatElapsedNotice
 var FormatResourceNotice = loop.FormatResourceNotice
 var FormatSubagentDelivery = loop.FormatSubagentDelivery
 var HumanSize = loop.HumanSize
@@ -131,7 +152,6 @@ var NewResponsesProvider = loop.NewResponsesProvider
 var NewSubagentRuns = loop.NewSubagentRuns
 var NewTool = loop.NewTool
 var OneShot = loop.OneShot
-var Pending = loop.Pending
 var Plural = loop.Plural
 var ReadCapped = loop.ReadCapped
 var Run = loop.Run
@@ -141,9 +161,7 @@ var UnifiedDiff = loop.UnifiedDiff
 var WithToolCallID = loop.WithToolCallID
 
 // EnumSchema is forwarded from internal/loop. A generic function cannot
-// be re-exported as a value, so this is a thin wrapper.
 func EnumSchema[In any](enums map[string][]string) json.RawMessage { return loop.EnumSchema[In](enums) }
 
 // InferSchema is forwarded from internal/loop. A generic function cannot
-// be re-exported as a value, so this is a thin wrapper.
 func InferSchema[In any]() json.RawMessage { return loop.InferSchema[In]() }

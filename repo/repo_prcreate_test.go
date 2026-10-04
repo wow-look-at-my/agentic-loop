@@ -9,7 +9,7 @@ import (
 )
 
 // repo_pr_create, and the properties both write tools share: they are not
-// Readonly (so every call goes to the Approver and a run without one refuses
+// Readonly (so every call goes to the Approver and a run without refuses
 // them), they never reach a subagent's readonly view, and they can be turned
 // off like any other tool.
 
@@ -40,8 +40,7 @@ func TestRepoPRCreateDefaultsToDraftAndDefaultBranch(t *testing.T) {
 		}
 	}
 	require.Equal(t, http.MethodPost, post.Method)
-	// base defaults to the repo's default branch; draft defaults to true; no
-	// body key when the description is empty.
+	// base defaults to the repo's default branch; draft defaults to true.
 	assert.JSONEq(t, `{"title":"Add feature","head":"feature-x","base":"main","draft":true}`, post.Body)
 
 	id, _ := cache.Get("octo/hello")

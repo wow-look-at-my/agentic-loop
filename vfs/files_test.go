@@ -15,9 +15,7 @@ import (
 	"testing"
 )
 
-// memFolder is an in-memory folder: a flat map of relative path -> content,
-// mounted under one prefix. It embeds BaseProvider so the registry injects
-// its path automatically.
+// memFolder is an in-memory folder: a flat map of relative path -> content under prefix.
 type memFolder struct {
 	*BaseProvider
 	files    map[string]string
@@ -210,7 +208,7 @@ func runFileTool(t *testing.T, ft *FileTools, name, args string) agentic.ToolRes
 	return res
 }
 
-// The seven tools are advertised together, the reads marked read-only so a
+// The tools are advertised together, the reads marked read-only so a
 // sub-agent gets them and the writes withheld unless explicitly granted.
 func TestFileToolsAdvertisedSurface(t *testing.T) {
 	ft, _ := fileRig()
@@ -449,9 +447,9 @@ func TestFileToolSchemasAreInferred(t *testing.T) {
 // --- New tests for path-prefix routing ---
 
 // TestLongestMatchRouting verifies that a more specific mount shadows a less
-// specific one regardless of registration order.
+// specific regardless of registration order.
 func TestLongestMatchRouting(t *testing.T) {
-	// Register broad first, then narrow.
+	// Register broad, then narrow.
 	ft := NewFileTools(FileToolsConfig{})
 	broad := newMemFolder(map[string]string{"other.go": "broad"})
 	narrow := newMemFolder(map[string]string{"file.go": "narrow"})
@@ -467,7 +465,7 @@ func TestLongestMatchRouting(t *testing.T) {
 	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/repos/other.go"}`)
 	assert.Contains(t, res.Content, "broad")
 
-	// Now test reversed order: narrow first, then broad.
+	// Now test reversed order: narrow, then broad.
 	ft2 := NewFileTools(FileToolsConfig{})
 	broad2 := newMemFolder(map[string]string{"other.go": "broad2"})
 	narrow2 := newMemFolder(map[string]string{"file.go": "narrow2"})
@@ -482,7 +480,7 @@ func TestLongestMatchRouting(t *testing.T) {
 	assert.Contains(t, res.Content, "broad2")
 }
 
-// TestDuplicateRegistrationIsLoudError verifies that registering two providers
+// TestDuplicateRegistrationIsLoudError verifies that registering providers
 // at the same path prefix returns a loud error and does NOT silently replace.
 func TestDuplicateRegistrationIsLoudError(t *testing.T) {
 	ft := NewFileTools(FileToolsConfig{})
@@ -496,7 +494,7 @@ func TestDuplicateRegistrationIsLoudError(t *testing.T) {
 	assert.Contains(t, err.Error(), "already mounted at")
 	assert.Contains(t, err.Error(), "/work")
 
-	// The first provider is still the one routing.
+	// The provider is still the routing.
 	res := runFileTool(t, ft, ReadFileToolName, `{"path":"/work/a"}`)
 	assert.Contains(t, res.Content, "first")
 
@@ -519,8 +517,7 @@ func TestCaseInsensitiveMatchPreservesDisplayCasing(t *testing.T) {
 	assert.False(t, res.IsError)
 	assert.Contains(t, res.Content, "content")
 
-	// Mixed-case query also routes to the same provider (the error is
-	// about the file, not the mount — proving the provider was found).
+	// Mixed-case query also routes to the same provider (the error is about the file, not the mount).
 	res = runFileTool(t, ft, ReadFileToolName, `{"path":"/REPOS/FILE.GO"}`)
 	assert.True(t, res.IsError)
 	assert.NotContains(t, res.Content, "not available")

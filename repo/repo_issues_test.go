@@ -84,7 +84,7 @@ func TestRepoIssueReadRendersBodyAndComments(t *testing.T) {
 	assert.Contains(t, res.Content, "issue #11 of /repos/octo/hello: Crash on load")
 	assert.Contains(t, res.Content, "open, by alice, updated 2026-07-01T10:00:00Z, labels [bug]")
 	assert.Contains(t, res.Content, "It crashes.")
-	// 40 total, only the fetched page shown, with an explicit note.
+	// total, only the fetched page shown, with an explicit note.
 	assert.Contains(t, res.Content, "comments (40, showing first 2):")
 	assert.Contains(t, res.Content, "--- bob (2026-07-01T11:00:00Z)\nRepro steps here")
 	assert.Contains(t, res.Content, fmt.Sprintf("(truncated to %d characters)", repoCommentMaxRunes))

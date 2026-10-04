@@ -8,11 +8,10 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// noSleep is a policy whose backoff returns immediately, so a test measures
-// what was retried rather than how long it waited.
+// noSleep is a policy whose backoff returns immediately, so a test measures what was retried.
 var noSleep = RetryPolicy{Sleep: func(context.Context, time.Duration) error { return nil }}
 
-// scriptStep is one scripted answer: what to emit through the callbacks, and
+// scriptStep is scripted answer: what to emit through the callbacks, and
 // what to return.
 type scriptStep struct {
 	comp *commonai.Completion
@@ -20,8 +19,7 @@ type scriptStep struct {
 	emit func(ev *commonai.StreamEvents)
 }
 
-// scriptProvider replays scripted responses and records every request, so a
-// test can drive a decorator without an upstream.
+// scriptProvider replays scripted responses and records every request.
 type scriptProvider struct {
 	steps []scriptStep
 	reqs  []commonai.Request
@@ -45,6 +43,14 @@ func (p *scriptProvider) Complete(_ context.Context, req commonai.Request, ev *c
 func assistantComp(content string) *commonai.Completion {
 	return &commonai.Completion{
 		Message:    commonai.NewMessage(commonai.RoleAssistant, commonai.TextPart{Text: content}),
+		StopReason: commonai.StopEndTurn,
+	}
+}
+
+// emptyComp is a scripted assistant turn with no text, tool call, or thinking.
+func emptyComp() *commonai.Completion {
+	return &commonai.Completion{
+		Message:    commonai.Message{Role: commonai.RoleAssistant},
 		StopReason: commonai.StopEndTurn,
 	}
 }

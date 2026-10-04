@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- local test scaffolding (ported from the agentic package's tests) ---
+// --- local test scaffolding (
 
-// scriptStep is one scripted provider response.
+// scriptStep is scripted provider response.
 type scriptStep struct {
 	comp *agentic.Completion
 	err  error
@@ -86,8 +86,8 @@ func (t *fakeTool) Execute(ctx context.Context, args json.RawMessage) (agentic.T
 	return agentic.ToolResult{Content: "ran " + t.decl.Name}, nil
 }
 
-// subParentExec is the canonical parent toolset for subagent tests: two
-// namespaced tools (one read-only, one not) and a bare read-only one.
+// subParentExec is the canonical parent toolset for subagent tests:
+// namespaced tools ( read-only, not) and a bare read-only.
 func subParentExec() *fakeExec {
 	return &fakeExec{tools: []agentic.ToolDecl{
 		{Name: "Repo__read", Readonly: true},
@@ -189,9 +189,7 @@ func TestSubagentAllowedToolsGrantsNonReadonly(t *testing.T) {
 	assert.Equal(t, []string{"Repo__write"}, toolNames(provider.reqs[0].Tools),
 		"allowed_tools pins the sub-agent to exactly the named set")
 	require.Len(t, parent.executed, 1, "the explicitly granted non-read-only tool executes")
-	// The grant IS the authorization: the nested run's approve-everything
-	// Approver is what keeps a granted non-Readonly tool runnable, now that a
-	// nil Approver would refuse one.
+	// The grant IS the authorization: the approve-everything Approver keeps a granted tool runnable.
 	tool := provider.reqs[1].Messages[len(provider.reqs[1].Messages)-1]
 	assert.Equal(t, "ran Repo__write", tool.Content)
 	assert.NotEqual(t, agentic.DeniedMessage, tool.Content)
@@ -256,9 +254,7 @@ func TestSubagentAllowedToolsEdgeCases(t *testing.T) {
 }
 
 func TestSubagentNoRecursion(t *testing.T) {
-	// A parent toolset that (like the source composite) carries the subagent
-	// tool itself: it is excluded from the grantable set, from the schema
-	// enum, and — not being read-only — from the default sub toolset.
+	// A parent toolset that carries the subagent tool itself: it is excluded everywhere.
 	parent := &fakeExec{tools: []agentic.ToolDecl{
 		{Name: SubagentToolName},
 		{Name: "Repo__read", Readonly: true},
@@ -432,8 +428,7 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 		Provider: provider, Model: "m", Tools: parent.registry(),
 		OnActivity: func(a SubagentActivity) { acts = append(acts, a) },
 	})
-	// The parent call's id rides the context, exactly as Run puts it there --
-	// it is what lets a host attach the play-by-play to the right tool block.
+	// The parent call's id rides the context, so a host can attach the play-by-play.
 	res, err := exec.Execute(agentic.WithToolCallID(context.Background(), "call-7"), subCall(`{"prompt":"go"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "report", res.Content)
@@ -458,7 +453,7 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 	assert.Equal(t, longOut, acts[3].Content, "Content carries the WHOLE tool output, uncapped")
 	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 2}, acts[4])
 	// The sub-agent's own words for the turn, so a host can show what it said
-	// and not just which files it touched.
+	// and not which files it touched.
 	assert.Equal(t, SubagentActivity{
 		CallID: "call-7", Kind: SubagentActivityText, Turn: 2, Detail: "report", Content: "report",
 	}, acts[5])
@@ -694,6 +689,6 @@ func TestSubagentNoOutputPlaceholder(t *testing.T) {
 	res, err := exec.Execute(context.Background(), subCall(`{"prompt":"p"}`))
 	require.NoError(t, err)
 	assert.False(t, res.IsError)
-	assert.Equal(t, "(subagent produced no output)", res.Content,
+	assert.Equal(t, "(no output was produced this turn)", res.Content,
 		"the nested Run's fallback placeholder surfaces as the report")
 }

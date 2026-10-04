@@ -14,13 +14,9 @@ import (
 	"strings"
 )
 
-// This file holds the shared GitHub REST-API plumbing behind the repo tools:
-// the token-trying fetch, path parsing, argument helpers, and the rendering of
-// directory listings and error responses. The tool surface (schemas, agentic.Tools,
-// Execute) lives in repo.go; the per-tool handlers live in their sibling files
-// (repo_search.go, repo_commits.go, repo_prs.go, repo_issues.go, repo_write.go).
+// GitHub plumbing: token-trying fetch, path parsing, arg helpers, listing/error rendering.
 
-// GHResponse is one GitHub API response.
+// GHResponse is GitHub API response.
 type GHResponse struct {
 	status    int
 	body      []byte
@@ -38,10 +34,7 @@ type GHResponse struct {
 	// token. A failure from a token explains far more than the anonymous
 	// attempt's, which is what failureRank uses it for.
 	authed bool
-	// credentialName is the Settings label of the token that produced this
-	// response, empty for the anonymous attempt. explainFailure uses it so a
-	// rate-limit message names WHICH credential's bucket was hit, rather than
-	// leaving that the one thing an otherwise-detailed failure never says.
+	// credentialName is the Settings label of the token that produced this response.
 	credentialName string
 }
 
@@ -51,12 +44,10 @@ func (r GHResponse) Status() int { return r.status }
 // Body is the response body, already capped at the read limit.
 func (r GHResponse) Body() []byte { return r.body }
 
-// ContentType is the response's declared media type, which is how a contents
-// read tells a directory listing from a file.
+// ContentType is the response's declared media type, which tells a directory listing from a file.
 func (r GHResponse) ContentType() string { return r.ctype }
 
-// Truncated reports that the body hit the read cap, so what is here is a
-// PREFIX -- never treat it as the whole document.
+// Truncated reports that the body hit the read cap, so it is a PREFIX.
 func (r GHResponse) Truncated() bool { return r.truncated }
 
 // Target is the full URL this response was fetched from, e.g.
@@ -66,17 +57,11 @@ func (r GHResponse) Target() string { return r.target }
 
 // FetchOptions tunes one repo fetch.
 type FetchOptions struct {
-	// NoAnonymous drops the unauthenticated attempt that makes public
-	// resources readable without a PAT. Endpoints github.com never serves
-	// anonymously (code search) set it, so a token's real failure — a rate
-	// limit, say — is what the model is told about, instead of the anonymous
-	// attempt's inevitable "Requires authentication".
+	// NoAnonymous drops the unauthenticated attempt that makes public resources readable.
 	NoAnonymous bool
 	// MaxBytes overrides the per-response read cap (default GitHubMaxResponseBytes).
 	MaxBytes int64
-	// NoRedirect returns a 3xx instead of following it, so the caller can make
-	// the second request on its own terms -- without its credential, when the
-	// redirect crosses to a host the credential was not issued for.
+	// NoRedirect returns a 3xx instead of following it.
 	NoRedirect bool
 }
 
@@ -94,19 +79,19 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 }
 
 // FetchURLOpts performs a GET against an arbitrary API URL, trying the cached
-// token for cacheKey first (if any), then every configured token, then an
+// token for cacheKey (if any), then every configured token, then an
 // unauthenticated request (so public resources work without a PAT). On the
-// first 2xx it records the winning token id in the cache (an empty cacheKey
+// 2xx it records the winning token id in the cache (an empty cacheKey
 // disables caching) and returns the response.
 //
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
-// last one: the last attempt is the anonymous one, whose 401 says only that no
+// last: the last attempt is the anonymous, whose says only that no
 // credential was sent. Returning that hid the actual reason a configured token
-// was refused — a spent code-search rate limit reads as "401 Requires
+// was refused — a spent code-search rate limit reads as " Requires
 // authentication", so a transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, opt.NoAnonymous) {
 		res, err := e.doGetOpts(ctx, target, att.token, accept, opt)
@@ -114,14 +99,9 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 			lastErr = err
 			continue
 		}
-		// With NoRedirect a 3xx is the answer, not a failure: the credential was
-		// accepted and the resource lives at the Location. Ranking it as a
-		// failure would move on to the next token and finally to the anonymous
-		// attempt, whose 404 would then stand as the verdict.
+		// With NoRedirect a 3xx is the answer, not a failure: the resource lives at the Location.
 		if res.status >= 200 && res.status < 300 || (opt.NoRedirect && res.status >= 300 && res.status < 400) {
-			if e.cache != nil && cacheKey != "" {
-				e.cache.Put(cacheKey, att.id)
-			}
+			e.Remember(cacheKey, att.id)
 			return res, nil
 		}
 		res.authed = att.token != ""
@@ -138,9 +118,7 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 
 type tokenAttempt struct {
 	id string
-	// name is the label the user gave this token in Settings. It exists only
-	// so a failure can name the credential in terms the reader can find; the
-	// anonymous attempt has none.
+	// name is the label the user gave this token in Settings; the anonymous attempt has none.
 	name  string
 	token string
 }
@@ -164,10 +142,8 @@ func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 		order = append(order, tokenAttempt{id: id, name: name, token: token})
 	}
 	if e.cache != nil && cacheKey != "" {
-		if id, ok := e.cache.Get(cacheKey); ok {
-			if id == "" {
-				add("", "", "")
-			} else if t, found := e.tokenByID(id); found {
+		if id, ok := e.cache.Get(cacheKey); ok && id != "" {
+			if t, found := e.tokenByID(id); found {
 				add(id, t.Name, t.Token)
 			}
 		}
@@ -185,10 +161,7 @@ func (e *GitHub) tokenByID(id string) (GitHubToken, bool) {
 	return findToken(e.tokens, id)
 }
 
-// findToken looks a token id up in a credential list. writeTokenOrder resolves
-// the cached winner against the WRITE list with this, so a winner recorded by
-// a read (or by a user-initiated push) that is not write-capable for this
-// client is skipped rather than handed to a write flow.
+// findToken looks a token id up in a credential list.
 func findToken(list []GitHubToken, id string) (GitHubToken, bool) {
 	for _, t := range list {
 		if t.ID == id {
@@ -211,15 +184,15 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 
 // OwnerRepos enumerates the repositories owned by a GitHub org or user.
 // Listing /repos/<owner> (no repo segment) means "show every repository under
-// this owner". GitHub splits this across two endpoints — /orgs/<owner>/repos for
+// this owner". GitHub splits this across endpoints — /orgs/<owner>/repos for
 // organizations and /users/<owner>/repos for personal accounts — so each
-// candidate credential is tried against the org endpoint first, then the user
-// endpoint, until one returns 2xx. The winning credential is cached under the
+// candidate credential is tried against the org endpoint, then the user
+// endpoint, until returns 2xx. The winning credential is cached under the
 // lowercased owner name (no slash, so it never collides with an "org/repo" key).
 func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, GHResponse, error) {
 	cacheKey := strings.ToLower(owner)
 	var best GHResponse
-	bestRank := -1
+	bestRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, false) {
 		for _, isUser := range []bool{false, true} {
@@ -229,14 +202,11 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 				continue
 			}
 			if res.status >= 200 && res.status < 300 {
-				if e.cache != nil {
-					e.cache.Put(cacheKey, att.id)
-				}
+				e.Remember(cacheKey, att.id)
 				repos, truncated, perr := e.collectOwnerRepos(ctx, owner, isUser, att.token, res.body)
 				return repos, truncated, GHResponse{status: res.status}, perr
 			}
-			// Same most-informative-failure rule as FetchURLOpts: the
-			// anonymous attempt runs last and its answer explains least.
+			// Same most-informative-failure rule as FetchURLOpts: anonymous explains least.
 			res.authed = att.token != ""
 			res.credentialName = att.name
 			if r := failureRank(res); r > bestRank {
@@ -250,11 +220,10 @@ func (e *GitHub) OwnerRepos(ctx context.Context, owner string) ([]GHRepo, bool, 
 	return nil, false, best, ErrOwnerListing
 }
 
-// ErrOwnerListing signals that no credential yielded a 2xx owner listing; the
-// returned GHResponse carries the last status so the caller can explain it.
+// ErrOwnerListing signals that no credential yielded a 2xx owner listing.
 var ErrOwnerListing = fmt.Errorf("owner listing returned no successful response")
 
-// collectOwnerRepos parses the first page of an owner's repositories and follows
+// collectOwnerRepos parses the page of an owner's repositories and follows
 // pagination (up to OwnerReposMaxPages full pages) using the credential that
 // already worked. It reports truncated=true when more pages remain past the cap.
 func (e *GitHub) collectOwnerRepos(ctx context.Context, owner string, isUser bool, token string, firstBody []byte) (repos []GHRepo, truncated bool, err error) {
@@ -313,20 +282,14 @@ func (o FetchOptions) maxBytes() int64 {
 	return o.MaxBytes
 }
 
-// noRedirectClient is this client with redirect following turned off. The
-// transport, and so the caller's own *http.Client configuration, is kept: only
-// the redirect policy differs.
+// noRedirectClient is this client with redirect following turned off.
 func (e *GitHub) noRedirectClient() *http.Client {
 	c := *e.hc
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &c
 }
 
-// FetchRedirectTarget performs an UNAUTHENTICATED GET of an absolute URL a
-// GitHub response redirected to. Some endpoints answer 3xx with a signed URL on
-// another host, where the signature IS the credential -- sending the caller's
-// token there would hand it to a third party, and there is no version of that
-// which is merely untidy.
+// FetchRedirectTarget performs an UNAUTHENTICATED GET of an absolute URL a redirect sent.
 func (e *GitHub) FetchRedirectTarget(ctx context.Context, target string, maxBytes int64) (GHResponse, error) {
 	if maxBytes <= 0 {
 		maxBytes = GitHubMaxResponseBytes
@@ -334,22 +297,19 @@ func (e *GitHub) FetchRedirectTarget(ctx context.Context, target string, maxByte
 	return e.doRequestOn(ctx, e.hc, http.MethodGet, target, "", "", nil, maxBytes)
 }
 
-// doRequest performs one GitHub API call with a single credential. A non-nil
+// doRequest performs GitHub API call with a single credential. A non-nil
 // body is sent as JSON.
 func (e *GitHub) doRequest(ctx context.Context, method, target, token, accept string, body []byte) (GHResponse, error) {
 	return e.doRequestCapped(ctx, method, target, token, accept, body, GitHubMaxResponseBytes)
 }
 
 // doRequestCapped is doRequest reading at most MaxBytes of the response body.
-// The git-tree reads raise the cap: the default file cap severs a large
-// repository's tree mid-JSON, which surfaced as an unexplained decode error
-// rather than as the size problem it is.
 func (e *GitHub) doRequestCapped(ctx context.Context, method, target, token, accept string, body []byte, MaxBytes int64) (GHResponse, error) {
 	return e.doRequestOn(ctx, e.hc, method, target, token, accept, body, MaxBytes)
 }
 
 // doRequestOn is doRequestCapped on a named client, which is how a caller that
-// must see a 3xx rather than follow it gets one.
+// must see a 3xx rather than follow it gets.
 func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, target, token, accept string, body []byte, MaxBytes int64) (GHResponse, error) {
 	var rd io.Reader
 	if body != nil {
@@ -376,6 +336,8 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 	if err != nil {
 		return GHResponse{}, err
 	}
+	// Every response states the quota, so nothing asks. see rate_limit_headers.go
+	e.observeRateLimit(token, resp.Header)
 	return GHResponse{
 		status:    resp.StatusCode,
 		body:      data,

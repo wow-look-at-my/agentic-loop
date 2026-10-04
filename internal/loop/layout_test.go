@@ -14,7 +14,7 @@ import (
 )
 
 // repoRoot returns the module root (the directory holding go.mod). The tests
-// here live in internal/loop, so the root is two levels up from this file.
+// here live in internal/loop, so the root is levels up from this file.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

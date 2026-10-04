@@ -19,7 +19,7 @@ func collectParts(got *[]Part) *StreamEvents {
 }
 
 // kinds is the shape of a parts list, which is what the ordering claims are
-// actually about.
+// about.
 func kinds(parts []Part) []PartKind {
 	out := make([]PartKind, 0, len(parts))
 	for _, p := range parts {
@@ -28,7 +28,7 @@ func kinds(parts []Part) []PartKind {
 	return out
 }
 
-// sseServer replays SSE payloads as one event stream.
+// sseServer replays SSE payloads as event stream.
 func sseServer(t *testing.T, payloads ...string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -42,7 +42,7 @@ func sseServer(t *testing.T, payloads ...string) *httptest.Server {
 	return srv
 }
 
-// A part is announced once, in the order it occupies in the finished message.
+// A part is announced, in the order it occupies in the finished message.
 // A host writing the answer out as it arrives depends on both.
 func TestOnPartDeliversEveryPartOnceInOrder(t *testing.T) {
 	srv := sseServer(t,

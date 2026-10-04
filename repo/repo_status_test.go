@@ -59,7 +59,7 @@ func TestRepoStatusWithNoRefUsesTheDefaultBranchHead(t *testing.T) {
 }
 
 // A check-runs failure (a token granted `actions` and not `checks` is the
-// common case) is noted, not fatal — the legacy status is still a real answer.
+// common case) is noted, not fatal — the status is still a real answer.
 func TestRepoStatusCheckRunsFailureIsNotedNotFatal(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -112,7 +112,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 			return 0, ""
 		}
 	})
-	// The header GitHub really sends on a Checks API 403.
+	// The header GitHub sends on a Checks API.
 	g.headers = func(c ghCall) http.Header {
 		h := http.Header{}
 		if strings.HasSuffix(c.Path, "/check-runs") {
@@ -125,8 +125,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	assert.Contains(t, res.Content, "Workflow runs:")
 	assert.Contains(t, res.Content, "CI: failure (https://example.com/run/77)")
 	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
-	// Which endpoint answered is plumbing. A reader who got their CI verdict is
-	// told nothing about permissions, and is never sent to change a setting.
+	// Which endpoint answered is plumbing; a reader with their verdict is told nothing.
 	assert.NotContains(t, res.Content, "permission")
 	assert.NotContains(t, res.Content, "unavailable")
 	assert.Contains(t, res.Content, "build: failure (https://example.com/job/1)")
@@ -136,7 +135,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	assert.NotContains(t, res.Content, "step 1 failed")
 }
 
-// Neither API answered, so the reader has no CI verdict — that is the one case
+// Neither API answered, so the reader has no CI verdict — that is the case
 // where both failures are reported instead of a result.
 func TestRepoStatusReportsBothFailuresWhenNeitherAPIAnswers(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {

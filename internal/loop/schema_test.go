@@ -19,7 +19,7 @@ type schemaFixture struct {
 }
 
 // The advertised schema IS the struct: field order, names, types, prose and
-// required-ness all come from one declaration.
+// required-ness all come from declaration.
 func TestInferSchemaMirrorsTheStruct(t *testing.T) {
 	got := string(EnumSchema[schemaFixture](map[string][]string{"what": {"a", "b"}}))
 	want := `{"type":"object","properties":{` +
@@ -43,8 +43,8 @@ func TestInferSchemaWithNothingRequired(t *testing.T) {
 	assert.Contains(t, string(InferSchema[optional]()), `"required":[]`)
 }
 
-// Every one of these is a wiring mistake in the package that declares the
-// tool, so it fails at construction rather than on the one call that reaches
+// Every of these is a wiring mistake in the package that declares the
+// tool, so it fails at construction rather than on the call that reaches
 // it -- a tool advertised with a contract its handler does not honour is worse
 // than a build that stops.
 func TestInferSchemaPanicsOnAMisdeclaredArgument(t *testing.T) {

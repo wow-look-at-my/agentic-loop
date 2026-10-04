@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeProvider answers with a scripted completion, emitting events first so
+// fakeProvider answers with a scripted completion, emitting events so
 // the streamed path is what the tests exercise.
 type fakeProvider struct {
 	text string
@@ -79,7 +79,7 @@ func listen(t *testing.T, cfg Config) string {
 }
 
 // Documents ride back-to-back in both directions: no framing layer, and the
-// second call goes down the same connection as the first.
+// call goes down the same connection as the.
 func TestUnixSocketCarriesDocumentsBackToBack(t *testing.T) {
 	p := &fakeProvider{text: "hello"}
 	conn, err := net.Dial("unix", listen(t, Config{Provider: p}))
@@ -108,7 +108,7 @@ func TestUnixSocketCarriesDocumentsBackToBack(t *testing.T) {
 	assert.Equal(t, "two", p.reqs[1].Messages[0].Content)
 }
 
-// A <conversation> names its own session: the first turn starts it, the second
+// A <conversation> names its own session: the turn starts it, the
 // sees what was said.
 func TestUnixSocketKeepsAConversation(t *testing.T) {
 	p := &fakeProvider{text: "hi"}
@@ -185,7 +185,7 @@ func TestUnixSocketRejectsADocumentTheSchemaDoesNotAllow(t *testing.T) {
 	assert.Error(t, commonai.DecodeError(data))
 }
 
-// The websocket carries the same document, split across messages -- one per
+// The websocket carries the same document, split across messages -- per
 // flush -- which concatenate into exactly what a unix-socket client reads.
 func TestWebSocketCarriesTheSameDocument(t *testing.T) {
 	p := &fakeProvider{text: "hello"}
@@ -295,7 +295,7 @@ func dialWebSocket(t *testing.T, rawURL string) *wsClient {
 	return &wsClient{conn: conn, r: r}
 }
 
-// send writes one masked text frame, as a client must.
+// send writes masked text frame, as a client must.
 func (c *wsClient) send(payload []byte) error {
 	head := []byte{0x81}
 	n := len(payload)
@@ -317,7 +317,7 @@ func (c *wsClient) send(payload []byte) error {
 	return nil
 }
 
-// receive reads one frame's payload, for a caller that does not care which
+// receive reads frame's payload, for a caller that does not care which
 // opcode carried it.
 func (c *wsClient) receive() ([]byte, error) {
 	_, payload, err := c.receiveFrame()

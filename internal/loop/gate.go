@@ -2,18 +2,11 @@ package loop
 
 import "context"
 
-// Gate is a semaphore that bounds how many sub-agents may execute
-// concurrently. Pass one Gate to every SubagentConfig that should share the
-// limit; the source application used a process-wide capacity-1 gate so at
-// most one sub-agent ran at a time across the whole server — the capacity
-// (and whether to gate at all) is the caller's choice here. A nil *Gate
-// imposes no limit.
+// Gate is a semaphore bounding concurrent sub-agents; a nil *Gate imposes no limit.
 type Gate struct {
 	ch chan struct{}
 }
 
-// NewGate returns a Gate that permits at most n concurrent holders. n < 1 is
-// clamped to 1 — a Gate always limits; use a nil Gate for "no limit".
 func NewGate(n int) *Gate {
 	if n < 1 {
 		n = 1

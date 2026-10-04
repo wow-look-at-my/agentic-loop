@@ -7,25 +7,10 @@ import (
 	"strings"
 )
 
-// The Actions-API account of a commit's CI, used when the Checks API cannot be
-// read.
-//
-// The two APIs describe the same GitHub Actions runs behind two separate
-// permissions: `checks` for /commits/{sha}/check-runs, `actions` for
-// /actions/runs. A fine-grained personal access token cannot hold the first —
-// "Checks" is not in the repository-permission list a PAT is built from, so
-// the Checks API answers one with 403 and there is no setting that changes
-// that. Reporting only "check runs: unavailable" therefore left every
-// PAT-backed reader knowing CI was red with no way to find out why, which is
-// the whole question. Workflow runs, their jobs, and each failed job's failed
-// steps answer it through `actions`, which a PAT can hold.
-//
-// This is a fallback, not a second opinion: it runs only when the check-runs
-// read failed, so a working Checks API costs nothing extra.
+// The Actions-API account of a commit's CI, used when the Checks API cannot be read.
 
 const (
-	// actionsRunLimit bounds how many workflow runs for one commit are
-	// reported. Several workflows on one push is normal; fifty is not.
+	// actionsRunLimit bounds how many workflow runs for commit are reported.
 	actionsRunLimit = 5
 	// actionsJobLimit bounds the jobs listed per run.
 	actionsJobLimit = 30
@@ -33,7 +18,7 @@ const (
 	actionsStepLimit = 10
 )
 
-// ghWorkflowRun decodes one entry of /actions/runs.
+// ghWorkflowRun decodes entry of /actions/runs.
 type ghWorkflowRun struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -49,7 +34,7 @@ type ghWorkflowRuns struct {
 	WorkflowRuns []ghWorkflowRun `json:"workflow_runs"`
 }
 
-// ghJob decodes one entry of /actions/runs/{id}/jobs.
+// ghJob decodes entry of /actions/runs/{id}/jobs.
 type ghJob struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -70,9 +55,9 @@ type ghJobs struct {
 	Jobs       []ghJob `json:"jobs"`
 }
 
-// actionsReport renders the workflow runs for one commit, each failed job and
-// the steps that failed inside it. The second return is a note explaining why
-// nothing could be rendered; exactly one of the two is ever non-empty, so a
+// actionsReport renders the workflow runs for commit, each failed job and
+// the steps that failed inside it. The return is a note explaining why
+// nothing could be rendered; exactly of the is ever non-empty, so a
 // failed read can never pass for "no runs".
 func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (string, string) {
 	resource := RepoPath(org, repo, "") + "@" + sha
@@ -106,16 +91,16 @@ func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (s
 		b.WriteString(e.jobsReport(ctx, org, repo, run))
 	}
 	// The listing is capped, and a cap that does not say so reads as the whole
-	// set of runs this commit produced.
+	// set of runs.
 	if runs.TotalCount > len(runs.WorkflowRuns) {
 		fmt.Fprintf(&b, "  (%d of %d runs shown)\n", len(runs.WorkflowRuns), runs.TotalCount)
 	}
 	return strings.TrimRight(b.String(), "\n"), ""
 }
 
-// jobsReport renders one run's jobs, indented under it: every job's verdict,
-// and for a failed one the steps that failed inside it — the line a reader is
-// actually after.
+// jobsReport renders run's jobs, indented under it: every job's verdict, and
+// for a failed the steps that failed inside it — the line a reader is
+// after.
 func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWorkflowRun) string {
 	target := fmt.Sprintf("%s/actions/runs/%d/jobs?per_page=%d", e.gh.RepoURL(org, repo), run.ID, actionsJobLimit)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")
@@ -163,9 +148,7 @@ func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWork
 			fmt.Fprintf(&b, "      step %d failed: %s (%s)\n", step.Number, nameOrUnnamed(step.Name), step.Conclusion)
 			shown++
 		}
-		// Naming the step that died renames the question. What the reader came
-		// for -- the compiler error, the failing assertion -- is in the log,
-		// and this is the only place the id needed to fetch it is on screen.
+		// Naming the step that died renames the question; the log has the real error.
 		if job.ID != 0 {
 			fmt.Fprintf(&b, "      %s {\"what\":\"job_log\",\"org\":%q,\"repo\":%q,\"job_id\":%d} gives this job's full log.\n",
 				RepoReadToolName, org, repo, job.ID)

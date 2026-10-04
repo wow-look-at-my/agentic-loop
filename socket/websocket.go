@@ -13,13 +13,9 @@ import (
 	"sync"
 )
 
-// The websocket half is hand-rolled against RFC 6455 rather than taken from a
-// library, for the same reason the rest of this project has no runtime
-// dependencies: a server that speaks one wire format needs the handshake, text
-// frames, close and ping, and nothing else. Everything used here --
-// crypto/sha1, encoding/base64, net/http's Hijacker -- is standard library.
+// The websocket half is hand-rolled against RFC, using only the standard library.
 
-// wsGUID is the constant RFC 6455 appends to the client's key before hashing.
+// wsGUID is the constant RFC appends to the client's key before hashing.
 const wsGUID = "258EAFA5-E914-47DA-95CA-5AB0DC85B11D"
 
 // Frame opcodes.
@@ -32,13 +28,12 @@ const (
 	opPong         = 0xA
 )
 
-// maxFrame caps one inbound frame's payload, the same bound the document
-// reader applies, so a peer cannot make the server hold an unbounded message.
+// maxFrame caps inbound frame's payload, the same bound the document reader applies.
 const maxFrame = 64 << 20
 
-// WebSocketHandler serves the same two operations over a websocket: the client
-// sends a document as one or more text messages, and the answer comes back as
-// one text message per flush -- which concatenate into exactly the document a
+// WebSocketHandler serves the same operations over a websocket: the client
+// sends a document as or more text messages, and the answer comes back as
+// text message per flush -- which concatenate into exactly the document a
 // unix-socket client reads.
 func (s *Server) WebSocketHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -88,10 +83,7 @@ func acceptWebSocket(w http.ResponseWriter, r *http.Request) (io.Closer, *bufio.
 	return conn, rw, nil
 }
 
-// wsConn presents a websocket as the plain byte stream the document reader and
-// the response writer already speak: reads deliver the payload of the text
-// frames that arrive, and every write goes out as one text frame -- which is
-// what makes each flush of the answer a message of its own.
+// wsConn presents a websocket as the plain byte stream the document reader and writer speak.
 type wsConn struct {
 	r  *bufio.Reader
 	w  *bufio.Writer
@@ -124,7 +116,7 @@ func (c *wsConn) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// Write sends one text frame, so a flush of the answer is a message.
+// Write sends text frame, so a flush of the answer is a message.
 func (c *wsConn) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -135,14 +127,13 @@ func (c *wsConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// writeClose sends the closing handshake, best effort: the connection is
-// ending either way, and a peer that already left cannot be told.
+// writeClose sends the closing handshake, best effort: a peer that already left cannot be told.
 func (c *wsConn) writeClose() error { return c.writeFrame(opClose, nil) }
 
 // Close closes the underlying connection.
 func (c *wsConn) Close() error { return c.c.Close() }
 
-// readFrame reads one frame, unmasking the payload. A client MUST mask, and a
+// readFrame reads frame, unmasking the payload. A client MUST mask, and a
 // server MUST NOT.
 func (c *wsConn) readFrame() (byte, []byte, error) {
 	var head [2]byte
@@ -187,7 +178,7 @@ func (c *wsConn) readFrame() (byte, []byte, error) {
 	return op, payload, nil
 }
 
-// writeFrame sends one unmasked frame and flushes it, because an unflushed
+// writeFrame sends unmasked frame and flushes it, because an unflushed
 // frame is an answer the caller cannot see.
 func (c *wsConn) writeFrame(op byte, payload []byte) error {
 	c.mu.Lock()

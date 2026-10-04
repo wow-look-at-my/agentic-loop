@@ -11,7 +11,7 @@ import (
 )
 
 // fakeExec scripts a set of tools for tests: it declares them, records what
-// ran, and hands out the individual Tool values a Config takes.
+// ran, and hands out the Tool values a Config takes.
 type fakeExec struct {
 	tools    []ToolDecl
 	execute  func(ctx context.Context, call ToolCall) (ToolResult, error)
@@ -19,7 +19,7 @@ type fakeExec struct {
 	results  map[string]ToolResult
 }
 
-// registry is the flat toolset, one Tool per declaration.
+// registry is the flat toolset, Tool per declaration.
 func (f *fakeExec) registry() Tools {
 	var out Tools
 	for _, d := range f.tools {
@@ -28,7 +28,7 @@ func (f *fakeExec) registry() Tools {
 	return out
 }
 
-// fakeTool is one of a fakeExec's tools.
+// fakeTool is of a fakeExec's tools.
 type fakeTool struct {
 	owner *fakeExec
 	decl  ToolDecl
@@ -65,9 +65,9 @@ func TestToolsDeclsAndFind(t *testing.T) {
 	assert.False(t, ok, "an unoffered name simply is not there; the loop teaches the model")
 }
 
-// Two sources concatenate, and the first to claim a name answers it -- so a
+// sources concatenate, and the to claim a name answers it -- so a
 // host appending its own tools to the library's gets a deterministic toolset
-// rather than one that depends on map iteration.
+// rather than that depends on map iteration.
 func TestFindResolvesToTheFirstClaimant(t *testing.T) {
 	a := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	b := &fakeExec{tools: []ToolDecl{{Name: "alpha"}, {Name: "beta"}}}
@@ -106,8 +106,7 @@ func TestToolsSubset(t *testing.T) {
 	f := &fakeExec{tools: []ToolDecl{{Name: "one"}, {Name: "two"}, {Name: "three"}}}
 	reg := f.registry()
 
-	// The order is the registry's, not the caller's: the advertised list is
-	// part of the prompt-cache prefix, so it must not depend on argument order.
+	// The order is the registry's, not the caller's: it must not depend on argument order.
 	assert.Equal(t, []string{"one", "two"}, reg.Subset([]string{"two", "one", "missing"}).Names())
 	assert.Empty(t, reg.Subset(nil))
 	assert.Empty(t, reg.Subset([]string{"missing"}))

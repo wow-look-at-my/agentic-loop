@@ -12,7 +12,7 @@ import (
 )
 
 // stores is every backend, so the contract is checked against all of them
-// rather than against whichever one a test happened to pick.
+// rather than against whichever a test happened to pick.
 func stores(t *testing.T) map[string]Store {
 	t.Helper()
 	f, err := NewFile(t.TempDir())
@@ -93,7 +93,7 @@ func TestStoreHandsBackACopy(t *testing.T) {
 	}
 }
 
-// An id is part of a file path, so a store that takes one has to say no to the
+// An id is part of a file path, so a store that takes has to say no to the
 // ones that would leave its directory.
 func TestFileStoreRejectsAWanderingID(t *testing.T) {
 	dir := t.TempDir()
@@ -140,10 +140,8 @@ func TestFileStoreRefusesACorruptedDocument(t *testing.T) {
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrNotFound)
 
-	// An id that does not match the file it sits in is the same class of
-	// problem: something moved the file, and the next Append would write the
-	// transcript back under the wrong name.
-	require.NoError(t, os.WriteFile(path, []byte(`<?xml version="1.1"?><conversation id="somethingelse" model="m"/>`), 0o644))
+	// An id that does not match the file it sits in is the same class of problem.
+	require.NoError(t, os.WriteFile(path, []byte(`<?xml version="1.1"?><conversation xmlns="https://github.com/wow-look-at-my/common-ai-api/schema/v1" id="somethingelse" model="m"/>`), 0o644))
 	_, err = s.Get(id)
 	require.ErrorContains(t, err, "somethingelse")
 }

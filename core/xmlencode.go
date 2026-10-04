@@ -6,14 +6,12 @@ import (
 	"strconv"
 )
 
-// Element and attribute names. They are constants because they are the format:
-// a rename here is a breaking change to every consumer, not a refactor.
 const (
+	// Element and attribute names; a rename here is a breaking change, not a refactor.
 	elRequest      = "request"
 	elResponse     = "response"
 	elConversation = "conversation"
-	// elConversations lists what a store holds, by id: inlining every
-	// transcript would make "what is there" cost as much as reading it all.
+	// elConversations lists what a store holds by id, not inlining the transcripts themselves
 	elConversations  = "conversations"
 	elConversationID = "conversation-id"
 	elError          = "error"
@@ -47,8 +45,8 @@ func EncodeRequest(w io.Writer, req Request) error {
 }
 
 // EncodeConversation writes a stored conversation: an id plus the same body a
-// request has, which is what a session actually is -- the defaults and the
-// transcript a next turn will be appended to.
+// request has, which is what a session is -- the defaults and the transcript
+// a next turn will be appended to.
 func EncodeConversation(w io.Writer, id string, req Request) error {
 	x := newWriter(w)
 	attrs := append([]attr{{name: "id", value: id}}, requestAttrs(req)...)
@@ -120,6 +118,9 @@ func requestAttrs(req Request) []attr {
 		attrs = append(attrs, intAttr("max-tokens", req.MaxTokens))
 	}
 	attrs = append(attrs, optAttr("cache-key", req.CacheKey)...)
+	if req.AutoCompact > 0 {
+		attrs = append(attrs, attr{name: "auto-compact", value: strconv.FormatFloat(req.AutoCompact, 'g', -1, 64)})
+	}
 	return append(attrs, qualifiedParamAttrs(req.DialectExtra)...)
 }
 
@@ -194,7 +195,7 @@ func writeRequestBody(x *writer, req Request) {
 	}
 }
 
-// writeMessage writes one transcript entry.
+// writeMessage writes transcript entry.
 func writeMessage(x *writer, m Message) {
 	attrs := []attr{{name: "role", value: string(m.Role)}}
 	attrs = append(attrs, optAttr("tool-call-id", m.ToolCallID)...)
@@ -213,7 +214,7 @@ func writeParts(x *writer, parts []Part) {
 	}
 }
 
-// writePart writes one content part.
+// writePart writes content part.
 func writePart(x *writer, p Part) {
 	switch v := p.(type) {
 	case TextPart:
@@ -241,17 +242,14 @@ func writePart(x *writer, p Part) {
 	}
 }
 
-// writeTool writes one advertised tool. The input schema is a param tree, not
-// a JSON string: a schema nothing can validate is not a schema.
+// writeTool writes advertised tool; the input schema is a param tree, not JSON.
 func writeTool(x *writer, t ToolDecl) {
 	attrs := []attr{{name: "name", value: t.Name}}
 	attrs = append(attrs, optAttr("description", t.Description)...)
 	if t.Readonly {
 		attrs = append(attrs, attr{name: "readonly", value: "true"})
 	}
-	// A nil pointer is written as an ABSENT attribute, never as "false": the
-	// two mean different things here, and destructive/open-world default to
-	// true when absent.
+	// A nil pointer is an ABSENT attribute, never "false": destructive/open-world default true.
 	attrs = append(attrs, optBoolAttr("destructive", t.Destructive)...)
 	if t.Idempotent {
 		attrs = append(attrs, attr{name: "idempotent", value: "true"})
@@ -343,7 +341,7 @@ func writeParams(x *writer, params []Param) {
 	}
 }
 
-// writeParam writes one param node.
+// writeParam writes param node.
 func writeParam(x *writer, p Param) {
 	attrs := optAttr("name", p.Name)
 	attrs = append(attrs, attr{name: "type", value: p.Type})

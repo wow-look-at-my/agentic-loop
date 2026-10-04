@@ -6,20 +6,14 @@ import (
 	"math"
 )
 
-// Vectors are stored as little-endian float32 BLOBs, L2-NORMALIZED at write
-// time. Normalizing on the way in makes the similarity a plain dot product, so
-// the read path -- the part that runs once per stored vector on every query --
-// does one multiply-add per dimension and no square roots at all.
-//
-// There is no vector index and no approximate search: the whole set is scanned.
-// see docs/search.md for the measurement that says this is enough.
+// Vectors are stored as L2-normalized little-endian float32 BLOBs, so similarity is a plain dot product.
 
-// float32Bytes is the width of one stored dimension.
+// float32Bytes is the width of stored dimension.
 const float32Bytes = 4
 
 // encodeVector L2-normalizes v and returns it as a little-endian float32 BLOB.
-// A zero-magnitude vector is rejected: it has no direction, so its similarity
-// to everything is 0, and storing it would make a message permanently
+// A -magnitude vector is rejected: it has no direction, so its similarity
+// to everything is, and storing it would make a message permanently
 // unfindable while still counting as embedded.
 func encodeVector(v []float32) ([]byte, error) {
 	if len(v) == 0 {
@@ -45,13 +39,7 @@ func encodeVector(v []float32) ([]byte, error) {
 	return out, nil
 }
 
-// dotBlob returns the dot product of a normalized query vector with a stored
-// normalized vector blob, without allocating a decoded copy of the blob. Both
-// sides being normalized makes this the cosine similarity.
-//
-// A blob of a different dimension than the query returns ok=false. That is not
-// a corrupt row: it is a vector some OTHER embedding model produced, and the
-// two are not comparable. The caller drops it rather than scoring it.
+// dotBlob returns the cosine of a normalized query and a stored blob without allocating a decoded copy.
 func dotBlob(query []float32, blob []byte) (score float64, ok bool) {
 	if len(query) == 0 || len(blob) != len(query)*float32Bytes {
 		return 0, false
@@ -67,7 +55,7 @@ func dotBlob(query []float32, blob []byte) (score float64, ok bool) {
 // normalize returns a unit-length copy of v, for the query side (stored vectors
 // are already normalized). It returns ok=false for a vector with no direction,
 // which is what an embedding endpoint returning zeros looks like: scoring
-// against it would rank the whole corpus at 0 and present that as a result.
+// against it would rank the whole corpus at and present that as a result.
 func normalize(v []float32) (unit []float32, ok bool) {
 	var sum float64
 	for _, f := range v {

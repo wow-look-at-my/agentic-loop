@@ -11,11 +11,7 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// File is a Store backed by one <conversation> document per session, in a
-// directory. The documents are the format's own, so a stored session is
-// readable, editable and movable with nothing but a text editor -- and every
-// read validates against the schema, because a file on disk is exactly where a
-// document can be changed by something that is not this program.
+// File is a Store backed by <conversation> document per session, in a directory.
 type File struct {
 	mu  sync.Mutex
 	dir string
@@ -113,18 +109,7 @@ func (f *File) List() ([]string, error) {
 	return ids, nil
 }
 
-// Revisions returns a change marker per stored conversation, without reading
-// or validating any of them.
-//
-// It exists for an indexer, which has to answer "which of these moved since I
-// last looked" on every pass. Reading each document to find out is the whole
-// store per pass; a stat is not. The marker is the document's size and
-// modification time, which is what changes when write() replaces one.
-//
-// It is a marker, not a version: it says a document is not the one seen
-// before, and nothing about what changed. That is all an indexer needs, and it
-// is why coarse mtime resolution is not a problem here -- a write that keeps
-// both the size and the timestamp is a write that produced identical bytes.
+// Revisions returns a change marker (size+mtime) per stored conversation, without reading or validating any.
 func (f *File) Revisions() (map[string]string, error) {
 	ids, err := f.List()
 	if err != nil {
@@ -136,8 +121,7 @@ func (f *File) Revisions() (map[string]string, error) {
 	for _, id := range ids {
 		info, err := os.Stat(f.path(id))
 		if err != nil {
-			// The document was deleted between the listing and the stat. It is
-			// simply not there any more, which the caller learns from its
+			// The document. It is not there any more, which the caller learns from its
 			// absence here.
 			if os.IsNotExist(err) {
 				continue
@@ -149,7 +133,7 @@ func (f *File) Revisions() (map[string]string, error) {
 	return out, nil
 }
 
-// read loads and validates one conversation document.
+// read loads and validates conversation document.
 func (f *File) read(id string) (commonai.Request, error) {
 	if err := validID(id); err != nil {
 		return commonai.Request{}, err
@@ -174,7 +158,7 @@ func (f *File) read(id string) (commonai.Request, error) {
 	return req, nil
 }
 
-// write stores one conversation document, and validates what it is about to
+// write stores conversation document, and validates what it is about to
 // write: a document this store cannot read back is not worth keeping.
 func (f *File) write(id string, req commonai.Request) error {
 	if err := validID(id); err != nil {

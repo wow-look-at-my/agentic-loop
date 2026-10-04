@@ -14,7 +14,7 @@ import (
 // The recording half of the resource watch: turning a detected difference into
 // a durable change record, and the prose the model is shown about it.
 
-// record writes one added/modified change and refreshes the snapshot,
+// record writes added/modified change and refreshes the snapshot,
 // returning what the model is told about it.
 func (w *resourceWatcher) record(ctx context.Context, kind string, c capture, before ResourceSnapshot, existed bool) (agentic.ResourceChange, error) {
 	beforeContent, beforeHash := "", ""
@@ -117,10 +117,7 @@ func (w *resourceWatcher) newWarnings(warns []warning) []string {
 	return fresh
 }
 
-// sourceFailed reports whether this pass failed to account for a source, which
-// makes every one of its resources unknown rather than removed. A source that
-// is no longer configured at all has no warning and no listing; its resources
-// are genuinely gone from this run's reach.
+// sourceFailed reports whether this pass failed to account for a source, so its resources are unknown.
 func (w *resourceWatcher) sourceFailed(sourceID string, warns []warning) bool {
 	for _, warn := range warns {
 		if warn.sourceID == sourceID {
@@ -141,7 +138,7 @@ func (w *resourceWatcher) sourceName(id string) string {
 	return id
 }
 
-// summarizeResourceChange renders the one-line shape of a change: how the size
+// summarizeResourceChange renders the -line shape of a change: how the size
 // moved and, for text, how many lines were added and removed.
 func summarizeResourceChange(kind, before, after string, beforeBytes, afterBytes int64, binary bool) string {
 	if binary {
@@ -180,7 +177,7 @@ func approxBlobBytes(b64 string) int {
 	return len(strings.TrimRight(b64, "=")) * 3 / 4
 }
 
-// capText cuts content to max bytes, dropping a trailing partial UTF-8 rune so
+// capText cuts content to max bytes, dropping a trailing partial UTF- rune so
 // what lands in storage stays valid text.
 func capText(s string, max int) (string, bool) {
 	if len(s) <= max {

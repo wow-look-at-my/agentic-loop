@@ -8,26 +8,28 @@ import (
 	"strings"
 )
 
-// ModelList is what an endpoint's model list says. One request answers both
-// questions a host has before it can talk to an endpoint at all — which
-// protocol it speaks, and what its models charge — so there is one fetch, one
-// decode, and one value rather than a pair of functions racing to parse the
-// same bytes twice.
+// ModelList is what an endpoint's model list says: fetch answers protocol and prices.
 type ModelList struct {
-	// Dialect is the protocol the document identifies, or DialectAuto when it
-	// matches neither. It is never DialectResponses: that endpoint serves an
-	// identical document, so naming it would be a guess.
+	// Dialect is the protocol the document identifies, or DialectAuto; never DialectResponses (identical document).
 	Dialect Dialect
 
-	// Prices is per-model rates, keyed by model id. A model that published no
-	// pricing block is ABSENT rather than present with zeros — a host has to be
-	// able to tell a free model from an unpriced one, because the second
-	// renders an em dash and the first renders nothing owed.
+	// Prices is per-model rates, keyed by id; a model with no pricing block is ABSENT, not.
 	Prices map[string]Rates
+
+	// Limits is per-model token limits, keyed by id; a model that published neither limit is ABSENT.
+	Limits map[string]Limits
 }
 
-// modelListMaxBytes caps the read. A model list is small; anything larger is
-// not the document this is trying to read.
+// Limits is what a model list says a model can hold and produce, in tokens. Zero means unpublished.
+type Limits struct {
+	// ContextWindow is the most tokens one request may carry, prompt and output together.
+	ContextWindow int
+
+	// MaxOutput is the most tokens one response may produce.
+	MaxOutput int
+}
+
+// modelListMaxBytes caps the read; a model list is small, so anything larger is not the document being read.
 const modelListMaxBytes = 1 << 20
 
 // FetchModelList reads an endpoint's model list.
@@ -73,15 +75,7 @@ func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error)
 	return DecodeModelList(body)
 }
 
-// modelListURL is where an endpoint's model list lives.
-//
-// The trailing /v1 is trimmed first because the two chat dialects disagree
-// about what a base URL contains: the OpenAI request is baseURL +
-// "/chat/completions", so its base ENDS in /v1, while the Anthropic request is
-// baseURL + "/v1/messages", so its base does not. A host writes whichever its
-// endpoint wants, and appending "/v1/models" to the first spelling asks for
-// /v1/v1/models — a 404 that reads as an endpoint publishing neither a dialect
-// nor a price.
+// modelListURL is where an endpoint's model list lives; the trailing /v1 is trimmed because the chat dialects disagree
 func modelListURL(baseURL string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if base == "" {
@@ -92,7 +86,7 @@ func modelListURL(baseURL string) (string, error) {
 
 // DecodeModelList reads a model-list document.
 //
-// A document that will not parse is an ERROR, not an empty result. The two are
+// A document that will not parse is an ERROR, not an empty result. The are
 // different facts a host has to be able to tell apart: an endpoint that
 // publishes no prices renders an em dash and is working correctly, and an
 // endpoint answering with an HTML error page is not — reporting both as "no
@@ -106,15 +100,19 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 			Object  string            `json:"object"`
 			Type    string            `json:"type"`
 			Pricing *modelListPricing `json:"pricing"`
+			modelListLimits
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, fmt.Errorf("the model list is not JSON: %w", err)
 	}
 
-	out := &ModelList{Prices: make(map[string]Rates, len(doc.Data))}
+	out := &ModelList{
+		Prices: make(map[string]Rates, len(doc.Data)),
+		Limits: make(map[string]Limits, len(doc.Data)),
+	}
 
-	// The ENVELOPE decides first, because a list with no models at all still
+	// The ENVELOPE decides, because a list with no models at all still
 	// identifies its server.
 	switch {
 	case doc.Object == "list":
@@ -133,7 +131,13 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 			}
 		}
 		id := strings.TrimSpace(m.ID)
-		if id == "" || m.Pricing == nil {
+		if id == "" {
+			continue
+		}
+		if l := m.limits(); l != (Limits{}) {
+			out.Limits[id] = l
+		}
+		if m.Pricing == nil {
 			continue
 		}
 		if r, ok := ratesOf(*m.Pricing); ok {

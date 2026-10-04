@@ -19,13 +19,12 @@ const DefaultSubagentSystemPrompt = "You are a sub-agent launched by another ass
 	"Use the available tools as needed, then return a single, self-contained final report that directly answers the task: " +
 	"give the concrete findings the calling assistant needs, not a narration of your process. Be concise and factual."
 
-// subagentToolDescription is the model-facing tool description, ported from
-// the source application. One deliberate adaptation: the source enumerated
-// its own application's read-only tools ("fetch a web page (web_fetch), read
-// GitHub repositories (repo_read: ...), and any read-only MCP tools that are
-// enabled") inside the CAPABILITIES sentence; the library cannot know the
-// host's toolset, so that enumeration is dropped. Everything else is
-// verbatim.
+// subagentToolDescription is the model-facing tool description,. deliberate
+// adaptation: the source enumerated its own application's read-only tools
+// ("fetch a web page (web_fetch), read GitHub repositories (repo_read:...),
+// and any read-only MCP tools that are enabled") inside the CAPABILITIES
+// sentence; the library cannot know the host's toolset, so that enumeration
+// is dropped. Everything else is verbatim.
 const subagentToolDescription = "Launch a sub-agent: an autonomous helper that runs its own agentic loop in a separate, " +
 	"throwaway context and reports back only its final answer. " +
 	"WHAT IT'S FOR: offload a focused, self-contained, read-only task so all the intermediate work -- many tool " +
@@ -102,109 +101,61 @@ var subagentSchema = json.RawMessage(`{
 
 // Subagent activity kinds delivered to SubagentConfig.OnActivity while a
 // run_subagent call executes, so a host can show what the otherwise silent
-// sub-agent is doing instead of an opaque, indefinite "running" state. They
-// are transient telemetry only: never fed back into any model's context.
+// sub-agent is doing instead of an opaque, indefinite "running" state.
 const (
 	SubagentActivityTurn       = "turn"        // a new sub-agent turn began
 	SubagentActivityToolCall   = "tool_call"   // the sub-agent invoked a tool
 	SubagentActivityToolResult = "tool_result" // a sub-agent tool returned
 	SubagentActivityText       = "text"        // the sub-agent's own answer for a turn
 	SubagentActivityThinking   = "thinking"    // its reasoning for a turn
-	// SubagentActivityTurnEnd reports one finished sub-agent turn, carrying its
-	// *Completion. It is the live route out for what a sub-agent is spending
-	// while it runs -- the report at the end carries the totals, but a host
-	// showing cost as it accrues cannot wait for that. Fires only for a turn
-	// that produced a completion; a call that failed before producing one has
-	// nothing to report.
+	// SubagentActivityTurnEnd reports finished turn's whole *Completion.
 	SubagentActivityTurnEnd = "turn_end"
 )
 
-// SubagentActivity is one progress step from a running sub-agent. CallID is
-// the parent run_subagent tool call's ID, so a host can attach each step to
-// the right tool block. Detail is a whitespace-flattened preview capped at
-// 160 runes (an argument preview for tool_call, a result preview for
-// tool_result).
+// SubagentActivity is progress step from a running sub-agent.
 type SubagentActivity struct {
 	CallID string
-	Kind   string // one of the SubagentActivity* constants
-	Turn   int    // 1-based turn number (every kind but tool_call/tool_result)
+	Kind   string // of the SubagentActivity* constants
+	Turn   int    //-based turn number (every kind but tool_call/tool_result)
 	Tool   string // tool name (tool_call / tool_result)
 	Detail string // arguments preview, result preview, or other short context
-	// Content is the SAME text as Detail but WHOLE: the full arguments, the
-	// full tool output, the full answer or the full reasoning, never capped or
-	// whitespace-flattened. Detail alone left a host with no way to show what a
-	// sub-agent actually read or said — a 160-rune preview of a file listing
-	// answers nothing — so hosts that can render a scrollable block use this
-	// and keep Detail for the one-line summary.
+	// Content is Detail's text but WHOLE: the full arguments or output, never capped.
 	Content string
 	IsError bool // tool_result only: the tool reported an error
-	// Completion is the finished turn's whole completion, on the
-	// SubagentActivityTurnEnd step and nowhere else. Whole, not a Usage: only
-	// UsageReported distinguishes an upstream that reported zeros from one that
-	// reported nothing, and CostUsd, Timings and the rest are what a host needs
-	// to charge the turn at all.
+	// Completion is the finished turn's whole completion, on the TurnEnd step only.
 	Completion *agentic.Completion
 }
 
 // SubagentConfig configures NewSubagentTool.
 type SubagentConfig struct {
-	// Provider and Model run the sub-agent (typically the same as the parent
-	// turn's). MaxTokens and Extra are forwarded to every sub-agent model call
-	// (MaxTokens is required when Provider speaks the Anthropic dialect).
-	// There is no Retry here for the same reason Config has none: the nested
-	// run is a loop, and loops do not retry. The sub-agent's calls inherit
-	// whatever Provider does, like every other call in the library.
+	// Provider and Model run the sub-agent; MaxTokens and Extra forward to every sub-agent call.
 	Provider  agentic.Provider
 	Model     string
 	MaxTokens int
 	Extra     map[string]any
-	// Tools is the parent's FULL toolset (every tool the parent turn has). The
-	// read-only subset of it is the default sub-agent toolset, but a
-	// non-read-only tool the orchestrator names in allowed_tools is granted
-	// explicitly. Empty runs the sub-agent tool-less.
+	// Tools is the parent's FULL toolset; its read-only subset is the default sub-agent set.
 	Tools agentic.Tools
-	// ParentSystem and ParentMessages are the parent conversation's input
-	// context — the source for the share_context modes. The system prompt is
-	// prepended as a system message before selection, so last_n/messages
-	// indices count over the same list the model context held. Empty means
-	// the sub-agent can only ever run with the prompt alone.
+	// ParentSystem and ParentMessages are the parent context, the source for share_context modes.
 	ParentSystem   string
 	ParentMessages []agentic.Message
-	// Gate bounds concurrent sub-agent execution (share one Gate across the
-	// tools that should share the limit). nil = no limit.
+	// Gate bounds concurrent sub-agent execution; nil = no limit.
 	Gate *agentic.Gate
-	// Runs makes run_subagent ASYNCHRONOUS: the call returns a receipt as soon
-	// as the sub-agent is launched, so the orchestrator can fan several out in
-	// one turn and keep working, and each report is delivered between turns
-	// through this registry (Run drains it; a host driving its own loop calls
-	// Pending/Collect itself).
-	//
-	// nil keeps the call synchronous -- it blocks until the sub-agent answers,
-	// and one call can only ever produce one running sub-agent.
+	// Runs makes run_subagent ASYNCHRONOUS, returning a receipt so several can run at.
 	Runs *agentic.SubagentRuns
 	// SystemPrompt overrides DefaultSubagentSystemPrompt when non-empty.
 	SystemPrompt string
-	// OnActivity, when non-nil, receives live telemetry: a step per sub-agent
-	// turn and around each of the sub-agent's own tool calls. It is called
-	// synchronously from the sub-agent's loop.
+	// OnActivity, when non-nil, receives live telemetry from the sub-agent's loop.
 	OnActivity func(SubagentActivity)
 }
 
-// subagentTool implements run_subagent. It is deliberately NOT marked
-// read-only, so Tools.Readonly excludes it from a sub-agent's default toolset,
-// and grantableTools omits it from the set allowed_tools can name — so a
-// sub-agent can never spawn another (no recursion).
+// subagentTool implements run_subagent, deliberately not read-only so sub-agents can't spawn more.
 type subagentTool struct {
 	cfg      SubagentConfig
 	system   string
 	readonly agentic.Tools
 }
 
-// NewSubagentTool builds the run_subagent tool: one tool that runs a nested,
-// in-memory agentic loop (this package's Run) on cfg.Provider and reports back
-// only the sub-agent's final answer. Append it to the rest of the toolset like
-// any other tool. It is not Readonly, so a run with no Approver refuses it —
-// launching a sub-agent is the host's call, made in the host's Approver.
+// NewSubagentTool builds the run_subagent tool: a nested agentic loop on cfg.Provider.
 func NewSubagentTool(cfg SubagentConfig) agentic.Tool {
 	system := strings.TrimSpace(cfg.SystemPrompt)
 	if system == "" {
@@ -223,12 +174,7 @@ func (e *subagentTool) Decl() agentic.ToolDecl {
 	}
 }
 
-// grantableTools returns the tools allowed_tools may name, in deterministic
-// order: every tool in the full toolset EXCEPT run_subagent itself (excluding
-// it here is what stops a sub-agent being granted the power to spawn another).
-// The set includes non-read-only tools — naming one in allowed_tools is how
-// the orchestrator explicitly grants it; without that, only the read-only
-// subset is used by default.
+// grantableTools returns the tools allowed_tools may name: the full toolset except run_subagent.
 func (e *subagentTool) grantableTools() []agentic.ToolDecl {
 	var out []agentic.ToolDecl
 	for _, d := range e.cfg.Tools.Decls() {
@@ -250,12 +196,12 @@ func grantableToolNames(tools []agentic.ToolDecl) []string {
 
 // advertisedSchema returns the run_subagent parameter schema with
 // allowed_tools specialised to this turn's grantable toolset: its description
-// lists the available tools (flagging the ones that modify state) and its
-// items carry an enum of their exact names, so the model is both told and
-// constrained to the valid names. With no grantable tools it returns the
-// static schema unchanged (allowed_tools is then inert). The map round-trip
-// keeps the static schema literal the single source of truth; any defensive
-// fall-through returns it intact.
+// lists the available tools ( the ones that modify state) and its items carry
+// an enum of their exact names, so the model is both told and constrained to
+// the valid names. With no grantable tools it returns the static schema
+// unchanged (allowed_tools is then inert). The map round-trip keeps the
+// static schema literal the source of truth; any defensive fall-through
+// returns it intact.
 func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessage {
 	if len(tools) == 0 {
 		return subagentSchema
@@ -284,9 +230,9 @@ func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessag
 // allowedToolsDescription is the allowed_tools field description, naming the
 // concrete tools available this turn so the model knows exactly what it can
 // pin the sub-agent to. Tools that are NOT read-only are flagged "(modifies
-// state)" so the model sees that listing one grants a side-effecting tool —
+// state)" so the model sees that listing grants a side-effecting tool —
 // by default the sub-agent only gets read-only tools, and naming a tool here
-// is what makes a non-read-only one available.
+// is what makes a non-read-only available.
 func allowedToolsDescription(tools []agentic.ToolDecl) string {
 	labels := make([]string, len(tools))
 	for i, t := range tools {

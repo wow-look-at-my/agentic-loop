@@ -9,25 +9,16 @@ import (
 	"sync"
 )
 
-// This file implements provider-agnostic recovery from a "rejected parameter"
-// 400. Extra params are forwarded verbatim (faithful passthrough), but some
-// upstreams reject a parameter another upstream accepts (e.g. xAI rejects
-// reasoning_effort). When the upstream rejects a parameter at request time —
-// a 400 returned before any token streams — the middleware parses the
-// offending parameter name out of the error text (which embeds the HTTP 400
-// body via APIError), strips that one key from the request's Extra, and
-// retries the same request once. Params are thus still sent by default; only
-// one is dropped, and only after the upstream said no.
+// This file implements provider-agnostic recovery from a "rejected
+// parameter". Extra params are forwarded verbatim (faithful passthrough), but
+// some upstreams reject a parameter another upstream accepts (e.g. xAI
+// rejects reasoning_effort).
 
-// rejectParamPatterns matches the common OpenAI-compatible phrasings for a
-// rejected/unsupported request parameter, each capturing the parameter name.
-// The name capture is permissive (it stops at whitespace, a closing quote, or
-// common trailing punctuation) because the surrounding quoting differs per
-// provider; the captured token is cleaned by trimParamName afterwards.
+// rejectParamPatterns matches common OpenAI-compatible phrasings for a rejected/unsupported parameter, capturing the parameter name.
 var rejectParamPatterns = []*regexp.Regexp{
-	// xAI: Model grok-build-0.1 does not support parameter reasoningEffort.
+	// xAI: Model grok-build- does not support parameter reasoningEffort.
 	regexp.MustCompile(`(?i)does not support parameter\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
-	// OpenAI: Unsupported parameter: 'reasoning_effort' ... / unsupported parameter reasoning_effort
+	// OpenAI: Unsupported parameter: 'reasoning_effort'... / unsupported parameter reasoning_effort
 	regexp.MustCompile(`(?i)unsupported parameter:?\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
 	// OpenAI/strict JSON: unknown field "reasoning_effort"
 	regexp.MustCompile(`(?i)unknown field\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
@@ -35,11 +26,7 @@ var rejectParamPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)unrecognized request argument:?\s+["'` + "`" + `]?([^"'` + "`" + `\s,.;:)]+)`),
 }
 
-// rejectedParamName extracts the name of a rejected/unsupported request
-// parameter from an upstream error text, returning ("", false) when no known
-// phrasing matches. It is intentionally targeted: an unparseable error means
-// no retry (there is no name to strip), so the original error surfaces
-// unchanged.
+// rejectedParamName extracts a rejected/unsupported parameter name from an error text; unparseable means no retry.
 func rejectedParamName(errBody string) (string, bool) {
 	for _, re := range rejectParamPatterns {
 		if m := re.FindStringSubmatch(errBody); m != nil {
@@ -51,16 +38,12 @@ func rejectedParamName(errBody string) (string, bool) {
 	return "", false
 }
 
-// trimParamName strips the whitespace, surrounding quotes, and trailing
-// sentence punctuation an error message may wrap a parameter name in
-// (e.g. `"reasoningEffort".` -> reasoningEffort).
+// trimParamName strips whitespace, surrounding quotes, and trailing punctuation an error may wrap a parameter name in.
 func trimParamName(s string) string {
 	return strings.Trim(s, " \t\"'`.,:;)")
 }
 
-// normalizeParamName lowercases a name and removes underscores so an
-// upstream's camelCased report (reasoningEffort) matches a snake_case key
-// (reasoning_effort). Both forms normalize to "reasoningeffort".
+// normalizeParamName lowercases and removes underscores so camelCase and snake_case forms match.
 func normalizeParamName(name string) string {
 	return strings.ReplaceAll(strings.ToLower(name), "_", "")
 }
@@ -73,15 +56,7 @@ type paramStripper struct {
 	stripped set.Set[string] // normalized names of params already stripped
 }
 
-// NewParamStripper wraps a Provider with rejected-parameter recovery: when a
-// call fails before anything streamed and the error text names a parameter
-// present in the request's Extra (matched by normalized form, so
-// reasoningEffort matches reasoning_effort), that key is removed and the call
-// is retried ONCE. The strip is remembered, so subsequent calls through the
-// same stripper drop the key up front — mirroring the persistent in-place
-// strip of the source loop, without mutating the caller's Extra map. A
-// context cancellation is never treated as a parameter problem, and a call
-// that already streamed (a non-nil completion) is never retried.
+// Strips a named param from Extra and retries; never on cancel or streamed calls.
 func NewParamStripper(p Provider) Provider {
 	return &paramStripper{inner: p, stripped: set.New[string]()}
 }
@@ -141,11 +116,7 @@ func (s *paramStripper) withoutStripped(extra map[string]any) map[string]any {
 	return out
 }
 
-// matchRejectedKey parses the rejected parameter name out of errStr and, if
-// it matches (by normalized form) a key actually present in extra, returns
-// that key. It returns ("", false) when the error names no parameter or the
-// named parameter is not in extra — in both cases the caller must NOT retry
-// (there is nothing to change, so retrying would loop or be pointless).
+// matchRejectedKey returns the key in extra matching the rejected name, or ("", false) when there is nothing to strip.
 func matchRejectedKey(extra map[string]any, errStr string) (string, bool) {
 	name, ok := rejectedParamName(errStr)
 	if !ok {

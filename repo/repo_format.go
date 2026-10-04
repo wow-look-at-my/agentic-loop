@@ -9,12 +9,9 @@ import (
 	"time"
 )
 
-// The shapes GitHub's REST responses decode into, and the shared formatting
-// every repo tool renders through — including the failure describers, which are
-// the one place a 401/403/404/429 becomes a sentence naming what the reader can
-// act on. see docs/diagnostics.md
+// The shapes GitHub's REST responses decode into, and the shared formatting.
 
-// GHRepo is one repository in an org/user repos response. Only the fields the
+// GHRepo is repository in an org/user repos response. Only the fields the
 // listing surfaces are decoded.
 type GHRepo struct {
 	Name        string `json:"name"`
@@ -37,9 +34,7 @@ func parseRepoArray(body []byte) ([]GHRepo, error) {
 	return repos, nil
 }
 
-// IsDirectoryListing reports whether a raw-media file read actually returned a
-// directory listing (the contents API serves directories as JSON even when the
-// raw media type is requested).
+// IsDirectoryListing reports whether a raw-media file read returned a directory listing.
 func IsDirectoryListing(body []byte, ctype string) bool {
 	if !strings.Contains(ctype, "json") {
 		return false
@@ -48,15 +43,13 @@ func IsDirectoryListing(body []byte, ctype string) bool {
 	return len(t) > 0 && t[0] == '['
 }
 
-// DescribeGitHubFailure turns a non-2xx contents response into a model-facing
-// message naming the distinct cause (rate limit with its wait, no-token
-// access, missing credential, ...). See explainFailure in repo_failure.go.
+// DescribeGitHubFailure turns a non-2xx contents response into a model-facing message.
 func DescribeGitHubFailure(op, org, repo, inner string, res GHResponse, numTokens int) string {
 	return DescribeResourceFailure(op, RepoPath(org, repo, inner), res, numTokens)
 }
 
 // DescribeResourceFailure is DescribeGitHubFailure for an arbitrary named resource
-// (a PR, an issue, a commit, ...) instead of a contents path.
+// (a PR, an issue, a commit,...) instead of a contents path.
 func DescribeResourceFailure(op, what string, res GHResponse, numTokens int) string {
 	return explainFailure(op, what, res, numTokens, time.Now())
 }
@@ -77,9 +70,9 @@ func GitHubErrorMessage(body []byte) string {
 	return ""
 }
 
-// GitHubErrorDetail extracts GitHub's error message plus the first detailed
-// sub-error: 422 validation responses put the useful text ("A pull request
-// already exists...", "Reference already exists", ...) in errors[], as either
+// GitHubErrorDetail extracts GitHub's error message plus the detailed
+// sub-error: validation responses put the useful text ("A pull request
+// already exists...", "Reference already exists",...) in errors[], as either
 // objects with a message or plain strings.
 func GitHubErrorDetail(body []byte) string {
 	var e struct {
@@ -139,7 +132,7 @@ func parseListState(raw string) (string, error) {
 	return "", fmt.Errorf(`invalid state %q: must be one of "open", "closed", "all" (default open)`, raw)
 }
 
-// firstLine returns the trimmed first line of s (the subject of a commit
+// firstLine returns the trimmed line of s (the subject of a commit
 // message or title).
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
@@ -165,7 +158,7 @@ func CappedText(s string, max int) string {
 	return out
 }
 
-// ghLabel is one issue/PR label; only the name is surfaced.
+// ghLabel is issue/PR label; only the name is surfaced.
 type ghLabel struct {
 	Name string `json:"name"`
 }

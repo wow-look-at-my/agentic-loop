@@ -194,14 +194,15 @@ func TestTestTokenNeverFallsBackToAnonymous(t *testing.T) {
 	assert.Equal(t, []string{"Bearer bad-token"}, authSeen, "exactly one request, with exactly the given token")
 }
 
-// --- organization enumeration -----------------------------------------------
+// --- organization enumeration
+// -----------------------------------------------
 //
 // "list every repo you can see" has to mean every ORG you can see too: a
 // fine-grained PAT scoped to read/write all of an org's contents can still
 // fail to self-report that org membership via /user/orgs, and /user/repos'
 // organization_member affiliation is membership-based, not grant-based. These
-// prove the org sweep actually runs and actually plugs that gap, rather than
-// just trusting /user/repos to have caught everything.
+// prove the org sweep runs and plugs that gap, rather than trusting
+// /user/repos to have caught everything.
 
 func TestTestTokenListsOrganizationsDiscoveredViaUserOrgs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -230,8 +231,7 @@ func TestTestTokenListsOrganizationsDiscoveredViaUserOrgs(t *testing.T) {
 	require.Len(t, res.Orgs[0].Repos, 1)
 	assert.Equal(t, "PazerOP/UE553", res.Orgs[0].Repos[0].FullName)
 
-	// A repo the flat /user/repos listing never returned still shows up in
-	// the top-level Repos union, sourced from the org sweep.
+	// A repo the flat /user/repos listing missed still lands in the Repos union.
 	require.Len(t, res.Repos, 1)
 	assert.Equal(t, "PazerOP/UE553", res.Repos[0].FullName)
 }
@@ -274,8 +274,7 @@ func TestTestTokenFallsBackToRepoOwnersWhenUserOrgsFails(t *testing.T) {
 	assert.Empty(t, res.Orgs[0].Error)
 	require.Len(t, res.Orgs[0].Repos, 2)
 
-	// PazerOP/second-repo never appeared in /user/repos at all -- only the
-	// org sweep found it -- and it still lands in the top-level union.
+	// PazerOP/-repo was found only by the org sweep.
 	fullNames := []string{res.Repos[0].FullName, res.Repos[1].FullName}
 	assert.ElementsMatch(t, []string{"PazerOP/UE553", "PazerOP/second-repo"}, fullNames)
 }

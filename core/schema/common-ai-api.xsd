@@ -254,6 +254,12 @@
     <xs:attribute name="max-tokens" type="xs:int"/>
     <!-- A prompt-cache routing hint, not a cache key the caller can read back. -->
     <xs:attribute name="cache-key" type="xs:string"/>
+    <!--
+      The fraction (0..1) of the model's context window at which the agentic
+      loop auto-compacts the conversation. Zero or absent disables it. A
+      session-level property: it rides on the conversation, not on the call.
+    -->
+    <xs:attribute name="auto-compact" type="xs:decimal"/>
     <xs:attribute ref="anthropic:top-k"/>
     <xs:attribute ref="anthropic:top-p"/>
     <xs:attribute ref="anthropic:temperature"/>

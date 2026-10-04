@@ -1,20 +1,12 @@
 // Package search indexes a host's conversations so they can be searched by
 // word and, when an embedding model is available, by meaning.
 //
-// It owns one SQLite file holding an FTS5 index over message text plus the
+// It owns SQLite file holding an FTS5 index over message text plus the
 // vectors for a semantic search over the same messages. The conversations
 // themselves stay wherever the host keeps them: the index reads them through
 // the Source interface, and SessionSource adapts an agentic-loop
 // session.Store, so cai and the http/socket servers get searchable history
 // without changing how they store anything.
-//
-// The index is derived and always slightly BEHIND the conversations it
-// indexes. Embedding requires a network call, so it could never be part of a
-// write path. The design accepts the lag instead of pretending it away: Status
-// reports how far behind the index is and what the last failure was, and every
-// search says which of its halves actually answered.
-//
-// Depth: docs/search.md.
 package search
 
 import (
@@ -35,21 +27,10 @@ type Index struct {
 	sql *sql.DB
 }
 
-// Open opens (creating if necessary) the index at path and brings its schema
-// up to date, rebuilding either half whose version has moved.
-//
-// The driver is modernc.org/sqlite, which is pure Go: the index needs no cgo,
-// so a host that cross-compiles a static binary keeps doing that. It is also
-// why the vectors are scanned in Go rather than by an extension -- sqlite-vec
-// and its siblings are C loadable extensions, and a Go-transpiled SQLite
-// cannot load one. see docs/search.md.
+// Open opens (creating if necessary) the index at path, bringing its schema up to date.
 func Open(ctx context.Context, path string) (*Index, error) { return open(ctx, path, "full") }
 
-// OpenEphemeral is Open with synchronous=OFF, for a database that is deleted
-// moments later. A torn write is recoverable here in a way one in the host's
-// own store is not -- nothing in this file is a source of truth -- but a
-// corrupt index still has to be noticed rather than silently answered from, so
-// Open does not weaken it.
+// OpenEphemeral is Open with synchronous=OFF, for a database that is deleted moments later.
 func OpenEphemeral(ctx context.Context, path string) (*Index, error) { return open(ctx, path, "off") }
 
 func open(ctx context.Context, path, synchronous string) (*Index, error) {
@@ -65,12 +46,10 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("search: open %q: %w", path, err)
 	}
-	// One connection: this is a single-writer index, and the cap removes lock
-	// contention rather than managing it.
+	// connection: this is a single-writer index, and the cap removes lock contention.
 	sqlDB.SetMaxOpenConns(1)
 
-	// Schema work runs detached from the caller's context: a cancellation
-	// arriving mid-rebuild would leave one half dropped and not recreated.
+	// Schema work runs detached from the caller's context so a mid-rebuild cancellation can't drop a half.
 	startup := context.WithoutCancel(ctx)
 	if err := sqlDB.PingContext(startup); err != nil {
 		_ = sqlDB.Close()
@@ -88,8 +67,8 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 // Close closes the index database.
 func (i *Index) Close() error { return i.sql.Close() }
 
-// applySchema creates both halves and rebuilds either one whose recorded
-// version is not the current one, or whose tables on disk are not the shape
+// applySchema creates both halves and rebuilds either whose recorded
+// version is not the current, or whose tables on disk are not the shape
 // that version describes. The halves are handled independently, which is the
 // whole point of versioning them separately: a change to the text index must
 // not cost every caller their embeddings.
@@ -137,17 +116,17 @@ func (i *Index) applySchema(ctx context.Context) error {
 	return i.setMeta(ctx, metaEmbedVersion, strconv.Itoa(embedSchemaVersion))
 }
 
-// shapeMatches reports whether every table in want that is PRESENT in the file
-// has the columns this version of the schema gives it. A table that is absent
-// matches: the CREATE below makes it.
+// shapeMatches reports whether every table in want that is PRESENT in the
+// file has the columns this version of the schema gives it. A table that is
+// absent matches: the CREATE below makes it.
 //
 // The recorded version says which shape the file is MEANT to have. It cannot
-// say which shape the file actually has, because the number is not the
-// library's alone: another implementation of this index writes its own
-// versions into the same meta table, and one of them met version 1 with a
-// different column set. The version then reads as up to date, no rebuild runs,
-// and the first CREATE INDEX over a column that is not there fails -- on every
-// open, forever, for a file that is derived data and free to rebuild.
+// say which shape the file has, because the number is not the library's
+// alone: another implementation of this index writes its own versions into
+// the same meta table, and of them met version with a different column set.
+// The version then reads as up to date, no rebuild runs, and the CREATE INDEX
+// over a column that is not there fails -- on every open, forever, for a file
+// that is derived data and free to rebuild.
 func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (bool, error) {
 	for table, columns := range want {
 		rows, err := i.sql.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
@@ -169,7 +148,7 @@ func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (boo
 			return false, fmt.Errorf("search: read the shape of %q: %w", table, err)
 		}
 		if have.Len() == 0 {
-			continue // the table is not there yet
+			continue
 		}
 		for _, c := range columns {
 			if !have.Contains(c) {
@@ -180,7 +159,7 @@ func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (boo
 	return true, nil
 }
 
-// meta reads one meta value, returning "" when the key is unset.
+// meta reads meta value, returning "" when the key is unset.
 func (i *Index) meta(ctx context.Context, key string) (string, error) {
 	var v string
 	err := i.sql.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&v)
@@ -193,9 +172,9 @@ func (i *Index) meta(ctx context.Context, key string) (string, error) {
 	return v, nil
 }
 
-// metaInt reads one meta value as an integer. An unset key is 0. A key holding
-// something that is not a number is a corrupt index rather than a zero: it is
-// reported, because reading it as 0 would silently skip a schema rebuild.
+// metaInt reads meta value as an integer. An unset key is. A key holding
+// something that is not a number is a corrupt index rather than a: it is
+// reported, because reading it as would silently skip a schema rebuild.
 func (i *Index) metaInt(ctx context.Context, key string) (int64, error) {
 	v, err := i.meta(ctx, key)
 	if err != nil || v == "" {
@@ -208,7 +187,7 @@ func (i *Index) metaInt(ctx context.Context, key string) (int64, error) {
 	return n, nil
 }
 
-// setMeta writes one meta value.
+// setMeta writes meta value.
 func (i *Index) setMeta(ctx context.Context, key, value string) error {
 	_, err := i.sql.ExecContext(ctx,
 		`INSERT INTO meta (key, value) VALUES (?, ?)
@@ -219,8 +198,6 @@ func (i *Index) setMeta(ctx context.Context, key, value string) error {
 	return nil
 }
 
-// RecordError stores the last indexing failure so Status can report why the
-// index is behind. An empty message clears it.
 func (i *Index) RecordError(ctx context.Context, msg string) error {
 	return i.setMeta(ctx, metaLastError, msg)
 }

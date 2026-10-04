@@ -1,4 +1,4 @@
-// Package jsontest is the one place test fixtures build JSON from Go values.
+// Package jsontest is the place test fixtures build JSON from Go values.
 package jsontest
 
 import (

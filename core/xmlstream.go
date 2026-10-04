@@ -5,27 +5,15 @@ import (
 	"strconv"
 )
 
-// The stream IS the response document, written as it arrives. A text delta is
-// character data appended inside the open <text> element -- two bytes on the
-// wire for two bytes of model output -- so there is no second vocabulary of
-// delta frames, no rule for reassembling them, and no way for the deltas to
-// disagree with the final content. They are the same bytes.
-//
-// Two consequences worth knowing. A connection that drops mid-call leaves a
-// document whose root never closed, which is exactly the partial completion the
-// Provider contract already defines. And what a call only learns at the END --
-// its stop reason, whether it really streamed -- rides in a trailing <result/>
-// rather than in a root attribute that would have to be written first.
+// The stream IS the response document: text deltas write directly into the open <text> element.
 
 // ResponseWriter writes a response document incrementally. Its methods are not
-// safe for concurrent use: one call streams from one goroutine.
+// safe for concurrent use: call streams from goroutine.
 type ResponseWriter struct {
 	x *writer
-	// open is the part element currently accepting text, so consecutive deltas
-	// of the same kind extend it instead of starting a new one.
+	// open is the part element accepting text, so same-kind deltas extend it.
 	open string
-	// flusher, when the sink has one, is called after every delta -- a
-	// streaming document that sits in a buffer is not streaming.
+	// flusher is called after every delta; a buffered document is not streaming.
 	flusher interface{ Flush() }
 }
 
@@ -46,7 +34,7 @@ func NewResponseWriter(w io.Writer, role Role) *ResponseWriter {
 	return rw
 }
 
-// Text appends a content delta, opening a <text> element if one is not already
+// Text appends a content delta, opening a <text> element if is not already
 // open.
 func (rw *ResponseWriter) Text(delta string) error {
 	if delta == "" {
@@ -57,9 +45,7 @@ func (rw *ResponseWriter) Text(delta string) error {
 	return rw.flush()
 }
 
-// Reasoning appends a reasoning delta, opening a <thinking> element if one is
-// not already open. A signature cannot be attached to an element that is
-// already open, so a block that carries one arrives through Part instead.
+// Reasoning appends a delta, opening a <thinking> element; a signed block goes through Part.
 func (rw *ResponseWriter) Reasoning(delta string) error {
 	if delta == "" {
 		return rw.x.err
@@ -76,14 +62,14 @@ func (rw *ResponseWriter) Part(p Part) error {
 	return rw.flush()
 }
 
-// Usage writes one provider usage report, exactly as reported.
+// Usage writes provider usage report, exactly as reported.
 func (rw *ResponseWriter) Usage(u Usage) error {
 	rw.closePart()
 	writeUsage(rw.x, u)
 	return rw.flush()
 }
 
-// Timings writes one provider timings snapshot.
+// Timings writes provider timings snapshot.
 func (rw *ResponseWriter) Timings(t Timings) error {
 	rw.closePart()
 	attrs := []attr{
@@ -96,9 +82,7 @@ func (rw *ResponseWriter) Timings(t Timings) error {
 	return rw.flush()
 }
 
-// Fail records a failure in the document itself and closes it. A call that
-// produced output and then failed is one readable document that says both --
-// which beats a truncated stream the reader has to guess about.
+// Fail records a failure in the document itself and closes it, keeping output and error together.
 func (rw *ResponseWriter) Fail(err error) error {
 	rw.closePart()
 	writeError(rw.x, err)
@@ -116,7 +100,7 @@ func (rw *ResponseWriter) Close(stopReason string, streamed bool) error {
 	return rw.flush()
 }
 
-// openPart opens the named part element unless it is already the open one.
+// openPart opens the named part element unless it is already the open.
 func (rw *ResponseWriter) openPart(name string) {
 	if rw.open == name {
 		return
@@ -135,7 +119,7 @@ func (rw *ResponseWriter) closePart() {
 	rw.open = ""
 }
 
-// flush pushes what has been written so far and reports the first error.
+// flush pushes what has been written so far and reports the error.
 func (rw *ResponseWriter) flush() error {
 	if rw.flusher != nil {
 		rw.flusher.Flush()
@@ -143,7 +127,7 @@ func (rw *ResponseWriter) flush() error {
 	return rw.x.err
 }
 
-// writeUsage writes one usage report: the counts the provider sent, the two
+// writeUsage writes usage report: the counts the provider sent, the
 // provider extras worth naming, and its verbatim object as a param tree.
 func writeUsage(x *writer, u Usage) {
 	attrs := []attr{
