@@ -38,7 +38,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Undelivered = left
 		}
 	}()
-	// Stuck detection (see StuckNudgeAt): the previous turn's tool-call fingerprint.
+	// Stuck detection (see StuckNudgeAt): the turn's tool-call fingerprint.
 	lastBatch := ""
 	repeats := 0
 	// lastComp is the newest completion, whose PromptTokens decide compaction.
@@ -191,7 +191,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
-			// A batch identical to the previous turn's makes no progress; nudge, then end the run.
+			// A batch identical to the turn's makes no progress; nudge, then end the
+			// run.
 			if fp := batchFingerprint(calls); fp == lastBatch {
 				repeats++
 			} else {
@@ -395,9 +396,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			}
 		}
 
-		// The loop is ending: the model asked for no tools. ToolCalls is
-		// cleared defensively so a replayable transcript can never carry an
-		// orphan.
+		// The loop is ending: the model asked for no tools. ToolCalls is cleared
+		// defensively so a replayable transcript can never carry an orphan.
 		if strings.TrimSpace(assistant.Content) != "" {
 			final := assistant
 			final.ToolCalls = nil
@@ -421,13 +421,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 
 		// The model stopped without writing an answer -- it produced only
-		// reasoning. When tools were in
-		// play (so it may already have gathered useful results), make
-		// final tool-less request that forces it to synthesize an answer from
-		// what it has. The stalling turn's assistant message is deliberately
-		// NOT in the transcript (it is only appended on the tool-execution
-		// branch), so the wrap-up request can't be rejected for an unanswered
-		// tool call.
+		// reasoning. When tools were in play (so it may already have gathered
+		// useful results), make final tool-less request that forces it to
+		// synthesize an answer from what it has. The stalling turn's assistant
+		// message is deliberately NOT in the transcript (it is only appended on the
+		// tool-execution branch), so the wrap-up request can't be rejected for an
+		// unanswered tool call.
 		if len(cfg.Tools) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
 			wrapMsg := Message{Role: RoleUser, Content: wrapUpInstruction}
 			wrapMsgs := make([]Message, len(transcript), len(transcript)+1)
@@ -449,9 +448,6 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 					continue
 				}
 			}
-			// The wrap-up failed or still produced nothing: fall through to
-			// the last-resort fallback (the error, if any, is swallowed like
-			// the source's synthesize step).
 		}
 
 		// Last resort: surface the reasoning (a thinking model's only output), else a placeholder.

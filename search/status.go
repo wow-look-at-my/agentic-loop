@@ -7,10 +7,7 @@ import (
 	"fmt"
 )
 
-// Status is what the index can honestly say about itself. It exists because
-// the index is asynchronous: a search answers from whatever has been indexed
-// so far, and without this the difference between "no message says that" and
-// "the message that says it has not been indexed yet" is invisible.
+// Status is what the index can honestly say about itself.
 type Status struct {
 	// IndexedConversations / IndexedMessages is what the text index holds for this owner.
 	IndexedConversations int64

@@ -21,9 +21,7 @@ func MoreInformativeAuthFailure(best, next GitHubAuthError) GitHubAuthError {
 }
 
 // authFailureRank scores an exhausted-rotation failure by how much of the
-// cause it pins down. A naming an object is the only that identifies
-// something about the REPOSITORY -- the object is not there -- while every
-// other status describes credential.
+// cause it pins down.
 func authFailureRank(a GitHubAuthError) int {
 	switch {
 	case a.status == http.StatusNotFound && a.object != "":

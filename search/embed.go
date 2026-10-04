@@ -9,7 +9,7 @@ import (
 const (
 	// chunkRunes is the window embedding covers; too wide a window averages unrelated topics into a direction that matches
 	chunkRunes = 1200
-	// chunkOverlap is how much of the previous window each chunk repeats, so a straddling passage is whole in chunk.
+	// chunkOverlap is how much of the window each chunk repeats, so a straddling passage is whole in chunk.
 	chunkOverlap = 120
 	// maxChunksPerMessage caps what message can cost; the cap is recorded per message (embed_status.chunks_total).
 	maxChunksPerMessage = 16
@@ -215,8 +215,8 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 
 // DropModel removes every vector stored under model and returns how many
 // messages it un-embedded. It is what changing embedding model costs: vectors
-// from models are not comparable, so the old ones can never answer a query
-// again and are storage with no reader.
+// from models are not comparable, so the ones can never answer a query again
+// and are storage with no reader.
 func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) {
 	tx, err := i.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -245,9 +245,9 @@ func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) 
 	return int(affected), nil
 }
 
-// ModelsInUse lists every embedding model that currently has vectors stored.
-// It is what makes a model switch reportable: a model here that nobody is
-// asking with any more is storage being paid for and never read.
+// ModelsInUse lists every embedding model that has vectors stored. It is what
+// makes a model switch reportable: a model here that nobody is asking with
+// any more is storage being paid for and never read.
 func (i *Index) ModelsInUse(ctx context.Context) ([]string, error) {
 	rows, err := i.sql.QueryContext(ctx, `SELECT DISTINCT model FROM embeddings ORDER BY model`)
 	if err != nil {

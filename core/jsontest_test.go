@@ -45,7 +45,7 @@ func TestNoTestSplicesAValueIntoJSONText(t *testing.T) {
 	var offenders []string
 	for _, entry := range entries {
 		name := entry.Name()
-		// This file quotes both shapes in order to describe them.
+		// This file quotes both shapes to describe them.
 		if entry.IsDir() || !strings.HasSuffix(name, "_test.go") || name == "jsontest_test.go" {
 			continue
 		}

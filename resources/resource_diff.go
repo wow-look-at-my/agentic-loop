@@ -51,7 +51,7 @@ type resourceDiffArgs struct {
 var ErrNoResourceChange = errors.New("agentic: no such resource change")
 
 // StoredResourceChange is recorded change as the reader hands it back: the
-// record the watcher wrote, plus the id and the moment it was captured.
+// record the watcher wrote.
 type StoredResourceChange struct {
 	ResourceChangeRecord
 	ID string
@@ -155,7 +155,7 @@ func RenderResourceChange(c StoredResourceChange, full bool) string {
 		b.WriteString("\n\nFull captured content (" + agentic.HumanSize(c.AfterBytes) + "):\n\n")
 		b.WriteString(contentOrEmpty(c.AfterContent))
 	case c.Kind == agentic.ResourceAdded:
-		// A diff against /dev/null would just show the whole file, worse than the content itself.
+		// A diff against /dev/null would show the whole file, worse than the content itself.
 		b.WriteString("\n\nThis resource is newly available. Its contents (" + agentic.HumanSize(c.AfterBytes) + "):\n\n")
 		b.WriteString(contentOrEmpty(c.AfterContent))
 	case c.Kind == agentic.ResourceRemoved:
@@ -177,7 +177,7 @@ func RenderResourceChange(c StoredResourceChange, full bool) string {
 	return b.String()
 }
 
-// contentOrEmpty renders captured content, naming the empty case rather than
+// contentOrEmpty renders captured content.
 func contentOrEmpty(s string) string {
 	if s == "" {
 		return "(the resource is empty)"

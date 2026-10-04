@@ -12,10 +12,10 @@ import (
 )
 
 // Content search no longer touches a rate-limited endpoint at all, but the
-// metadata reads (commits, PRs, issues) still use the API, and the failure that
-// broke the original session can still happen there: a token's real being
-// overwritten by the anonymous attempt's answer, so a wait measured in seconds
-// reads as a permanent authentication problem.
+// metadata reads (commits, PRs, issues) still use the API, and the failure
+// that broke the session can still happen there: a token's real being
+// overwritten by the anonymous attempt's answer, so a wait measured in
+// seconds reads as a permanent authentication problem.
 func TestRateLimitIsReportedAsTransient(t *testing.T) {
 	reset := time.Now().Add(45 * time.Second)
 	g, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}},
@@ -50,7 +50,7 @@ func TestRateLimitIsReportedAsTransient(t *testing.T) {
 
 // The same masking broke every other read: a private repo answered to the
 // anonymous attempt, and that overwrote the token's real answer — telling
-// the model a repository it had just read "may not exist".
+// the model a repository it had read "may not exist".
 func TestPrivateRepoReportsTheTokenFailureNotTheAnonymous404(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}},
 		func(c ghCall) (int, string) {

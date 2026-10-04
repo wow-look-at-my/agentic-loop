@@ -26,11 +26,11 @@ type ghIssue struct {
 	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
-	// PullRequest is present when the "issue" is actually a pull request.
+	// PullRequest is present when the "issue" is a pull request.
 	PullRequest json.RawMessage `json:"pull_request"`
 }
 
-// isPR reports whether this issues-API entry is really a pull request.
+// isPR reports whether this issues-API entry is a pull request.
 func (i ghIssue) isPR() bool {
 	s := strings.TrimSpace(string(i.PullRequest))
 	return s != "" && s != "null"

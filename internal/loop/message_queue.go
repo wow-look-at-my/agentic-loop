@@ -6,8 +6,7 @@ import (
 	"github.com/wow-look-at-my/go-containers/concurrentqueue"
 )
 
-// MessageQueue is a thread-safe FIFO delivering messages into a running
-// loop, backed by concurrentqueue.Queue holding both automated notices
+// MessageQueue is a thread-safe FIFO delivering messages into a running loop.
 type MessageQueue struct {
 	items  concurrentqueue.Queue[QueuedMessage]
 	mu     sync.Mutex // guards closed; Queue and Close must agree on it atomically

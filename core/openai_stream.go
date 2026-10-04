@@ -9,7 +9,7 @@ import (
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
-	// Timings is a llama.cpp/ollama timing snapshot; each replaces the previous (last wins).
+	// Timings is a llama.cpp/ollama timing snapshot; each replaces the (last wins).
 	Timings *Timings `json:"timings,omitempty"`
 	// PromptProgress is a non-standard prefill-progress update emitted on a choices-less chunk.
 	PromptProgress *PromptProgress `json:"prompt_progress,omitempty"`
@@ -22,10 +22,9 @@ type oaChoice struct {
 }
 
 // oaDelta is the incremental content of a streaming choice. Reasoning arrives
-// under field names in the wild: reasoning_content (OpenAI/DeepSeek
-// style) and reasoning (Ollama style). ReasoningDetails is OpenRouter's
-// structured form, streamed as fragments keyed by index the same way
-// ToolCalls is.
+// under field names in the wild: reasoning_content (OpenAI/DeepSeek style)
+// and reasoning (Ollama style). ReasoningDetails is OpenRouter's structured
+// form, streamed as fragments keyed by index the same way ToolCalls is.
 type oaDelta struct {
 	Content          string              `json:"content,omitempty"`
 	ReasoningContent string              `json:"reasoning_content,omitempty"`
@@ -34,7 +33,6 @@ type oaDelta struct {
 	ToolCalls        []oaToolCall        `json:"tool_calls,omitempty"`
 }
 
-// reasoning returns the delta's reasoning text from whichever field the
 func (d oaDelta) reasoning() string {
 	if d.ReasoningContent != "" {
 		return d.ReasoningContent
@@ -155,8 +153,7 @@ func (a *toolCallAccumulator) add(deltas []oaToolCall) {
 	}
 }
 
-// finish returns the assembled calls in the order their indices
-// appeared.
+// finish returns the assembled calls in the order their indices appeared.
 func (a *toolCallAccumulator) finish() []ToolCall {
 	out := make([]ToolCall, 0, len(a.order))
 	for _, idx := range a.order {

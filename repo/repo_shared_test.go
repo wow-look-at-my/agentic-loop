@@ -40,7 +40,7 @@ type ghCall struct {
 }
 
 // fakeGitHub is a fake GitHub API that records every request (method, path,
-// token, accept, query, body) and answers via a per-test responder.
+// token, accept, query, body) and answers.
 type fakeGitHub struct {
 	mu      sync.Mutex
 	calls   []ghCall

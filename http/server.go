@@ -207,8 +207,8 @@ func (s *Server) haveStore(w http.ResponseWriter) bool {
 }
 
 // overlay applies a turn's own fields over the conversation's defaults. Only
-// what the turn actually stated is taken; the transcript is the stored,
-// which already has the turn's messages appended.
+// what the turn stated is taken; the transcript is the stored, which already
+// has the turn's messages appended.
 func overlay(stored, turn commonai.Request) commonai.Request {
 	out := stored
 	if turn.Model != "" {

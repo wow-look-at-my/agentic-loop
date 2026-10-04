@@ -189,7 +189,7 @@ func TestAnthropicCallerTranscriptUnchanged(t *testing.T) {
 
 	assert.Equal(t, want, messages, "cache markers are applied to a per-request copy; the transcript stays marker-free")
 
-	// And the wire really carried the moving marker both times.
+	// And the wire carried the moving marker both times.
 	body := bodyMap(t, h.body)
 	msgs := body["messages"].([]any)
 	lastMsg := msgs[len(msgs)-1].(map[string]any)
@@ -345,8 +345,8 @@ func TestAnthropicErrorEventMapsToAPIError(t *testing.T) {
 }
 
 func TestAnthropicErrorEventOverflowConsistent(t *testing.T) {
-	// A -mapped in-stream error is checked against the overflow regex just
-	// like a non-2xx body.
+	// A -mapped in-stream error is checked against the overflow regex like a
+	// non-2xx body.
 	h := &anSSEHandler{events: [][2]string{
 		{"error", `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}`},
 	}}

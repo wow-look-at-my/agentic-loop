@@ -93,7 +93,7 @@ func TestDialectRefusedReadsTheEndpointTheServerNamed(t *testing.T) {
 }
 
 // TestDialectRefusedNeedsAnAPIError keeps the reading to what an endpoint
-// actually answered: a transport failure carries no body to read.
+// answered: a transport failure carries no body to read.
 func TestDialectRefusedNeedsAnAPIError(t *testing.T) {
 	_, ok := DialectRefused(errors.New("use v1/responses"))
 	assert.False(t, ok, "prose in a local error is not an endpoint speaking")

@@ -75,7 +75,7 @@ func TestSplitLeakedToolCallsCutsAtTheLineStart(t *testing.T) {
 	assert.False(t, leaked)
 	assert.Equal(t, "no envelope at all", clean)
 
-	// An envelope on the very line leaves nothing.
+	// An envelope on the line leaves nothing.
 	clean, leaked = splitLeakedToolCalls("<|tool_calls|>\nwhatever")
 	require.True(t, leaked)
 	assert.Equal(t, "", strings.TrimSpace(clean))

@@ -40,20 +40,6 @@ var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls
 // executed (empty runs tool-less), the Approver consulted for EVERY tool call
 // (nil allows a Readonly tool and denies anything else with DeniedMessage),
 // and the event callbacks. MaxTurns, when positive, caps model calls.
-//
-// Output dedup is ON by default: a read-only tool result whose content is
-// byte-identical to an earlier call in the same run is fed back as a short
-// [unchanged] marker instead of the full text (see OutputDeduper). Set
-// DisableOutputDedup to turn that off.
-//
-// There is deliberately NO retry knob. The loop is a high-level construct:
-// it knows nothing about connections, status codes, or backoff, and an error
-// that reaches it is treated as REAL and PERMANENT -- the layer whose job was
-// to make the call happen has already given up, so Run stops rather than
-// -guessing it. Riding out transient failure belongs to the Provider
-// (ProviderConfig.Retry), which is also the only layer that can see whether a
-// call streamed anything -- the condition that decides whether re-sending is
-// safe. See "Layering" in README.md.
 type Config struct {
 	Provider Provider
 	Tools    Tools
@@ -81,7 +67,7 @@ type Config struct {
 	// ContextWindow is the model's context window size.
 	ContextWindow int
 
-	// ElapsedTime, when set, states how long has passed since the previous request on every call.
+	// ElapsedTime, when set, states how long has passed since the request on every call.
 	ElapsedTime *ElapsedTime
 
 	// turnHook, when non-nil, is invoked with the -based turn number as each turn begins.

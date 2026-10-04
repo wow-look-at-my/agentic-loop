@@ -258,7 +258,7 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	_, err := Run(context.Background(), cfg, req)
 	require.NoError(t, err, "compaction failure is non-fatal")
 	assert.False(t, compacted, "the compaction event did not fire")
-	// The original tool calls ran (compaction failed, so the loop fell through to normal execution).
+	// The tool calls ran (compaction failed, so the loop fell through to normal execution).
 	assert.NotEmpty(t, exec.executed, "tools ran after compaction failed")
 }
 
@@ -273,7 +273,6 @@ func TestRunAutoCompactWithoutContextWindowDoesNothing(t *testing.T) {
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
-		// ContextWindow is (unset)
 	}
 	req := Request{Model: "m", AutoCompact: 0.8,
 		Messages: []Message{{Role: RoleUser, Content: "go"}}}

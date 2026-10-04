@@ -123,12 +123,8 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 // without it OpenAI and most compatibles omit usage from streamed responses
 // entirely, but a few reject the field outright, which is what
 // includeDefaultStreamOptions=false is for (see Complete's retry). MaxTokens
-// > sets max_tokens (overriding an Extra value); leaves the field to
-// Extra or the provider default. CacheKey, when set, rides as
-// prompt_cache_key, and selfHosted adds cache_prompt:true. promptCache marks
-// the per-request wire copy with the ephemeral cache breakpoints;
-// replayReasoning echoes assistant reasoning back as message.reasoning, plus
-// the verbatim reasoning_details array when was captured.
+// > sets max_tokens (overriding an Extra value); leaves the field to Extra or
+// the provider default.
 func (o *openaiProvider) buildBody(req Request, includeDefaultStreamOptions bool) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.ParamsFor(DialectOpenAI) {

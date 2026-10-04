@@ -5,9 +5,7 @@ import (
 	"errors"
 )
 
-// Error kinds, as the format names them. A reader that has to decide what to do
-// next -- retry, re-prompt, give up, ask a person -- needs to know which of
-// these happened, and grepping the message text for it is not a contract.
+// Error kinds, as the format names them.
 const (
 	// ErrorKindAPI is a non-2xx answer from the upstream.
 	ErrorKindAPI = "api"

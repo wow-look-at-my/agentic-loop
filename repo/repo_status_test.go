@@ -59,7 +59,7 @@ func TestRepoStatusWithNoRefUsesTheDefaultBranchHead(t *testing.T) {
 }
 
 // A check-runs failure (a token granted `actions` and not `checks` is the
-// common case) is noted, not fatal — the legacy status is still a real answer.
+// common case) is noted, not fatal — the status is still a real answer.
 func TestRepoStatusCheckRunsFailureIsNotedNotFatal(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -112,7 +112,7 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 			return 0, ""
 		}
 	})
-	// The header GitHub really sends on a Checks API.
+	// The header GitHub sends on a Checks API.
 	g.headers = func(c ghCall) http.Header {
 		h := http.Header{}
 		if strings.HasSuffix(c.Path, "/check-runs") {

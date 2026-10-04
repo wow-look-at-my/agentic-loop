@@ -59,8 +59,7 @@ func ParamsFromJSONObject(raw []byte) ([]Param, error) {
 	return p.Children, nil
 }
 
-// decodeParam reads value from dec, which must be positioned at its
-// token.
+// decodeParam reads value from dec, which must be positioned at its token.
 func decodeParam(dec *json.Decoder, name string) (Param, error) {
 	tok, err := dec.Token()
 	if err != nil {

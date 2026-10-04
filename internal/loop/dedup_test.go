@@ -63,7 +63,7 @@ func TestOutputDeduperDifferentToolSameContentDoesNotCollapse(t *testing.T) {
 	assert.False(t, deduped)
 	assert.Equal(t, "same bytes", content, "the tool is part of the dedup key")
 
-	//... and the original tool still collapses on its own repeat.
+	// ... and the tool still collapses on its own repeat.
 	_, deduped = d.Collapse(ToolDecl{Name: "list_dir", Readonly: true}, ToolResult{Content: "same bytes"})
 	assert.True(t, deduped)
 }

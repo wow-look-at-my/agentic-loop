@@ -19,10 +19,10 @@ type Completion struct {
 	StopReason      string
 }
 
-// fold turns what the provider SAID into the single figure a caller bills
-// against. Core keeps every usage report in the order it arrived, because that
-// is the honest record of the call; which to believe is a policy, and this
-// is it: the newest snapshot with at least as much evidence wins, snapshots are
+// fold turns what the provider SAID into the figure a caller bills against.
+// Core keeps every usage report in the order it arrived, because that is the
+// honest record of the call; which to believe is a policy, and this is it:
+// the newest snapshot with at least as much evidence wins, snapshots are
 // never summed, and the total is floored at prompt+completion.
 func fold(c *commonai.Completion) *Completion {
 	if c == nil {

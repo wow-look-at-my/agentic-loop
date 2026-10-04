@@ -5,6 +5,10 @@ on:
     # Branch pushes only: a bare push trigger also fires on every tag autorelease creates.
     branches: ['**']
 
+concurrency:
+  group: gha_${{ github.repository }}_${{ github.workflow }}_${{ github.ref != 'refs/heads/master' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 # go-toolchain's autorelease needs actions/contents/deployments write access; without it a passing build still fails.
 permissions:
   id-token: write
