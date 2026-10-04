@@ -302,12 +302,25 @@ still identifies its server.
 ```go
 type ModelList struct {
     Dialect Dialect
-    Prices  map[string]Rates // absent = published no pricing
+    Prices  map[string]Rates  // absent = published no pricing
+    Limits  map[string]Limits // absent = published neither limit
+}
+
+type Limits struct {
+    ContextWindow int // zero = unpublished
+    MaxOutput     int // zero = unpublished
 }
 
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error)
 func DecodeModelList(body []byte) (*ModelList, error)
+func ModelLimitsOf(ctx context.Context, p Provider, model string) (Limits, bool, error)
 ```
+
+Each provider spells a limit its own way. As a result, every spelling is read: `context_length`, `context_window`, `max_context_length`, `max_model_len` and `max_input_tokens` for the window, and `max_output_length`, `max_completion_tokens`, `max_output_tokens` and `max_tokens` for the output. OpenRouter's `top_provider` block is used when the model itself names neither. A limit that is not a whole token count fails the decode.
+
+Every built-in provider is a `ModelLimiter`. It reads its own endpoint's list once and keeps it. A failed read is not kept, so the next question asks again. Every decorator the library ships forwards the question, and a caller's own decorator does the same with `ForwardModelLimits`. A decorator around a provider with no list answers `ErrNoModelList`, and `ModelLimitsOf` reports that as `ok == false`.
+
+`Run` compacts against `Config.ContextWindow`. When that is zero and the request auto-compacts, it uses the window the provider's model list publishes. `Events.OnContextWindow` says which window the run settled on. A run that has none gets an `Err` naming why, and never auto-compacts.
 
 One document answers both questions a host has before it can talk to an
 endpoint at all — which protocol it speaks, and what its models charge — so
