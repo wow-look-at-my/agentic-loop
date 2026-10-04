@@ -224,9 +224,9 @@ func TestAnEndpointWithNoPricingIsNotAnError(t *testing.T) {
 	assert.Equal(t, DialectOpenAI, list.Dialect)
 }
 
-// anthropicModelList is what api.anthropic.com actually answers: type/id/
-// display_name/created_at, and no pricing anywhere. It is the endpoint a host's
-// cost column has to survive, since nothing it sends can price a call.
+// anthropicModelList is what api.anthropic.com answers: type/id/
+// display_name/created_at, and no pricing anywhere. It is the endpoint a
+// host's cost column has to survive, since nothing it sends can price a call.
 const anthropicModelList = `{
   "data": [
     {"type": "model", "id": "claude-opus-4-6", "display_name": "Claude Opus 4.6",

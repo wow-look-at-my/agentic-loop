@@ -50,10 +50,6 @@ func isSpaceByte(b byte) bool {
 }
 
 // docScanner tracks how deep in the element tree the bytes so far have got.
-// It is a byte-at-a-time state machine rather than a parser: the question is
-// only where the document ENDS, and answering it must not depend on the
-// document being valid -- the validator says that afterwards, over the whole
-// thing.
 type docScanner struct {
 	state   scanState
 	depth   int
@@ -62,7 +58,7 @@ type docScanner struct {
 	tagKind tagKind
 	// lead holds the few bytes of a tag, enough to tell a comment from a CDATA section from a PI.
 	lead []byte
-	// quote is the attribute delimiter currently open, or.
+	// quote is the attribute delimiter open, or.
 	quote byte
 }
 
@@ -70,7 +66,7 @@ type scanState int
 
 const (
 	scanOutside scanState = iota // in character data
-	scanLead                     // just past '<', deciding what this is
+	scanLead                     // just past '<'.
 	scanTag                      // inside a tag, reading name and attributes
 	scanComment                  // inside <!-- -->
 	scanCDATA                    // inside <![CDATA[ ]]>
@@ -85,8 +81,7 @@ const (
 	tagSelfClosing
 )
 
-// feed advances the scanner by byte, reporting whether the document just
-// ended.
+// feed advances the scanner by byte, reporting whether the document ended.
 func (s *docScanner) feed(b byte) bool {
 	switch s.state {
 	case scanOutside:
@@ -194,7 +189,7 @@ func (s *docScanner) closeTag() bool {
 	return false
 }
 
-// isPrefixOf reports whether b is a proper prefix of s, which is how the
+// isPrefixOf reports whether b is a proper prefix of s.
 func isPrefixOf(b []byte, s string) bool {
 	return len(b) < len(s) && s[:len(b)] == string(b)
 }

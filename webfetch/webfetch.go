@@ -230,9 +230,8 @@ const webSummarySystemPrompt = "You summarize cleaned web content for another as
 // generateWebSummary asks the model to summarize cleaned fetched content:
 // bounded (webSummaryModelTimeout), tool-less call with no retry, via
 // OneShot. onCompletion, when non-nil, is handed the call's Completion --
-// including a partial from a failed call, because those tokens were spent
-// too and a host that is not told about them under-counts what the session
-// cost.
+// including a partial from a failed call, because those tokens were spent too
+// and a host that is not told about them under-counts what the session cost.
 func generateWebSummary(ctx context.Context, p agentic.Provider, onCompletion func(*agentic.Completion), model, url, cleaned, instructions string, maxTokens int, extra map[string]any) (string, error) {
 	comp, err := agentic.OneShot(ctx, p, agentic.Request{
 		Model:  model,

@@ -16,8 +16,7 @@ import (
 )
 
 // fakeSource is a resource source the test mutates between polls -- which is
-// the thing under test, so it behaves like a live source (a listing and a read
-// answered from current state) rather than a canned before/after pair.
+// the thing under test.
 type fakeSource struct {
 	id, name string
 	mu       sync.Mutex

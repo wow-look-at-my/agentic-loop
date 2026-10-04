@@ -15,6 +15,18 @@ type ModelList struct {
 
 	// Prices is per-model rates, keyed by id; a model with no pricing block is ABSENT, not.
 	Prices map[string]Rates
+
+	// Limits is per-model token limits, keyed by id; a model that published neither limit is ABSENT.
+	Limits map[string]Limits
+}
+
+// Limits is what a model list says a model can hold and produce, in tokens. Zero means unpublished.
+type Limits struct {
+	// ContextWindow is the most tokens one request may carry, prompt and output together.
+	ContextWindow int
+
+	// MaxOutput is the most tokens one response may produce.
+	MaxOutput int
 }
 
 // modelListMaxBytes caps the read; a model list is small, so anything larger is not the document being read.
@@ -88,13 +100,17 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 			Object  string            `json:"object"`
 			Type    string            `json:"type"`
 			Pricing *modelListPricing `json:"pricing"`
+			modelListLimits
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, fmt.Errorf("the model list is not JSON: %w", err)
 	}
 
-	out := &ModelList{Prices: make(map[string]Rates, len(doc.Data))}
+	out := &ModelList{
+		Prices: make(map[string]Rates, len(doc.Data)),
+		Limits: make(map[string]Limits, len(doc.Data)),
+	}
 
 	// The ENVELOPE decides, because a list with no models at all still
 	// identifies its server.
@@ -115,7 +131,13 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 			}
 		}
 		id := strings.TrimSpace(m.ID)
-		if id == "" || m.Pricing == nil {
+		if id == "" {
+			continue
+		}
+		if l := m.limits(); l != (Limits{}) {
+			out.Limits[id] = l
+		}
+		if m.Pricing == nil {
 			continue
 		}
 		if r, ok := ratesOf(*m.Pricing); ok {

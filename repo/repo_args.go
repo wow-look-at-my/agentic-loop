@@ -15,7 +15,7 @@ import (
 // every field for every read. That made a field the chosen read ignores
 // silently droppable — see the table below for what that cost.
 
-// repoReadFields lists the arguments each repo_read "what" actually reads.
+// repoReadFields lists the arguments each repo_read "what" reads.
 var repoReadFields = map[string][]string{
 	"commits":   {"org", "repo", "path", "ref", "per_page"},
 	"commit":    {"org", "repo", "sha"},
@@ -47,10 +47,10 @@ var repoReadFieldRedirect = map[string]string{
 }
 
 // validateRepoReadArgs rejects a call carrying arguments the chosen read
-// ignores. It decodes the raw object a time because what matters is
-// which fields the caller actually supplied — a field carrying its value
-// states no intent (a client that marshals the whole argument struct sends
-// every key), so only a field with a value in it counts.
+// ignores. It decodes the raw object a time because what matters is which
+// fields the caller supplied — a field carrying its value states no intent
+// (a client that marshals the whole argument struct sends every key), so only
+// a field with a value in it counts.
 func validateRepoReadArgs(what string, raw json.RawMessage) error {
 	allowed, known := repoReadFields[what]
 	if !known {
@@ -86,8 +86,8 @@ func validateRepoReadArgs(what string, raw json.RawMessage) error {
 	return errors.New(b.String())
 }
 
-// isZeroJSON reports whether a raw argument value is a caller could not
-// have meant anything by: absent-in-spirit rather than absent in fact.
+// isZeroJSON reports whether a raw argument value is a caller could not have
+// meant anything by: absent-in-spirit rather than absent.
 func isZeroJSON(raw json.RawMessage) bool {
 	switch strings.TrimSpace(string(raw)) {
 	case "", "null", `""`, "0", "false", "[]", "{}":

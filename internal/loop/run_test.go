@@ -71,8 +71,8 @@ func TestRunMultiTurnToolLoop(t *testing.T) {
 		recorded = append(recorded, m)
 		return nil
 	}
-	events.OnToolCall.Subscribe(&toolCallCb)
-	events.OnToolResult.Subscribe(&toolResultCb)
+	keep(t, &events.OnToolCall, toolCallCb)
+	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -384,7 +384,7 @@ func TestRunHallucinatedCallWithoutExecutor(t *testing.T) {
 	assert.Equal(t, "sorry", res.Final.Content)
 }
 
-// noTurnCapProbe is well past the old -turn cap, so a regression fails here, not in production.
+// noTurnCapProbe is well past the -turn cap, so a regression fails here, not in production.
 const noTurnCapProbe = 40
 
 func TestRunHasNoTurnCap(t *testing.T) {

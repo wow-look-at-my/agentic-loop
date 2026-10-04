@@ -2,9 +2,7 @@ package commonai
 
 import "net/http"
 
-// ProviderConfig holds the connection settings shared by every dialect. It is
-// not used on its own: embed it in the per-dialect config types (OpenAIConfig,
-// AnthropicConfig) accepted by the dialect constructors.
+// ProviderConfig holds the connection settings shared by every dialect.
 type ProviderConfig struct {
 	// BaseURL is the required API root; OpenAI includes the version segment, Anthropic the bare root.
 	BaseURL string
@@ -19,7 +17,7 @@ type ProviderConfig struct {
 }
 
 // OpenAIConfig configures NewOpenAIProvider: the shared ProviderConfig
-// connection base plus the knobs specific to the OpenAI-compatible dialect.
+// connection base plus the knobs specific.
 type OpenAIConfig struct {
 	ProviderConfig
 
@@ -40,7 +38,7 @@ type ResponsesConfig struct {
 }
 
 // AnthropicConfig configures NewAnthropicProvider: the shared ProviderConfig
-// connection base plus the knobs specific to the Anthropic Messages dialect.
+// connection base plus the knobs specific.
 type AnthropicConfig struct {
 	ProviderConfig
 

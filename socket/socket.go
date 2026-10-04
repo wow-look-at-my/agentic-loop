@@ -8,18 +8,6 @@
 // so. The websocket has framing whether we want it or not, so each flush of
 // the answer is text message, and a client concatenates them into the same
 // document a unix-socket client reads byte for byte.
-//
-// operations, told apart by the root element the client sends:
-//
-// - <request> runs call and answers with a <response>.
-// - <conversation id="..."> appends its messages to the stored conversation
-// of that id (creating it when the id is new), runs the call over the whole
-// transcript, and answers with a <response>. The assistant's turn is
-// appended, so the next sees it.
-//
-// A call that fails before it produced anything answers with an <error>
-// document; that fails after says both, in the <response> it had
-// already started.
 package socket
 
 import (

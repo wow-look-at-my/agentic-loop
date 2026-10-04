@@ -7,14 +7,6 @@
 // the Source interface, and SessionSource adapts an agentic-loop
 // session.Store, so cai and the http/socket servers get searchable history
 // without changing how they store anything.
-//
-// The index is derived and always slightly BEHIND the conversations it
-// indexes. Embedding requires a network call, so it could never be part of a
-// write path. The design accepts the lag instead of pretending it away: Status
-// reports how far behind the index is and what the last failure was, and every
-// search says which of its halves actually answered.
-//
-// Depth: docs/search.md.
 package search
 
 import (
@@ -124,17 +116,17 @@ func (i *Index) applySchema(ctx context.Context) error {
 	return i.setMeta(ctx, metaEmbedVersion, strconv.Itoa(embedSchemaVersion))
 }
 
-// shapeMatches reports whether every table in want that is PRESENT in the file
-// has the columns this version of the schema gives it. A table that is absent
-// matches: the CREATE below makes it.
+// shapeMatches reports whether every table in want that is PRESENT in the
+// file has the columns this version of the schema gives it. A table that is
+// absent matches: the CREATE below makes it.
 //
 // The recorded version says which shape the file is MEANT to have. It cannot
-// say which shape the file actually has, because the number is not the
-// library's alone: another implementation of this index writes its own
-// versions into the same meta table, and of them met version with a
-// different column set. The version then reads as up to date, no rebuild runs,
-// and the CREATE INDEX over a column that is not there fails -- on every
-// open, forever, for a file that is derived data and free to rebuild.
+// say which shape the file has, because the number is not the library's
+// alone: another implementation of this index writes its own versions into
+// the same meta table, and of them met version with a different column set.
+// The version then reads as up to date, no rebuild runs, and the CREATE INDEX
+// over a column that is not there fails -- on every open, forever, for a file
+// that is derived data and free to rebuild.
 func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (bool, error) {
 	for table, columns := range want {
 		rows, err := i.sql.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
@@ -156,7 +148,7 @@ func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (boo
 			return false, fmt.Errorf("search: read the shape of %q: %w", table, err)
 		}
 		if have.Len() == 0 {
-			continue // the table is not there yet
+			continue
 		}
 		for _, c := range columns {
 			if !have.Contains(c) {
@@ -206,7 +198,6 @@ func (i *Index) setMeta(ctx context.Context, key, value string) error {
 	return nil
 }
 
-// RecordError stores the last indexing failure so Status can report why the
 func (i *Index) RecordError(ctx context.Context, msg string) error {
 	return i.setMeta(ctx, metaLastError, msg)
 }

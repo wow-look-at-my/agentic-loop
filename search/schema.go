@@ -86,10 +86,10 @@ var (
 	}
 )
 
-// dropFTSSchema tears the text half down for a version bump. The triggers go
-// : dropping indexed_messages while its delete trigger still exists would
-// fire that trigger for every row into an FTS table that is about to be
-// dropped anyway.
+// dropFTSSchema tears the text half down for a version bump. The triggers go:
+// dropping indexed_messages while its delete trigger still exists would fire
+// that trigger for every row into an FTS table that is about to be dropped
+// anyway.
 const dropFTSSchema = `
 DROP TRIGGER IF EXISTS indexed_messages_ai;
 DROP TRIGGER IF EXISTS indexed_messages_ad;

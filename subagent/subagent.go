@@ -19,13 +19,12 @@ const DefaultSubagentSystemPrompt = "You are a sub-agent launched by another ass
 	"Use the available tools as needed, then return a single, self-contained final report that directly answers the task: " +
 	"give the concrete findings the calling assistant needs, not a narration of your process. Be concise and factual."
 
-// subagentToolDescription is the model-facing tool description, ported from
-// the source application. deliberate adaptation: the source enumerated
-// its own application's read-only tools ("fetch a web page (web_fetch), read
-// GitHub repositories (repo_read:...), and any read-only MCP tools that are
-// enabled") inside the CAPABILITIES sentence; the library cannot know the
-// host's toolset, so that enumeration is dropped. Everything else is
-// verbatim.
+// subagentToolDescription is the model-facing tool description,. deliberate
+// adaptation: the source enumerated its own application's read-only tools
+// ("fetch a web page (web_fetch), read GitHub repositories (repo_read:...),
+// and any read-only MCP tools that are enabled") inside the CAPABILITIES
+// sentence; the library cannot know the host's toolset, so that enumeration
+// is dropped. Everything else is verbatim.
 const subagentToolDescription = "Launch a sub-agent: an autonomous helper that runs its own agentic loop in a separate, " +
 	"throwaway context and reports back only its final answer. " +
 	"WHAT IT'S FOR: offload a focused, self-contained, read-only task so all the intermediate work -- many tool " +
@@ -102,8 +101,7 @@ var subagentSchema = json.RawMessage(`{
 
 // Subagent activity kinds delivered to SubagentConfig.OnActivity while a
 // run_subagent call executes, so a host can show what the otherwise silent
-// sub-agent is doing instead of an opaque, indefinite "running" state. They
-// are transient telemetry only: never fed back into any model's context.
+// sub-agent is doing instead of an opaque, indefinite "running" state.
 const (
 	SubagentActivityTurn       = "turn"        // a new sub-agent turn began
 	SubagentActivityToolCall   = "tool_call"   // the sub-agent invoked a tool
@@ -114,11 +112,7 @@ const (
 	SubagentActivityTurnEnd = "turn_end"
 )
 
-// SubagentActivity is progress step from a running sub-agent. CallID is
-// the parent run_subagent tool call's ID, so a host can attach each step to
-// the right tool block. Detail is a whitespace-flattened preview capped at
-// runes (an argument preview for tool_call, a result preview for
-// tool_result).
+// SubagentActivity is progress step from a running sub-agent.
 type SubagentActivity struct {
 	CallID string
 	Kind   string // of the SubagentActivity* constants
@@ -202,12 +196,12 @@ func grantableToolNames(tools []agentic.ToolDecl) []string {
 
 // advertisedSchema returns the run_subagent parameter schema with
 // allowed_tools specialised to this turn's grantable toolset: its description
-// lists the available tools (flagging the ones that modify state) and its
-// items carry an enum of their exact names, so the model is both told and
-// constrained to the valid names. With no grantable tools it returns the
-// static schema unchanged (allowed_tools is then inert). The map round-trip
-// keeps the static schema literal the single source of truth; any defensive
-// fall-through returns it intact.
+// lists the available tools ( the ones that modify state) and its items carry
+// an enum of their exact names, so the model is both told and constrained to
+// the valid names. With no grantable tools it returns the static schema
+// unchanged (allowed_tools is then inert). The map round-trip keeps the
+// static schema literal the source of truth; any defensive fall-through
+// returns it intact.
 func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessage {
 	if len(tools) == 0 {
 		return subagentSchema

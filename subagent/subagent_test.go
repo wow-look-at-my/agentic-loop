@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- local test scaffolding (ported from the agentic package's tests) ---
+// --- local test scaffolding (
 
 // scriptStep is scripted provider response.
 type scriptStep struct {
@@ -453,7 +453,7 @@ func TestSubagentActivityTelemetry(t *testing.T) {
 	assert.Equal(t, longOut, acts[3].Content, "Content carries the WHOLE tool output, uncapped")
 	assert.Equal(t, SubagentActivity{CallID: "call-7", Kind: SubagentActivityTurn, Turn: 2}, acts[4])
 	// The sub-agent's own words for the turn, so a host can show what it said
-	// and not just which files it touched.
+	// and not which files it touched.
 	assert.Equal(t, SubagentActivity{
 		CallID: "call-7", Kind: SubagentActivityText, Turn: 2, Detail: "report", Content: "report",
 	}, acts[5])

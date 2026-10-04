@@ -17,10 +17,10 @@ const (
 	elapsedInstant    = "<1sec"
 )
 
-// ElapsedTime, on Config, states the clock and the gap since the previous
-// request on EVERY model call. The notice rides that request: a stored lies.
+// ElapsedTime, on Config, states the clock and the gap since the request on
+// EVERY model call. The notice rides that request: a stored lies.
 type ElapsedTime struct {
-	// Since is when the previous request was made; states the time alone.
+	// Since is when the request was made; states the time alone.
 	Since time.Time
 
 	// Now is the clock; nil is time.Now.

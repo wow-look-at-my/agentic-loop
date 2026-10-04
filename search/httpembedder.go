@@ -12,12 +12,6 @@ import (
 )
 
 // HTTPEmbedder calls an OpenAI-compatible POST /v1/embeddings endpoint.
-//
-// It ships with the package because an index that needs every host to write
-// its own HTTP client before the semantic half does anything is a feature
-// delivered half-built. It follows the same rules as the rest of the module:
-// the endpoint and key are explicit fields, no environment is read, and all
-// I/O goes through an injectable *http.Client.
 type HTTPEmbedder struct {
 	// BaseURL is everything before "/v1" (e.g. "https://api.openai.com").
 	BaseURL string

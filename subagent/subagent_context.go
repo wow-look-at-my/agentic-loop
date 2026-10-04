@@ -145,8 +145,8 @@ func generateContextSummary(ctx context.Context, p agentic.Provider, model strin
 }
 
 // composeSubagentTask folds an optional shared-context block into the
-// orchestrator's prompt as a single, clearly delimited task message. With no
-// block it returns the prompt unchanged (the isolated default).
+// orchestrator's prompt as a single, delimited task message. With no block it
+// returns the prompt unchanged (the isolated default).
 func composeSubagentTask(block, prompt string) string {
 	if strings.TrimSpace(block) == "" {
 		return prompt

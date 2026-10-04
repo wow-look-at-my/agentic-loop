@@ -23,9 +23,8 @@ type rateLimit struct {
 
 // classifyRateLimit reports whether a non-2xx response is a rate limit, and
 // what kind. GitHub signals the primary limit with / plus
-// x-ratelimit-remaining: (x-ratelimit-reset carries the epoch it
-// refills), and the secondary limit with a retry-after header or a message
-// naming it.
+// x-ratelimit-remaining: (x-ratelimit-reset carries the epoch it refills),
+// and the secondary limit with a retry-after header or a message naming it.
 func classifyRateLimit(res GHResponse, now time.Time) (rateLimit, bool) {
 	if res.status != http.StatusForbidden && res.status != http.StatusTooManyRequests {
 		return rateLimit{}, false

@@ -45,8 +45,8 @@ func EncodeRequest(w io.Writer, req Request) error {
 }
 
 // EncodeConversation writes a stored conversation: an id plus the same body a
-// request has, which is what a session actually is -- the defaults and the
-// transcript a next turn will be appended to.
+// request has, which is what a session is -- the defaults and the transcript
+// a next turn will be appended to.
 func EncodeConversation(w io.Writer, id string, req Request) error {
 	x := newWriter(w)
 	attrs := append([]attr{{name: "id", value: id}}, requestAttrs(req)...)

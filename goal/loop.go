@@ -9,9 +9,7 @@ import (
 // DirectiveKind is the Message.Kind a blocked stop's directive carries.
 const DirectiveKind = "goal_directive"
 
-// StopListener is goal mode wired to a run: asked at every stop boundary, and a
-// blocked stop queues the directive, which takes the loop round again IN PLACE.
-// Depth: docs/goal.md.
+// StopListener is goal mode wired to a run: asked at every stop boundary.
 type StopListener struct {
 	// Evaluator decides; a nil State permits the stop.
 	Evaluator *Evaluator
@@ -22,7 +20,7 @@ type StopListener struct {
 }
 
 // Attach subscribes the listener to a run's stop boundary. ctx is the RUN's
-// context, which is what makes cancellation win, and msgs must be the queue the
+// context, which is what makes cancellation win.
 func (l *StopListener) Attach(ctx context.Context, events *agentic.Events, msgs *agentic.MessageQueue) {
 	l.cb = func(agentic.StopEvent) error {
 		l.evaluate(ctx, msgs)
@@ -31,9 +29,9 @@ func (l *StopListener) Attach(ctx context.Context, events *agentic.Events, msgs 
 	events.OnStop.Subscribe(&l.cb)
 }
 
-// evaluate runs the policy and queues the directive when the stop is refused. It
-// never fails the run: an error out of an OnStop listener loses the answer the
-// model just wrote, and goal mode's failure direction is open.
+// evaluate runs the policy and queues the directive when the stop is refused.
+// It never fails the run: an error out of an OnStop listener loses the answer
+// the model wrote, and goal mode's failure direction is open.
 func (l *StopListener) evaluate(ctx context.Context, msgs *agentic.MessageQueue) {
 	if l.Evaluator == nil {
 		return

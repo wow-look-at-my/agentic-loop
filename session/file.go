@@ -121,8 +121,7 @@ func (f *File) Revisions() (map[string]string, error) {
 	for _, id := range ids {
 		info, err := os.Stat(f.path(id))
 		if err != nil {
-			// The document was deleted between the listing and the stat. It is
-			// simply not there any more, which the caller learns from its
+			// The document. It is not there any more, which the caller learns from its
 			// absence here.
 			if os.IsNotExist(err) {
 				continue

@@ -193,9 +193,9 @@ func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int6
 	return c, nil
 }
 
-// formatStatus renders both CI mechanisms as report. A check-runs failure
-// is noted, not fatal — a token can read the legacy status and lack Checks API
-// access (or vice versa), and a partial answer beats none.
+// formatStatus renders both CI mechanisms as report. A check-runs failure is
+// noted, not fatal — a token can read the status and lack Checks API access
+// (or vice versa), and a partial answer beats none.
 func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote, actions, actionsNote string, details map[int64]ghCheckRun, undetailed []string) string {
 	sha := combined.SHA
 	if sha == "" {

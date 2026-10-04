@@ -153,10 +153,9 @@ func TestExplainFailureDistinguishesTheDenialModes(t *testing.T) {
 	assert.NotContains(t, denied, "does not exist", "a 403 is not evidence about existence")
 }
 
-// A means GitHub rejected the credential itself — the previous message
-// ("the tokens are valid but lack access") said the opposite of what a
-// means, since a (not a) is what GitHub sends for a valid-but-scoped
-// token.
+// A means GitHub rejected the credential itself — the message ("the tokens
+// are valid but lack access") said the opposite of what a means, since a (not
+// a) is what GitHub sends for a valid-but-scoped token.
 func TestExplainFailure401RejectsTheCredentialNotJustAccess(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	res := GHResponse{
@@ -172,8 +171,8 @@ func TestExplainFailure401RejectsTheCredentialNotJustAccess(t *testing.T) {
 }
 
 // GitHub does not expose any signal distinguishing an expired token from a
-// revoked or simply wrong on a — the message must say so rather than
-// invent a distinction the API does not make.
+// revoked or wrong on a — the message must say so rather than invent a
+// distinction the API does not make.
 func TestExplainFailure401WithNoBodySaysNothingItCannotKnow(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	res := GHResponse{status: http.StatusUnauthorized, header: http.Header{}}
@@ -290,8 +289,8 @@ func TestTokenExpiryDetailReportsAnAlreadyExpiredToken(t *testing.T) {
 }
 
 // The expiry advisory rides the SAME response that explained the denial —
-// GitHub identified the credential to answer a, so its expiration header
-// is meaningful there, not just on a bare 2xx.
+// GitHub identified the credential to answer a, so its expiration header is
+// meaningful there, not on a bare 2xx.
 func TestExplainFailure403AppendsExpiryAdvisoryAlongsideThePermissionDetail(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	h := http.Header{}
@@ -306,11 +305,11 @@ func TestExplainFailure403AppendsExpiryAdvisoryAlongsideThePermissionDetail(t *t
 }
 
 // When BOTH the token and the anonymous attempt are rate-limited, the token's
-// must be the reported. Before the fix both ranked, so the last
-// attempt (anonymous) won by virtue of running last, and the caller was told
-// "this was the unauthenticated (anonymous) request" when a PAT had actually
-// been tried and hit the same wall. A caller with valid PATs must never be
-// told it ran without.
+// must be the reported. Before the fix both ranked, so the last attempt
+// (anonymous) won by virtue of running last, and the caller was told "this
+// was the unauthenticated (anonymous) request" when a PAT had been tried and
+// hit the same wall. A caller with valid PATs must never be told it ran
+// without.
 func TestFailureRankTokenRateLimitOutranksAnonymousRateLimit(t *testing.T) {
 	limited := GHResponse{
 		status: http.StatusForbidden,

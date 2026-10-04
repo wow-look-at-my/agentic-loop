@@ -6,10 +6,6 @@ import "context"
 // block, or a block a built-in tool produces for its host. The field names are
 // MCP's, and the json tags are the wire shape a host persists and ships to its
 // own front end.
-//
-// It exists so a result can carry an image, a file, or a rendered artifact
-// WITHOUT that content re-entering the model's context: the model is fed
-// ToolResult.Content and nothing else.
 type ToolContentPart struct {
 	// Type is the MCP block type -- "text", "image", "audio", "resource_link", "resource".
 	Type string `json:"type"`

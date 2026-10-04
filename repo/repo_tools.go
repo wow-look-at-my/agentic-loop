@@ -125,7 +125,7 @@ type repoReadArgs struct {
 	Limit       int    `json:"limit,omitempty" jsonschema:"For what=job_log: how many lines to return from offset."`
 }
 
-// repoReadWhatOrder is the single declaration of which reads exist, in order.
+// repoReadWhatOrder is the declaration of which reads exist, in order.
 var repoReadWhatOrder = []string{"commits", "commit", "prs", "pr", "issues", "issue", "status", "check_run", "job_log"}
 
 // repoReadWhats maps each valid "what" to its implementation.
@@ -144,7 +144,7 @@ var repoReadWhats = map[string]func(*repoTools, context.Context, repoReadArgs) a
 var repoReadWhatList = strings.Join(repoReadWhatOrder, ", ")
 
 // repoReadMovedWhats names the reads that became filesystem operations, so a
-// model still calling them by the old name is redirected rather than told the
+// model still calling them by the name is redirected rather than told the
 // what is merely unknown.
 var repoReadMovedWhats = map[string]string{
 	"tree":      `list_dir on the repository path, e.g. {"path": "/repos/<org>/<repo>/<dir>"}`,
