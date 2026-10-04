@@ -52,7 +52,15 @@ type GitHubConfig struct {
 	Tokens []GitHubToken
 	// WriteTokens is the WRITE list; nil means this client cannot write at all.
 	WriteTokens []GitHubToken
-	// NoAnonymous drops the unauthenticated attempt from every read order.
+	// NoAnonymous drops the unauthenticated attempt from EVERY read order this
+	// client issues, even if the per-call FetchURLOpts/Credentials are passed a
+	// NoAnonymous=false. It is the host's policy knob: a server with at least
+	// one configured PAT must never let a read fall through to an anonymous
+	// request just because every token was refused, since GitHub buckets the
+	// anonymous request by the server's own IP and answers it with a different
+	// (worse) verdict than a token's real failure. Hosts with no credentials
+	// leave it false, and public-repository reads keep working anonymously as
+	// before.
 	NoAnonymous bool
 	Cache       RepoKeyCache
 	// OnRateLimit hears every response's core-quota headers. see rate_limit_headers.go

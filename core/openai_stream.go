@@ -5,26 +5,30 @@ import (
 	"strings"
 )
 
-// oaChunk is SSE delta from a streaming chat completion.
+// oaChunk is one SSE delta from a streaming chat completion.
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
-	// Timings is a llama.cpp/ollama timing snapshot; each replaces the (last wins).
+	// Timings is the llama.cpp-style timing snapshot llama.cpp/ollama attach
+	// to streamed chunks; each occurrence replaces the previous (last wins).
 	Timings *Timings `json:"timings,omitempty"`
-	// PromptProgress is a non-standard prefill-progress update emitted on a choices-less chunk.
+	// PromptProgress is a non-standard prefill-progress update some upstreams
+	// emit before the first token while a long prompt is ingested. It rides a
+	// choices-less chunk.
 	PromptProgress *PromptProgress `json:"prompt_progress,omitempty"`
 }
 
-// oaChoice is choice within a chunk.
+// oaChoice is one choice within a chunk.
 type oaChoice struct {
 	Delta        oaDelta `json:"delta"`
 	FinishReason string  `json:"finish_reason,omitempty"`
 }
 
 // oaDelta is the incremental content of a streaming choice. Reasoning arrives
-// under field names in the wild: reasoning_content (OpenAI/DeepSeek style)
-// and reasoning (Ollama style). ReasoningDetails is OpenRouter's structured
-// form, streamed as fragments keyed by index the same way ToolCalls is.
+// under two field names in the wild: reasoning_content (OpenAI/DeepSeek
+// style) and reasoning (Ollama style). ReasoningDetails is OpenRouter's
+// structured form, streamed as fragments keyed by index the same way
+// ToolCalls is.
 type oaDelta struct {
 	Content          string              `json:"content,omitempty"`
 	ReasoningContent string              `json:"reasoning_content,omitempty"`
@@ -33,6 +37,8 @@ type oaDelta struct {
 	ToolCalls        []oaToolCall        `json:"tool_calls,omitempty"`
 }
 
+// reasoning returns the delta's reasoning text from whichever field the
+// upstream used; reasoning_content wins when both are present.
 func (d oaDelta) reasoning() string {
 	if d.ReasoningContent != "" {
 		return d.ReasoningContent
@@ -40,7 +46,16 @@ func (d oaDelta) reasoning() string {
 	return d.Reasoning
 }
 
-// oaUsage is the wire usage shape; cache fields are pointers so absent != explicit.
+// oaUsage is the wire shape of a usage snapshot, capturing the cache
+// accounting of three dialects: OpenAI/vLLM/OpenRouter report cached tokens
+// under prompt_tokens_details.cached_tokens, DeepSeek reports
+// prompt_cache_hit_tokens, and Anthropic-compatible layers pass through
+// cache_read_input_tokens. The cache fields are pointers so an absent field
+// is distinguishable from an explicit zero (the tri-state contract). The
+// provider-reported dollar figure rides under cost (OpenRouter/Requesty) or
+// estimated_cost (DeepInfra), and reasoning tokens under
+// completion_tokens_details.reasoning_tokens -- all pointers for the same
+// tri-state reason.
 type oaUsage struct {
 	PromptTokens           int                      `json:"prompt_tokens"`
 	CompletionTokens       int                      `json:"completion_tokens"`
@@ -58,7 +73,8 @@ type oaPromptTokensDetails struct {
 	CachedTokens *int `json:"cached_tokens"`
 }
 
-// oaCompletionTokenDetail is the completion-token breakdown; reasoning_tokens is the only field read.
+// oaCompletionTokenDetail is the OpenAI breakdown of completion tokens; the
+// reasoning_tokens figure is the only field the library reads.
 type oaCompletionTokenDetail struct {
 	ReasoningTokens *int `json:"reasoning_tokens"`
 }
@@ -89,7 +105,7 @@ func (u *oaUsage) costUsd() *float64 {
 // toUsage normalizes a wire snapshot: the largest cache signal present wins
 // (the dialects are mutually exclusive in practice) and lands in
 // CacheReadTokens; when any cache info was reported, CacheWriteTokens is an
-// explicit -- OpenAI-compatible servers neither report nor bill a separate
+// explicit 0 -- OpenAI-compatible servers neither report nor bill a separate
 // cache-write class -- while a snapshot with no cache fields at all leaves
 // both nil (unknown). prompt_tokens already includes cached tokens on this
 // layer, so PromptTokens passes through untouched.
@@ -120,7 +136,9 @@ func (u *oaUsage) toUsage() Usage {
 	return out
 }
 
-// toolCallAccumulator reassembles tool calls by index; delta has id/name, rest append args.
+// toolCallAccumulator reassembles tool calls that arrive in fragments across
+// streaming deltas. OpenAI streams tool calls by index: the first delta for
+// an index carries id/name, and subsequent deltas append argument fragments.
 type toolCallAccumulator struct {
 	byIndex map[int]*oaToolCall
 	order   []int
@@ -153,7 +171,8 @@ func (a *toolCallAccumulator) add(deltas []oaToolCall) {
 	}
 }
 
-// finish returns the assembled calls in the order their indices appeared.
+// finish returns the assembled calls in the order their indices first
+// appeared.
 func (a *toolCallAccumulator) finish() []ToolCall {
 	out := make([]ToolCall, 0, len(a.order))
 	for _, idx := range a.order {
@@ -216,7 +235,7 @@ func (a *reasoningDetailAccumulator) finish() []oaReasoningDetail {
 	return out
 }
 
-// oaStream accumulates streamed completion.
+// oaStream accumulates one streamed completion.
 type oaStream struct {
 	ev               *StreamEvents
 	content          strings.Builder
@@ -227,11 +246,12 @@ type oaStream struct {
 	usages           []Usage
 	timings          []Timings
 	sawData          bool
-	// sentParts counts parts already delivered via OnPart; the rest goes out at the end.
+	// sentParts counts the parts already delivered through OnPart, so the
+	// remainder can go out at the end without any part going twice.
 	sentParts int
 }
 
-// closeReasoning delivers the reasoning block it can no longer grow.
+// closeReasoning delivers the reasoning block once it can no longer grow.
 func (st *oaStream) closeReasoning() error {
 	if st.sentParts > 0 || st.reason.Len() == 0 {
 		return nil
@@ -240,9 +260,9 @@ func (st *oaStream) closeReasoning() error {
 	return st.ev.EmitPart(ThinkingPart{Text: st.reason.String()})
 }
 
-// emitRemaining delivers the parts that only exist the stream is over:
+// emitRemaining delivers the parts that only exist once the stream is over:
 // the accumulated text, and the tool calls, which arrive as fragments keyed by
-// index and are not a call until the last lands.
+// index and are not a call until the last one lands.
 func (st *oaStream) emitRemaining(comp *Completion) error {
 	parts := comp.Message.EffectiveParts()
 	if st.sentParts > len(parts) {
@@ -255,7 +275,12 @@ func (st *oaStream) emitRemaining(comp *Completion) error {
 	return nil
 }
 
-// onData decodes payload; unparseable chunks ignored, usage newest-wins, timings replace.
+// onData decodes one SSE payload. Unparseable chunks are tolerated silently;
+// a prompt_progress chunk is forwarded and carries nothing else; usage
+// snapshots are merged newest-wins (never summed) so both the OpenAI
+// single-final-chunk and the xAI usage-on-every-chunk conventions yield the
+// same result; timings snapshots replace each other. A callback error aborts
+// the stream.
 func (st *oaStream) onData(data []byte) error {
 	var chunk oaChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
@@ -267,7 +292,9 @@ func (st *oaStream) onData(data []byte) error {
 	}
 	if chunk.Usage != nil {
 		st.sawData = true
-		// Every usage report is kept in order as sent; which counts is the reader's call, not ours.
+		// Every report is kept, in order, exactly as sent: which of them
+		// counts -- and whether they are snapshots of one running total or
+		// separate charges -- is the reader's call, not a translator's.
 		u := chunk.Usage.toUsage()
 		var raw struct {
 			Usage json.RawMessage `json:"usage"`
@@ -293,7 +320,10 @@ func (st *oaStream) onData(data []byte) error {
 	for _, ch := range chunk.Choices {
 		if ch.Delta.Content != "" {
 			st.sawData = true
-			// Reasoning and content are separate streams; content starting IS when the reasoning block ends.
+			// Reasoning and content are two separate streams on this layer,
+			// reasoning first, so content starting IS the reasoning block
+			// ending -- the last moment its part can be delivered in the order
+			// it actually occupies.
 			if err := st.closeReasoning(); err != nil {
 				return err
 			}
@@ -327,7 +357,7 @@ func (st *oaStream) onData(data []byte) error {
 
 // completion assembles the final (or partial) result: accumulated content,
 // reasoning as a single ThinkingBlock (its Signature carrying the verbatim
-// reasoning_details array when the upstream sent), assembled tool calls,
+// reasoning_details array when the upstream sent one), assembled tool calls,
 // the merged usage with the total floored at prompt+completion (a genuine
 // surplus -- reasoning tokens -- is preserved), the last timings snapshot
 // (nil when the upstream reported none), and the normalized stop reason.

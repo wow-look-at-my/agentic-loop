@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// anEvent is decoded Messages API stream event; the payload's type field
+// anEvent is one decoded Messages API stream event; the payload's type field
 // discriminates, so the SSE event name is not needed.
 type anEvent struct {
 	Type         string          `json:"type"`
@@ -29,7 +29,9 @@ type anContentBlock struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Text is the block's starting text; streamed blocks fill it by delta, replayed ones carry it.
+	// Text is the block's starting text. A streamed text block opens empty and
+	// fills by delta, but a block replayed from a non-streaming response
+	// carries it here.
 	Text      string `json:"text"`
 	Thinking  string `json:"thinking"`
 	Signature string `json:"signature"`
@@ -50,7 +52,7 @@ type anDelta struct {
 
 // anUsage is the wire usage of message_start / message_delta. input_tokens
 // EXCLUDES cached tokens on this dialect; the cache fields are pointers so an
-// absent field is distinguishable from an explicit.
+// absent field is distinguishable from an explicit zero.
 type anUsage struct {
 	InputTokens              int  `json:"input_tokens"`
 	OutputTokens             *int `json:"output_tokens"`
@@ -58,14 +60,16 @@ type anUsage struct {
 	CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
 }
 
-// anError is an error event's payload; Type keys the error table, message in the APIError body.
+// anError is the payload of an error event; Type discriminates against the
+// documented error-type table (the human-readable message stays in the raw
+// event JSON, which becomes the APIError body).
 type anError struct {
 	Type string `json:"type"`
 }
 
 // anthropicErrorStatus maps a stream error event's error type onto the HTTP
 // status Anthropic documents for it, so an in-stream error classifies for
-// retry exactly like its non-2xx counterpart. Unrecognized types map to:
+// retry exactly like its non-2xx counterpart. Unrecognized types map to 500:
 // an unknown in-stream failure is a server-side abort, and treating it as
 // transient is the safe default.
 func anthropicErrorStatus(errType string) int {
@@ -90,7 +94,7 @@ func anthropicErrorStatus(errType string) int {
 	return 500
 }
 
-// anBlock accumulates content block across start/delta/stop events.
+// anBlock accumulates one content block across start/delta/stop events.
 type anBlock struct {
 	typ       string
 	id        string
@@ -102,7 +106,7 @@ type anBlock struct {
 	data      string
 }
 
-// part renders content block as the part it is, or nil when the block
+// part renders one content block as the part it is, or nil when the block
 // carried nothing worth keeping.
 func (b *anBlock) part() Part {
 	switch b.typ {
@@ -120,10 +124,15 @@ func (b *anBlock) part() Part {
 	return nil
 }
 
-// anStream accumulates streamed Messages API response.
+// anStream accumulates one streamed Messages API response.
 type anStream struct {
 	ev *StreamEvents
-	// blocks+order preserve the content-block sequence; a mid-stream cut still yields its partial.
+	// blocks and order together preserve what this layer actually sends: a
+	// numbered sequence of content blocks, which is why a reply whose text
+	// brackets a thinking block reads the way the model wrote it. A finished
+	// block is delivered through OnPart as it stops, and the final parts are
+	// built from all of them -- so a stream cut mid-block still yields the
+	// partial block it was filling, which OnPart never announced.
 	blocks map[int]*anBlock
 	order  []int
 	stop   string
@@ -137,7 +146,11 @@ type anStream struct {
 	sawData bool
 }
 
-// blockFor opens the block at index if none announced; a blockless delta's text is still kept.
+// blockFor returns the block at index, opening one of the given type if no
+// content_block_start announced it. A delta with no block is malformed, but
+// the text in it is still what the model said, and a message assembled from
+// blocks would otherwise drop it silently -- a wrong answer that reads like a
+// right one.
 func (st *anStream) blockFor(index int, typ string) *anBlock {
 	if b := st.blocks[index]; b != nil {
 		return b
@@ -148,7 +161,7 @@ func (st *anStream) blockFor(index int, typ string) *anBlock {
 	return b
 }
 
-// onData decodes stream payload. Unparseable payloads are tolerated
+// onData decodes one stream payload. Unparseable payloads are tolerated
 // silently; ping events are ignored; an error event aborts the stream with
 // the server's message.
 func (st *anStream) onData(data []byte) error {
@@ -211,7 +224,10 @@ func (st *anStream) onData(data []byte) error {
 		}
 	case "content_block_stop":
 		st.sawData = true
-		// The finished block is the only with everything; a thinking signature arrives after its text.
+		// The block is finished, which is the only moment it carries
+		// everything that goes on its element -- a thinking block's signature
+		// arrives after its text, and the blocks are the order the message is
+		// in.
 		if b := st.blocks[msg.Index]; b != nil {
 			if p := b.part(); p != nil {
 				return st.ev.EmitPart(p)
@@ -231,7 +247,14 @@ func (st *anStream) onData(data []byte) error {
 	case "message_stop":
 		st.sawData = true
 	case "error":
-		// In-stream error events map to *APIError like non-2xx; not sawData, so error- stays retryable.
+		// The Messages API can reject or abort a request in-stream: an HTTP
+		// 200 whose stream carries an error event (overloaded_error arrives
+		// this way). Map the event onto the same *APIError a non-2xx response
+		// produces -- status from the documented error-type table, body = the
+		// raw event JSON -- so retry classification (IsTransient) and overflow
+		// detection work identically on both delivery paths. Deliberately not
+		// marked as sawData: when the error is the first thing on the stream,
+		// the call stays retryable.
 		errType := ""
 		if msg.Error != nil {
 			errType = msg.Error.Type
@@ -267,7 +290,7 @@ func (st *anStream) currentUsage() Usage {
 	return u
 }
 
-// completion assembles the final (or partial) result from every block, the
+// completion assembles the final (or partial) result from every block, the one
 // cut off mid-stream included: what a block accumulated before the connection
 // dropped is output the caller already watched arrive. A missing stop_reason
 // falls back to tool_use when calls were
@@ -300,7 +323,12 @@ func (st *anStream) completion() *Completion {
 	msg.SyncViews()
 	comp := &Completion{Message: msg, StopReason: stop, Streamed: true}
 	if st.haveUsage {
-		// Usage fragments (input+cache at start, output at delta) join into; Raw is the wire shape.
+		// The usage report arrives in fragments -- input and cache
+		// counts on message_start, output tokens on message_delta -- so the
+		// assembled report is one entry, not one per event. Raw is the
+		// wire-shaped object a non-streaming response would have carried
+		// (input_tokens excludes cached tokens; the cache fields ride as
+		// siblings).
 		u := st.currentUsage()
 		u.Raw = anRawUsageJSON(st.inputTokens, st.outputTokens, st.cacheRead, st.cacheWrite)
 		comp.Usages = []Usage{u}
