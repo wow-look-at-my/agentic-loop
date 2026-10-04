@@ -208,6 +208,20 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				return res, fmt.Errorf("%w: %d identical turns in a row", ErrStuck, repeats)
 			}
 
+			// The host may replace the batch. The turn records the replacement, so the model's next request asks about what ran.
+			expanded, berr := cfg.Events.emitToolBatch(calls)
+			if berr != nil {
+				cleared := assistant
+				cleared.ToolCalls = nil
+				transcript = append(transcript, cleared)
+				res.Messages = transcript
+				res.Final = cleared
+				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: cleared, Status: "cancelled"})
+				return res, berr
+			}
+			calls = expanded
+			assistant.ToolCalls = calls
+
 			transcript = append(transcript, assistant)
 			aIdx := len(transcript) - 1
 			// Finalize the assistant as complete with its tool calls before executing them.

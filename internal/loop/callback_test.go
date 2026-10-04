@@ -144,6 +144,60 @@ func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
 	assert.Equal(t, "c1", res.Messages[2].ToolCallID, "the result still answers the id the model minted")
 }
 
+// A host replaces one call with several. The turn records the replacement, each
+// runs, and each result answers its own id, so the next request is consistent.
+func TestRunOnToolBatchReplacesWhatTheTurnRecords(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{
+		{comp: assistantComp("", ToolCall{ID: "c1", Name: "bash", Arguments: `{"command":"sed -n 1p a && sed -n 2p b"}`})},
+		{comp: assistantComp("done")},
+	}}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "bash"}, {Name: "read_file", Readonly: true}}}
+	events := Events{}
+	keep(t, &events.OnToolBatch, func(ev ToolBatchEvent) error {
+		*ev.Calls = []ToolCall{
+			{ID: "c1_1", Name: "read_file", Arguments: `{"path":"/w/a","offset":1,"limit":1}`},
+			{ID: "c1_2", Name: "read_file", Arguments: `{"path":"/w/b","offset":2,"limit":1}`},
+		}
+		return nil
+	})
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
+
+	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	require.NoError(t, err)
+
+	require.Len(t, exec.executed, 2)
+	assistant := res.Messages[1]
+	require.Len(t, assistant.ToolCalls, 2, "the turn records the replacement")
+	assert.Equal(t, "read_file", assistant.ToolCalls[0].Name)
+	assert.Equal(t, "c1_1", res.Messages[2].ToolCallID)
+	assert.Equal(t, "c1_2", res.Messages[3].ToolCallID)
+	require.Len(t, provider.reqs, 2)
+	assert.Len(t, provider.reqs[1].Messages, 4, "the next request carries the user turn, the calls and both results")
+}
+
+func TestRunOnToolBatchRefusesACallNoResultCanAnswer(t *testing.T) {
+	for name, batch := range map[string][]ToolCall{
+		"empty":    {},
+		"no id":    {{Name: "read_file", Arguments: "{}"}},
+		"repeated": {{ID: "x", Name: "read_file"}, {ID: "x", Name: "read_file"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			provider := &scriptProvider{steps: []scriptStep{
+				{comp: assistantComp("", ToolCall{ID: "c1", Name: "bash", Arguments: "{}"})},
+			}}
+			exec := &fakeExec{tools: []ToolDecl{{Name: "bash"}, {Name: "read_file", Readonly: true}}}
+			events := Events{}
+			keep(t, &events.OnToolBatch, func(ev ToolBatchEvent) error { *ev.Calls = batch; return nil })
+			cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
+
+			res, err := Run(context.Background(), cfg, Request{Model: "m"})
+			require.Error(t, err)
+			assert.Empty(t, exec.executed)
+			assert.Nil(t, res.Final.ToolCalls, "no call nothing answers survives into the transcript")
+		})
+	}
+}
+
 // A rewritten id must never become the id the tool result answers: the
 // transcript's assistant message carries the model's, and a mismatch is an
 // orphan tool call no upstream will replay.
