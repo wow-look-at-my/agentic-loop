@@ -28,13 +28,6 @@ const BriefingKind = "goal_briefing"
 const MaxCondition = 4000
 
 // State is the active goal; the counters are its bound. See docs/goal.md.
-//
-// Persisting it is the HOST's, and there is deliberately no Encode/Decode here:
-// a library that ships a storage format decides what a row in somebody else's
-// database holds, which is backwards. The fields are plain and exported so a
-// host can map them onto its own columns, key-value rows, or file. The json
-// tags are what a host maps BY, so an unset SetAt is omitzero rather than the
-// year a time otherwise writes into a column that means "no goal".
 type State struct {
 	Condition string    `json:"condition"`
 	SetAt     time.Time `json:"set_at,omitzero"`
@@ -42,7 +35,7 @@ type State struct {
 	Scope string `json:"scope,omitempty"`
 	// Iterations is how many stops have been evaluated so far.
 	Iterations int `json:"iterations"`
-	// LastReason is the previous block's reason; ReasonRun counts it running.
+	// LastReason is the block's reason; ReasonRun counts it running.
 	LastReason string `json:"last_reason,omitempty"`
 	ReasonRun  int    `json:"reason_run,omitempty"`
 	// Suspended is set by an honest failure to evaluate; it blocks nothing.

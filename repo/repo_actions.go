@@ -91,16 +91,16 @@ func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (s
 		b.WriteString(e.jobsReport(ctx, org, repo, run))
 	}
 	// The listing is capped, and a cap that does not say so reads as the whole
-	// set of runs this commit produced.
+	// set of runs.
 	if runs.TotalCount > len(runs.WorkflowRuns) {
 		fmt.Fprintf(&b, "  (%d of %d runs shown)\n", len(runs.WorkflowRuns), runs.TotalCount)
 	}
 	return strings.TrimRight(b.String(), "\n"), ""
 }
 
-// jobsReport renders run's jobs, indented under it: every job's verdict,
-// and for a failed the steps that failed inside it — the line a reader is
-// actually after.
+// jobsReport renders run's jobs, indented under it: every job's verdict, and
+// for a failed the steps that failed inside it — the line a reader is
+// after.
 func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWorkflowRun) string {
 	target := fmt.Sprintf("%s/actions/runs/%d/jobs?per_page=%d", e.gh.RepoURL(org, repo), run.ID, actionsJobLimit)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")

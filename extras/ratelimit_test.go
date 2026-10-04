@@ -1,10 +1,9 @@
 // ratelimit_test.go pins the fixed-rate limiter and its transport wrapper:
 // request starts are spaced at least interval apart (so n per minute is a
-// hard ceiling), the caller is admitted immediately, a slow previous
-// call lets the gate catch up instead of blocking forever, context
-// cancellation aborts a wait, and the transport gates every request it
-// forwards. All timing is injected (a fake clock), so the suite is hermetic
-// and fast.
+// hard ceiling), the caller is admitted immediately, a slow previous call
+// lets the gate catch up instead of blocking forever, context cancellation
+// aborts a wait, and the transport gates every request it forwards. All
+// timing is injected (a fake clock), so the suite is hermetic and fast.
 package extras
 
 import (
@@ -105,8 +104,8 @@ func TestRateLimiterCatchUpAfterSlowCall(t *testing.T) {
 
 func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
-	// An injected sleep that actually honors ctx, standing in for the real
-	// context-aware timer.
+	// An injected sleep that honors ctx, standing in for the real context-aware
+	// timer.
 	l := &RateLimiter{
 		interval: 10 * time.Millisecond,
 		now:      clock.current,

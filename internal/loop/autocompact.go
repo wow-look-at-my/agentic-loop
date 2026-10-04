@@ -1,6 +1,37 @@
 package loop
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+// resolveContextWindow fills Config.ContextWindow from the provider's model list when the host left it unset, and
+// reports the window the run will compact against. A run that does not auto-compact asks nothing.
+func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
+	if req.AutoCompact <= 0 {
+		return
+	}
+	if cfg.ContextWindow > 0 {
+		cfg.Events.emitContextWindow(ContextWindowEvent{Window: cfg.ContextWindow})
+		return
+	}
+	l, ok, err := ModelLimitsOf(ctx, cfg.Provider, req.Model)
+	switch {
+	case !ok:
+		err = errors.New("agentic: no Config.ContextWindow, and the provider has no model list to read one from")
+	case err != nil:
+		err = fmt.Errorf("agentic: reading the context window for %q: %w", req.Model, err)
+	case l.ContextWindow <= 0:
+		err = fmt.Errorf("agentic: the model list publishes no context window for %q", req.Model)
+	}
+	if err != nil {
+		cfg.Events.emitContextWindow(ContextWindowEvent{Err: err})
+		return
+	}
+	cfg.ContextWindow = l.ContextWindow
+	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true})
+}
 
 // compactHere summarizes the transcript when the last turn reached the AutoCompact
 // fraction, returning the replacement and whether it replaced anything. A failure

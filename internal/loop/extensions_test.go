@@ -33,7 +33,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 		req.Messages = append(append([]Message{}, req.Messages...), msg)
 		return nil
 	}
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -80,7 +80,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 		errs = append(errs, err)
 		return nil
 	}
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -106,9 +106,9 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 // "cancelled" when its error is a context cancellation, matching the
 // classification the mid-stream partial-completion path already applies.
 // Before the fix, a nil completion always finalized "error" regardless of
-// cause, so an outbound call torn down before it streamed a single byte
-// (e.g. "openai: Post...: context canceled") persisted as a permanent
-// failure instead of the graceful cancellation it actually was.
+// cause, so an outbound call torn down before it streamed a single byte (e.g.
+// "openai: Post...: context canceled") persisted as a permanent failure
+// instead of the graceful cancellation it was.
 func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 	cases := []struct {
 		name string
@@ -128,7 +128,7 @@ func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 				statuses = append(statuses, ev.Status)
 				return nil
 			}
-			events.OnFinalizeAssistant.Subscribe(&finalizeCb)
+			keep(t, &events.OnFinalizeAssistant, finalizeCb)
 			cfg := Config{Provider: provider, Events: &events}
 			_, err := Run(context.Background(), cfg, Request{
 				Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
@@ -147,7 +147,7 @@ func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 	}}
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { return sentinel }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -168,7 +168,7 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 	}}
 	events := Events{}
 	turnEndCb := func(ev TurnEndEvent) error { return sentinel }
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
@@ -195,8 +195,8 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
 	turnEndCb := func(ev TurnEndEvent) error { ends = append(ends, ev.Turn); return nil }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
-	events.OnTurnEnd.Subscribe(&turnEndCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
+	keep(t, &events.OnTurnEnd, turnEndCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),
@@ -207,7 +207,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
-	// Turn stalled, so the wrap-up is turn, not the old maxTurns+.
+	// Turn stalled, so the wrap-up is turn, not the maxTurns+.
 	assert.Equal(t, []int{1, 2}, begins)
 	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)
@@ -223,7 +223,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 	var internal, begins []int
 	events := Events{}
 	turnBeginCb := func(ev TurnBeginEvent) error { begins = append(begins, ev.Turn); return nil }
-	events.OnTurnBegin.Subscribe(&turnBeginCb)
+	keep(t, &events.OnTurnBegin, turnBeginCb)
 	cfg := Config{
 		Provider: provider,
 		Tools:    exec.registry(),

@@ -110,9 +110,9 @@ func TestRepoJobLogFailureExplainsItself(t *testing.T) {
 }
 
 // GitHub 404s the logs endpoint for a job that has not finished -- the log is
-// not archived to storage yet -- and that looks identical on the wire to a job
-// no token can see. The tool must tell them apart rather than call a job that
-// is simply still running "gone".
+// not archived to storage yet -- and that looks identical on the wire to a
+// job no token can see. The tool must tell them apart rather than call a job
+// that is still running "gone".
 func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -133,9 +133,9 @@ func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 }
 
 // A job GitHub reports as genuinely completed, whose log 404s anyway, must
-// NOT blame the tokens: the status re-read just proved the job exists and
-// these tokens can see it, so "none of those tokens can see it" would
-// contradict a read that just succeeded. The log itself is what is missing.
+// NOT blame the tokens: the status re-read proved the job exists and these
+// tokens can see it, so "none of those tokens can see it" would contradict a
+// read that succeeded. The log itself is what is missing.
 func TestRepoJobLogCompletedJobBlamesTheLogNotTheTokens(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {

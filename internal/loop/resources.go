@@ -18,9 +18,7 @@ const (
 	ResourceRemoved  = "removed"
 )
 
-// ResourceChange is detected change, already recorded by the watcher. It
-// carries no content: everything here is announced to the model, and the
-// before/after bytes stay in storage until mcp_resource_diff asks for them.
+// ResourceChange is detected change, already recorded by the watcher.
 type ResourceChange struct {
 	// ChangeID is the opaque id the model quotes back to mcp_resource_diff.
 	ChangeID string
@@ -59,7 +57,7 @@ type ResourceWatcher interface {
 
 // FormatResourceNotice renders watch pass as the delivered message text.
 // diffTool is the advertised name of the diff tool, quoted so the model calls
-// the name it was actually given rather than the this package assumed.
+// the name it was given rather than the this package assumed.
 func FormatResourceNotice(poll ResourcePoll, diffTool string) string {
 	var b strings.Builder
 	b.WriteString(resourceNoticeHeader)
@@ -117,7 +115,7 @@ func describeResourceChange(c ResourceChange, baseline bool) string {
 }
 
 // resourceTitle renders a change's subject as `"label" (uri, server "name")`,
-// collapsing the label when it is just the URI again.
+// collapsing the label when it is the URI again.
 func resourceTitle(c ResourceChange) string {
 	var b strings.Builder
 	if c.Label != "" && c.Label != c.URI {

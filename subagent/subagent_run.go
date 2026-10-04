@@ -123,7 +123,7 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 	if runErr != nil {
 		return agentic.ToolResult{Content: "sub-agent failed: " + runErr.Error(), IsError: true}, spent
 	}
-	// Not just the final text: a run that ended by emitting a tool-call envelope never answered.
+	// Not the final text: a run that ended by emitting a tool-call envelope never answered.
 	return subagentReport(res.Final.Content), spent
 }
 

@@ -91,8 +91,8 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 }
 
 // todo_add appends exactly task, mints a fresh id, and answers with the new
-// full list both as rendered text and as a todo_list part whose JSON equals the
-// list the host just stored.
+// full list both as rendered text and as a todo_list part whose JSON equals
+// the list the host stored.
 func TestTodoAddAppendsOneTaskAndReturnsTheNewFullList(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -146,7 +146,7 @@ func TestInterleavedMutationsTouchOnlyTheNamedTask(t *testing.T) {
 		res := run(t, byName[TodoAddToolName], jsontest.Must(jsontest.Obj{"title": title}))
 		require.False(t, res.IsError, res.Content)
 	}
-	// Host now holds.. with ids.., all pending.
+	// Host now holds. with ids.., all pending.
 	require.Len(t, rec.got, 4)
 	require.Equal(t, []int{1, 2, 3, 4}, idsOf(rec.got[3]))
 
@@ -183,7 +183,7 @@ func idsOf(todos []Todo) []int {
 }
 
 // Every successful mutation must hand the host a todo_list part whose JSON
-// equals what it just stored, so a host draws exactly what the model edited.
+// equals what it stored, so a host draws exactly what the model edited.
 func TestEverySuccessfulMutationCarriesTheRenderedTextAndTheList(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -403,9 +403,9 @@ func TestEditChangesTitleAndOrState(t *testing.T) {
 }
 
 // A host that keeps the list between runs hands it back, and the tools carry
-// on from it. Without this the list is not merely forgotten: the
-// mutation of the new run persists a list holding only that task, and
-// every task the previous run wrote is gone with nothing reporting a failure.
+// on from it. Without this the list is not merely forgotten: the mutation of
+// the new run persists a list holding only that task, and every task the run
+// wrote is gone with nothing reporting a failure.
 func TestTodoInitialRestoresAListAcrossRuns(t *testing.T) {
 	rec := &recordingTodos{}
 	kept := []Todo{

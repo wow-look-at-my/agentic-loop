@@ -41,7 +41,7 @@ func toolArgs(args string) string {
 	return args
 }
 
-// replayToolArgs is toolArgs for a call sent BACK to a model: arguments that
+// replayToolArgs is toolArgs for a call sent BACK to a model.
 func replayToolArgs(args string) string {
 	s := toolArgs(args)
 	if !json.Valid([]byte(s)) {
@@ -50,9 +50,7 @@ func replayToolArgs(args string) string {
 	return s
 }
 
-// Message is entry in a conversation transcript. Thinking and ToolCalls
-// are meaningful only on assistant messages; ToolCallID and ToolIsError only
-// on tool messages.
+// Message is entry in a conversation transcript.
 type Message struct {
 	Role Role
 	// ID is the host-assigned transcript identifier; never sent upstream, for the host's durable tree.

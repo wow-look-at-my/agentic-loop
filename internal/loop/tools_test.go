@@ -11,7 +11,7 @@ import (
 )
 
 // fakeExec scripts a set of tools for tests: it declares them, records what
-// ran, and hands out the individual Tool values a Config takes.
+// ran, and hands out the Tool values a Config takes.
 type fakeExec struct {
 	tools    []ToolDecl
 	execute  func(ctx context.Context, call ToolCall) (ToolResult, error)

@@ -8,11 +8,6 @@
 // layer's job. It is wired in as an http.RoundTripper on the provider's
 // client, so EVERY request it sends -- its transient-failure retries included,
 // which ride the same client -- passes through the gate.
-//
-// Only request starts are counted. A call that has begun may take as long as
-// it needs, so slow calls never push the average over the limit, and because
-// consecutive starts are at least interval apart, no - window can
-// contain more than the configured number of started requests.
 package extras
 
 import (
@@ -43,8 +38,8 @@ func NewRateLimiter(n int) *RateLimiter {
 
 // Wait blocks until the next request may start, or until ctx is done (it then
 // returns ctx.Err(), which the transport surfaces like any other canceled
-// request). The caller is admitted immediately; each later caller waits
-// until interval has passed since the previous start.
+// request). The caller is admitted immediately; each later caller waits until
+// interval has passed since the start.
 func (l *RateLimiter) Wait(ctx context.Context) error {
 	l.mu.Lock()
 	now := l.now

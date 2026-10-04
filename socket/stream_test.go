@@ -162,7 +162,7 @@ func TestTurnOverridesTheConversationsDefaults(t *testing.T) {
 		Messages: []commonai.Message{commonai.NewMessage(commonai.RoleUser, commonai.TextPart{Text: "two"})},
 	})
 	// A turn that states nothing inherits everything the conversation was
-	// created with -- not the previous turn's overrides.
+	// created with -- not the turn's overrides.
 	turn(commonai.Request{
 		Messages: []commonai.Message{commonai.NewMessage(commonai.RoleUser, commonai.TextPart{Text: "three"})},
 	})

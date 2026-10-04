@@ -27,11 +27,9 @@ type Message struct {
 	CreatedAt string
 }
 
-// Source is the host's conversations, as the index reads them. It is an
-// interface so the index can sit over a directory of XML files, a SQL store,
-// or anything else, and so it can be tested against a corpus in memory.
+// Source is the host's conversations, as the index reads them.
 type Source interface {
-	// Conversations returns every conversation that currently exists, with its revision.
+	// Conversations returns every conversation that exists, with its revision.
 	Conversations(ctx context.Context) ([]Conversation, error)
 	// Messages returns conversation's transcript, in order.
 	Messages(ctx context.Context, conversationID string) ([]Message, error)

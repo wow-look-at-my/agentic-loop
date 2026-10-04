@@ -22,6 +22,7 @@ type responsesProvider struct {
 	userAgent  string
 	store      bool
 	headers    map[string]string
+	models     modelListCache
 }
 
 // respReserved are the Extra keys the typed core always overrides.

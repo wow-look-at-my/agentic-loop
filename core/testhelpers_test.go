@@ -73,7 +73,7 @@ type scriptStep struct {
 	emit func(ev *StreamEvents)
 }
 
-// scriptProvider replays scripted responses and records every request, so a
+// scriptProvider replays scripted responses and records every request.
 type scriptProvider struct {
 	steps []scriptStep
 	reqs  []Request

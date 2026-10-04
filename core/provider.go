@@ -143,9 +143,9 @@ func (r Request) EffectiveSystemParts() []Part {
 	return []Part{TextPart{Text: r.System}}
 }
 
-// ParamsFor is the parameters a dialect should actually send: the
-// dialect-agnostic Extra, overlaid with anything addressed to that dialect
-// specifically. The caller's maps are never modified.
+// ParamsFor is the parameters a dialect should send: the dialect-agnostic
+// Extra, overlaid with anything addressed to that dialect specifically. The
+// caller's maps are never modified.
 func (r Request) ParamsFor(d Dialect) map[string]any {
 	own := r.DialectExtra[d]
 	if len(own) == 0 {

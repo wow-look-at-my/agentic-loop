@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -83,7 +84,7 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 		compactionMessages = ev.Messages
 		return nil
 	}
-	events.OnCompaction.Subscribe(&compactionCb)
+	keep(t, &events.OnCompaction, compactionCb)
 	cfg := Config{
 		Provider:      provider,
 		Tools:         exec.registry(),
@@ -166,13 +167,13 @@ func TestRunAutoCompactAttachesTheNextTurnToTheStoredSummary(t *testing.T) {
 		*ev.ID = "stored-summary-row"
 		return nil
 	}
-	events.OnCompaction.Subscribe(&compactionCb)
+	keep(t, &events.OnCompaction, compactionCb)
 	var parents []MessageID
 	mintCb := func(ev AssistantMessageEvent) error {
 		parents = append(parents, ev.ParentID)
 		return nil
 	}
-	events.OnAssistantMessage.Subscribe(&mintCb)
+	keep(t, &events.OnAssistantMessage, mintCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll,
 		Events: &events, ContextWindow: 10000}
 	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
@@ -194,7 +195,7 @@ func TestRunAutoCompactBelowThresholdDoesNotCompact(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider:      provider,
 		Events:        &events,
@@ -216,7 +217,7 @@ func TestRunAutoCompactZeroDisables(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider:      provider,
 		Events:        &events,
@@ -243,7 +244,7 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider:      provider,
 		Tools:         exec.registry(),
@@ -257,7 +258,7 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	_, err := Run(context.Background(), cfg, req)
 	require.NoError(t, err, "compaction failure is non-fatal")
 	assert.False(t, compacted, "the compaction event did not fire")
-	// The original tool calls ran (compaction failed, so the loop fell through to normal execution).
+	// The tool calls ran (compaction failed, so the loop fell through to normal execution).
 	assert.NotEmpty(t, exec.executed, "tools ran after compaction failed")
 }
 
@@ -268,11 +269,10 @@ func TestRunAutoCompactWithoutContextWindowDoesNothing(t *testing.T) {
 	var compacted bool
 	events := Events{}
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
-	events.OnCompaction.Subscribe(&cb)
+	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
 		Provider: provider,
 		Events:   &events,
-		// ContextWindow is (unset)
 	}
 	req := Request{Model: "m", AutoCompact: 0.8,
 		Messages: []Message{{Role: RoleUser, Content: "go"}}}
@@ -280,4 +280,123 @@ func TestRunAutoCompactWithoutContextWindowDoesNothing(t *testing.T) {
 	_, err := Run(context.Background(), cfg, req)
 	require.NoError(t, err)
 	assert.False(t, compacted, "no ContextWindow means no compaction")
+}
+
+// limitedProvider is a scriptProvider whose endpoint publishes a model list.
+type limitedProvider struct {
+	*scriptProvider
+	limits Limits
+	err    error
+	asked  []string
+}
+
+func (p *limitedProvider) ModelLimits(_ context.Context, model string) (Limits, error) {
+	p.asked = append(p.asked, model)
+	return p.limits, p.err
+}
+
+func windowEvents(t *testing.T, events *Events) *[]ContextWindowEvent {
+	t.Helper()
+	var got []ContextWindowEvent
+	cb := func(ev ContextWindowEvent) error { got = append(got, ev); return nil }
+	keep(t, &events.OnContextWindow, cb)
+	return &got
+}
+
+func TestRunCompactsAgainstTheWindowTheModelListPublishes(t *testing.T) {
+	provider := &limitedProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{
+			{comp: usageComp("working", 8000, ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+			{comp: assistantComp("the summary")},
+			{comp: assistantComp("done")},
+		}},
+		limits: Limits{ContextWindow: 10000, MaxOutput: 2000},
+	}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
+	events := Events{}
+	var compacted bool
+	cb := func(ev CompactionEvent) error { compacted = true; return nil }
+	keep(t, &events.OnCompaction, cb)
+	windows := windowEvents(t, &events)
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
+	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"m"}, provider.asked, "the run asks once, for the model it calls")
+	require.Len(t, *windows, 1)
+	assert.Equal(t, ContextWindowEvent{Window: 10000, FromModelList: true}, (*windows)[0])
+	assert.True(t, compacted, "8000 prompt tokens is 80% of the published 10000")
+}
+
+func TestAConfiguredWindowIsNotLookedUp(t *testing.T) {
+	provider := &limitedProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{{comp: usageComp("answer", 10)}}},
+		limits:         Limits{ContextWindow: 999999},
+	}
+	events := Events{}
+	windows := windowEvents(t, &events)
+	cfg := Config{Provider: provider, Events: &events, ContextWindow: 10000}
+	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+
+	assert.Empty(t, provider.asked)
+	assert.Equal(t, []ContextWindowEvent{{Window: 10000}}, *windows)
+}
+
+func TestARunThatDoesNotCompactAsksForNoWindow(t *testing.T) {
+	provider := &limitedProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{{comp: usageComp("answer", 10)}}},
+		limits:         Limits{ContextWindow: 10000},
+	}
+	events := Events{}
+	windows := windowEvents(t, &events)
+	req := Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), Config{Provider: provider, Events: &events}, req)
+	require.NoError(t, err)
+
+	assert.Empty(t, provider.asked)
+	assert.Empty(t, *windows)
+}
+
+func TestAMissingWindowIsReportedWithItsReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider Provider
+		reason   string
+	}{
+		{"no model list", &scriptProvider{steps: []scriptStep{{comp: usageComp("a", 99999)}}},
+			"no model list"},
+		{"the list failed", &limitedProvider{
+			scriptProvider: &scriptProvider{steps: []scriptStep{{comp: usageComp("a", 99999)}}},
+			err:            errors.New("answered 404"),
+		}, "answered 404"},
+		{"the list names no window", &limitedProvider{
+			scriptProvider: &scriptProvider{steps: []scriptStep{{comp: usageComp("a", 99999)}}},
+			limits:         Limits{MaxOutput: 4096},
+		}, "publishes no context window"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			events := Events{}
+			var compacted bool
+			cb := func(ev CompactionEvent) error { compacted = true; return nil }
+			keep(t, &events.OnCompaction, cb)
+			windows := windowEvents(t, &events)
+			req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+			_, err := Run(context.Background(), Config{Provider: tt.provider, Events: &events}, req)
+			require.NoError(t, err, "a run without a window still runs")
+
+			require.Len(t, *windows, 1)
+			assert.Zero(t, (*windows)[0].Window)
+			require.Error(t, (*windows)[0].Err)
+			assert.Contains(t, (*windows)[0].Err.Error(), tt.reason)
+			assert.False(t, compacted)
+		})
+	}
 }

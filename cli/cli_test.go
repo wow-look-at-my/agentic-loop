@@ -41,8 +41,7 @@ func upstream(t *testing.T, answer string) (*httptest.Server, *[]string) {
 	return srv, &bodies
 }
 
-// cliMu serializes the tests that drive the command tree, which is package
-// state: its flags, its args, and where it writes.
+// cliMu serializes the tests that drive the command tree, which is package state: its flags, its args.
 var cliMu sync.Mutex
 
 // run drives the command tree the way a shell does, and returns what a user

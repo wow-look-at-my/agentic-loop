@@ -43,7 +43,7 @@ func TestNoTestSplicesAValueIntoJSONText(t *testing.T) {
 			}
 			return nil
 		}
-		// This file quotes both shapes in order to describe them.
+		// This file quotes both shapes to describe them.
 		if !strings.HasSuffix(path, "_test.go") || filepath.Base(path) == "jsontest_test.go" {
 			return nil
 		}

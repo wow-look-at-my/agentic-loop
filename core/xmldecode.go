@@ -227,8 +227,7 @@ func partsFrom(el *validator.Element) ([]Part, error) {
 	return out, nil
 }
 
-// partFrom reads content part, returning nil for an element that is not
-// .
+// partFrom reads content part, returning nil for an element that is not.
 func partFrom(el *validator.Element) (Part, error) {
 	if !isCore(el) {
 		return nil, nil
@@ -522,8 +521,7 @@ func floatAttrOf(el *validator.Element, name string) float64 {
 }
 
 // ptrIntAttrOf reads a tri-state int attribute: absent stays nil, because
-// "the provider said nothing" and "the provider said " are different
-// facts.
+// "the provider said nothing" and "the provider said " are different facts.
 func ptrIntAttrOf(el *validator.Element, name string) *int {
 	for _, a := range el.Attrs {
 		if a.Local == name && (a.Namespace == "" || a.Namespace == NS) {

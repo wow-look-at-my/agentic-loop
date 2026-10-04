@@ -261,8 +261,7 @@ func TestWebFetchSummaryErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "content")
 	}))
-	// Cleanup, never defer: a defer runs when this BODY returns, before a subtest
-	// the runner scheduled separately has fetched anything.
+	// Cleanup, never defer: a defer runs when this BODY returns.
 	t.Cleanup(srv.Close)
 
 	t.Run("no model available", func(t *testing.T) {

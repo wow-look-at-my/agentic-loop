@@ -143,13 +143,13 @@ func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []To
 	return repos, orgOwners, true, ""
 }
 
-// sweepOrgs discovers every organization the token can see — GET /user/orgs,
-// unioned with orgOwners (the Organization-type owners already found in the
-// flat repo listing, which needs no org-level permission at all) — and gives
-// each its own GET /orgs/{org}/repos listing in result.Orgs. A repo that
-// sweep finds but the flat /user/repos listing missed is folded into
-// result.Repos too (deduplicated by full_name), so Repos stays the complete
-// union regardless of which source actually saw it.
+// sweepOrgs discovers every organization the token can see — GET
+// /user/orgs, unioned with orgOwners (the Organization-type owners already
+// found in the flat repo listing, which needs no org-level permission at all)
+// — and gives each its own GET /orgs/{org}/repos listing in result.Orgs. A
+// repo that sweep finds but the flat /user/repos listing missed is folded
+// into result.Repos too (deduplicated by full_name), so Repos stays the
+// complete union regardless of which source saw it.
 func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string, result *TokenTestResult) {
 	discovered, orgsErr := e.listVisibleOrgs(ctx, token)
 	if orgsErr != "" {

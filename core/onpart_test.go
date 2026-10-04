@@ -19,7 +19,7 @@ func collectParts(got *[]Part) *StreamEvents {
 }
 
 // kinds is the shape of a parts list, which is what the ordering claims are
-// actually about.
+// about.
 func kinds(parts []Part) []PartKind {
 	out := make([]PartKind, 0, len(parts))
 	for _, p := range parts {

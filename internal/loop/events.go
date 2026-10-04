@@ -94,6 +94,15 @@ type CompactionEvent struct {
 	ID         *MessageID
 }
 
+// Window is zero exactly when Err says why there is none, and a run with no window never auto-compacts.
+type ContextWindowEvent struct {
+	event.Args
+	Window int
+	// FromModelList is true when Config.ContextWindow was unset and the provider's model list supplied Window.
+	FromModelList bool
+	Err           error
+}
+
 // Events are the loop's callbacks; all optional, and a returned error aborts the run.
 type Events struct {
 	StreamEvents
@@ -108,6 +117,11 @@ type Events struct {
 	OnResourceNotice    event.Event[ResourceNoticeEvent]
 	OnSystemMessage     event.Event[SystemMessageEvent]
 	OnCompaction        event.Event[CompactionEvent]
+	OnContextWindow     event.Event[ContextWindowEvent]
+}
+
+func (e *Events) emitContextWindow(ev ContextWindowEvent) {
+	_ = e.OnContextWindow.Invoke(ev)
 }
 
 // emitTurnBegin forwards a numbered turn's begin, tolerating nil callbacks.

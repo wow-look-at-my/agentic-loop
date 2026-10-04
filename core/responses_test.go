@@ -80,7 +80,7 @@ func TestResponsesRequestShape(t *testing.T) {
 	assert.Equal(t, "Bearer k", h.header.Get("Authorization"))
 }
 
-// Store is an opt-in, and opting in must actually reach the wire.
+// Store is an opt-in, and opting in must reach the wire.
 func TestResponsesStoreIsOptIn(t *testing.T) {
 	h, base := respServer(t, respCompletedEvent(jsonObj{"status": "completed"}))
 	_, err := respTestProvider(t, base, true).Complete(context.Background(), Request{Model: "m"}, nil)
@@ -245,8 +245,8 @@ func TestResponsesIncompleteReportsWhy(t *testing.T) {
 	}
 }
 
-// A whose body says the response failed is still a failure, and re-sending
-// a request the server accepted and then rejected would just be billed.
+// A whose body says the response failed is still a failure, and re-sending a
+// request the server accepted and then rejected would be billed.
 func TestResponsesFailureInsideA200(t *testing.T) {
 	cases := []struct {
 		name    string

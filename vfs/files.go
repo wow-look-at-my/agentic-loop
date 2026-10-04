@@ -112,7 +112,6 @@ type files struct {
 	guard       PathGuard
 }
 
-// FileTools is a handle returned by NewFileTools that provides the
 type FileTools struct {
 	*files
 	tools agentic.Tools

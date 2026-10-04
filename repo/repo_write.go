@@ -98,14 +98,15 @@ func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 	return order
 }
 
-// runWrite drives a write flow through writeTokenOrder: attempt runs the whole
-// flow with token; a GitHubAuthError falls through to the next credential (the
-// cached winner may have been discovered by a READ and lack write access), a
-// GitHubFatalError or transport error stops immediately, and the success caches
-// the winning token — so only a credential that completed a write is recorded.
-// An empty write list is a recoverable teaching error: these are the
-// model-initiated write tools, so the fix is the user flagging (or adding) a
-// "model can write" token — the loop continues and the model can relay that.
+// runWrite drives a write flow through writeTokenOrder: attempt runs the
+// whole flow with token; a GitHubAuthError falls through to the next
+// credential (the cached winner may have been discovered by a READ and lack
+// write access), a GitHubFatalError or transport error stops immediately, and
+// the success caches the winning token — so only a credential that
+// completed a write is recorded. An empty write list is a recoverable
+// teaching error: these are the model-initiated write tools, so the fix is
+// the user (or adding) a "model can write" token — the loop continues and
+// the model can relay that.
 func (e *repoTools) runWrite(ctx context.Context, toolName, cacheKey string, attempt func(token string) (string, error)) agentic.ToolResult {
 	order := e.gh.writeTokenOrder(cacheKey)
 	if len(order) == 0 {
@@ -233,17 +234,17 @@ func (e *repoTools) fileWrite(ctx context.Context, args json.RawMessage) agentic
 	})
 }
 
-// tryFileWrite runs the whole create-file flow with a single credential: probe
-// the repo (learning the default branch), find the branch (noting when it must
-// be created), verify the path does NOT already exist, then create the branch
-// (when asked) and PUT the new contents without a blob SHA.
+// tryFileWrite runs the whole create-file flow with a single credential:
+// probe the repo (learning the default branch), find the branch (noting when
+// it must be created), verify the path does NOT already exist, then create
+// the branch (when asked) and PUT the new contents without a blob SHA.
 //
 // The tool is CREATE-ONLY: a path that already exists is refused with a
 // teaching error — existing files are edited through a PR workspace's
 // workspace_edit replace, never rewritten wholesale by a direct commit. The
-// existence check runs against the ref the content would actually come from —
-// the target branch, or, when the branch is still to be created, the ref it
-// would be created from — so a fresh branch cannot be used to dodge the check
+// existence check runs against the ref the content would come from — the
+// target branch, or, when the branch is still to be created, the ref it would
+// be created from — so a fresh branch cannot be used to dodge the check
 // (and a refused call creates nothing, branch included).
 func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileWriteArgs, branchCreated *bool, createdFrom *string) (string, error) {
 	meta, err := e.repoMeta(ctx, token, in.Org, in.Repo)
@@ -252,7 +253,7 @@ func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileW
 	}
 	repoURL := e.repoURL(in.Org, in.Repo)
 
-	// Does the branch exist? A here means it is really missing.
+	// Does the branch exist? A here means it is missing.
 	res, err := e.gh.doGet(ctx, repoURL+"/git/ref/"+EscapeSegments("heads/"+in.Branch), token, "application/vnd.github+json")
 	if err != nil {
 		return "", err

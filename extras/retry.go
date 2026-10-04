@@ -162,3 +162,8 @@ func Retrying(inner commonai.Provider, policy *RetryPolicy) commonai.Provider {
 func (r *retryingProvider) Complete(ctx context.Context, req commonai.Request, ev *commonai.StreamEvents) (*commonai.Completion, error) {
 	return retryComplete(ctx, r.inner, r.policy, req, ev)
 }
+
+// ModelLimits implements commonai.ModelLimiter by asking the wrapped provider.
+func (r *retryingProvider) ModelLimits(ctx context.Context, model string) (commonai.Limits, error) {
+	return commonai.ForwardModelLimits(ctx, r.inner, model)
+}

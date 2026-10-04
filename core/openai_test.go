@@ -321,8 +321,8 @@ func TestOpenAIReasoningDetailsStream(t *testing.T) {
 // gateway fronting a Responses-only reasoning model needs the exact
 // reasoning_details array echoed back on the next turn to pair a
 // function_call with its output; replaying only the flattened text drops the
-// item ids and the gateway 400s with "No tool output found for function
-// call X" on the very next turn after a tool call.
+// item ids and the gateway 400s with "No tool output found for function call
+// X" on the next turn after a tool call.
 func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	details := []oaReasoningDetail{
 		{Type: "reasoning.text", Text: "step one", ID: "rs_1", Format: "openai-responses-v1"},
@@ -359,9 +359,10 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 		"the array replays byte-for-byte -- a gateway pairs a function_call by these item ids")
 }
 
-// TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server default
-// still sends neither field: a server that never advertised reasoning_details
-// must not see it just because a captured block happens to carry.
+// TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server
+// default still sends neither field: a server that never advertised
+// reasoning_details must not see it because a captured block happens to
+// carry.
 func TestOpenAINoReasoningDetailsWithoutReplay(t *testing.T) {
 	details := []oaReasoningDetail{{Type: "reasoning.text", Text: "step one", ID: "rs_1"}}
 	raw, err := json.Marshal(details)
@@ -507,7 +508,7 @@ func TestOpenAICleanEOFWithoutDone(t *testing.T) {
 func TestOpenAINetworkError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	url := srv.URL
-	srv.Close() // connection refused from now on
+	srv.Close()
 	p := oaProvider(t, url)
 	comp, err := p.Complete(context.Background(), Request{Model: "m"}, nil)
 	assert.Nil(t, comp)

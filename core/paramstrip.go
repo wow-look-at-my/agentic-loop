@@ -9,15 +9,10 @@ import (
 	"sync"
 )
 
-// This file implements provider-agnostic recovery from a "rejected parameter"
-//. Extra params are forwarded verbatim (faithful passthrough), but some
-// upstreams reject a parameter another upstream accepts (e.g. xAI rejects
-// reasoning_effort). When the upstream rejects a parameter at request time —
-// a returned before any token streams — the middleware parses the
-// offending parameter name out of the error text (which embeds the HTTP
-// body via APIError), strips that key from the request's Extra, and
-// retries the same request. Params are thus still sent by default; only
-// is dropped, and only after the upstream said no.
+// This file implements provider-agnostic recovery from a "rejected
+// parameter". Extra params are forwarded verbatim (faithful passthrough), but
+// some upstreams reject a parameter another upstream accepts (e.g. xAI
+// rejects reasoning_effort).
 
 // rejectParamPatterns matches common OpenAI-compatible phrasings for a rejected/unsupported parameter, capturing the parameter name.
 var rejectParamPatterns = []*regexp.Regexp{

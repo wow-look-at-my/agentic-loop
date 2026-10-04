@@ -32,15 +32,14 @@ func dialectOfPath(path string) Dialect {
 	return DialectAuto
 }
 
-// DialectRefused reports the protocol an endpoint NAMED for the request it just
+// DialectRefused reports the protocol an endpoint NAMED for the request it
 // refused. see docs/dialect-refusal.md
 func DialectRefused(err error) (Dialect, bool) {
 	var ae *APIError
 	if !errors.As(err, &ae) {
 		return DialectAuto, false
 	}
-	// A refusal of THIS request: a server failure says nothing about a protocol,
-	// and an auth failure is about the credential. see docs/dialect-refusal.md
+	// A refusal of THIS request: a server failure says nothing about a protocol.
 	switch ae.Status {
 	case 400, 404, 405, 422:
 	default:

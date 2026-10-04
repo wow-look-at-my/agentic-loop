@@ -194,14 +194,15 @@ func TestTestTokenNeverFallsBackToAnonymous(t *testing.T) {
 	assert.Equal(t, []string{"Bearer bad-token"}, authSeen, "exactly one request, with exactly the given token")
 }
 
-// --- organization enumeration -----------------------------------------------
+// --- organization enumeration
+// -----------------------------------------------
 //
 // "list every repo you can see" has to mean every ORG you can see too: a
 // fine-grained PAT scoped to read/write all of an org's contents can still
 // fail to self-report that org membership via /user/orgs, and /user/repos'
 // organization_member affiliation is membership-based, not grant-based. These
-// prove the org sweep actually runs and actually plugs that gap, rather than
-// just trusting /user/repos to have caught everything.
+// prove the org sweep runs and plugs that gap, rather than trusting
+// /user/repos to have caught everything.
 
 func TestTestTokenListsOrganizationsDiscoveredViaUserOrgs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

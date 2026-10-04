@@ -46,7 +46,7 @@ func TestReadDocumentRejectsATruncatedStream(t *testing.T) {
 	assert.Contains(t, err.Error(), "inside a document")
 }
 
-// The documents this format actually carries, read back off a stream.
+// The documents this format carries, read back off a stream.
 func TestReadDocumentOverRealDocuments(t *testing.T) {
 	req, err := EncodeRequestBytes(Request{
 		Model:    "m",

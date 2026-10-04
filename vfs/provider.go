@@ -29,10 +29,7 @@ type pathSetter interface {
 	setPath(string)
 }
 
-// IFileProvider serves exactly virtual file at a registered path. Use it
-// when a host wants to expose a single document (a generated report, a
-// stitched-together brief, a config snapshot) without building a full folder
-// hierarchy behind it.
+// IFileProvider serves exactly virtual file at a registered path.
 type IFileProvider interface {
 	IProvider
 	// Read returns the file's contents; path is the whole virtual path as the model wrote it.
@@ -86,8 +83,8 @@ func (e *DuplicateMountError) Error() string {
 // mount is registered provider at a path prefix.
 type mount struct {
 	prefix    string // lowercased, normalized, with leading slash, no trailing
-	displayAs string // original casing the host registered with
-	provider  any    // IFolderProvider or IFileProvider
+	displayAs string
+	provider  any // IFolderProvider or IFileProvider
 }
 
 // registry holds the set of mounted providers, sorted by prefix depth
