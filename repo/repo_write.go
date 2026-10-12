@@ -45,8 +45,8 @@ func (a GitHubAuthError) Error() string {
 }
 
 // ClassifyObjectRead is ClassifyWriteStatus for a step that reads named
-// git object, recording that object so an exhausted rotation can report a
-// missing commit as a missing commit.
+// git object, recording that object. So an exhausted rotation can report
+// a missing commit as a missing commit.
 func ClassifyObjectRead(what, object string, res GHResponse) error {
 	err := ClassifyWriteStatus(what, res)
 	var auth GitHubAuthError
@@ -99,14 +99,14 @@ func (e *GitHub) writeTokenOrder(cacheKey string) []tokenAttempt {
 }
 
 // runWrite drives a write flow through writeTokenOrder: attempt runs the
-// whole flow with token; a GitHubAuthError falls through to the next
+// whole flow with token. A GitHubAuthError falls through to the next
 // credential (the cached winner may have been discovered by a READ and lack
-// write access), a GitHubFatalError or transport error stops immediately, and
-// the success caches the winning token — so only a credential that
+// write access), a GitHubFatalError. It transport error stops immediately,
+// and the success caches the winning token — so only a credential that
 // completed a write is recorded. An empty write list is a recoverable
-// teaching error: these are the model-initiated write tools, so the fix is
-// the user (or adding) a "model can write" token — the loop continues and
-// the model can relay that.
+// teaching error: these are the model-initiated write tools. The fix is the
+// user (or adding) a "model can write" token — the loop continues and the
+// model can relay that.
 func (e *repoTools) runWrite(ctx context.Context, toolName, cacheKey string, attempt func(token string) (string, error)) agentic.ToolResult {
 	order := e.gh.writeTokenOrder(cacheKey)
 	if len(order) == 0 {
@@ -172,8 +172,8 @@ func (e *GitHub) RepoURL(org, repo string) string {
 
 // resolveRefSHA resolves any ref (branch, tag, or SHA) to a commit SHA via the
 // commits endpoint. The caller has already proven the repo visible with this
-// token, so a means the ref itself is missing — a user-correctable error,
-// not a credential problem.
+// token. A means the ref itself is missing — a user-correctable error, not a
+// credential problem.
 func (e *repoTools) resolveRefSHA(ctx context.Context, token, org, repo, ref string) (string, error) {
 	res, err := e.gh.doGet(ctx, e.repoURL(org, repo)+"/commits/"+url.PathEscape(ref), token, "application/vnd.github+json")
 	if err != nil {
@@ -234,15 +234,15 @@ func (e *repoTools) fileWrite(ctx context.Context, args json.RawMessage) agentic
 	})
 }
 
-// tryFileWrite runs the whole create-file flow with a single credential:
+// tryFileWrite runs the whole create-file flow with a single credential. They
 // probe the repo (learning the default branch), find the branch (noting when
-// it must be created), verify the path does NOT already exist, then create
+// it must be created), verify the path does NOT already exist. Then create
 // the branch (when asked) and PUT the new contents without a blob SHA.
 //
 // The tool is CREATE-ONLY: a path that already exists is refused with a
-// teaching error — existing files are edited through a PR workspace's
+// teaching error. Existing files are edited through a PR workspace's
 // workspace_edit replace, never rewritten wholesale by a direct commit. The
-// existence check runs against the ref the content would come from — the
+// existence check runs against the ref. The content would come. From — the
 // target branch, or, when the branch is still to be created, the ref it would
 // be created from — so a fresh branch cannot be used to dodge the check
 // (and a refused call creates nothing, branch included).
