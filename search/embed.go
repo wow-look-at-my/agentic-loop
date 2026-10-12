@@ -57,10 +57,10 @@ type pending struct {
 // PendingForModel returns up to limit of the owner's messages that have no
 // embedding under model, NEWEST.
 //
-// Newest is the load-bearing part of the ordering. A -time backfill
-// over a long history drains over minutes, and during that time the covered
-// half should be the half most likely to be searched. It also means a caller
-// who never lets it finish still has a useful index.
+// Newest is the load-bearing part of the ordering. Consider a -time backfill
+// over a long history. That backfill drains over minutes, and during that
+// time the covered half should be the half most likely to be searched. It
+// also means a caller who never lets it finish still has a useful index.
 func (i *Index) PendingForModel(ctx context.Context, owner, model string, limit int) ([]pending, error) {
 	rows, err := i.sql.QueryContext(ctx, `
 		SELECT m.message_id, m.content
@@ -108,10 +108,10 @@ type batchMessage struct {
 // model and returns how many messages it finished.
 //
 // A request that fails aborts the pass with that error rather than skipping
-// the batch: the messages stay unembedded, so the next pass picks them up
-// again. There is no attempt counter and nothing is marked permanently failed
-// -- a message that cannot be embedded today is retried on whatever cadence
-// the caller runs, and the reason is reported through Status rather than
+// the batch. The messages stay unembedded, so the next pass picks them up
+// again. There is no attempt counter and nothing is marked permanently
+// failed. A message that cannot be embedded today is retried on whatever
+// cadence the caller runs. The reason is reported through Status rather than
 // buried.
 func (i *Index) EmbedPending(ctx context.Context, owner, model string, e Embedder, limit int) (int, error) {
 	msgs, err := i.PendingForModel(ctx, owner, model, limit)
@@ -150,10 +150,10 @@ func (i *Index) EmbedPending(ctx context.Context, owner, model string, e Embedde
 	return done, nil
 }
 
-// embedBatch makes embedding request and writes every vector it returned,
-// with the per-message embed_status rows, in transaction. That is what
-// lets the pending query trust embed_status: a message either has its full set
-// of chunks stored, or it has no record at all and is picked up again.
+// embedBatch makes embedding request and writes every vector it returned, with
+// the per-message embed_status rows, in transaction. That is what lets the
+// pending query trust embed_status. A message either has its full set of
+// chunks stored, or it has no record at all and is picked up again.
 func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batch) (n int, err error) {
 	vecs, err := e.EmbedDocuments(ctx, b.texts)
 	if err != nil {
@@ -215,8 +215,8 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 
 // DropModel removes every vector stored under model and returns how many
 // messages it un-embedded. It is what changing embedding model costs: vectors
-// from models are not comparable, so the ones can never answer a query again
-// and are storage with no reader.
+// from models are not comparable. The ones can never answer a query again and
+// are storage with no reader.
 func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) {
 	tx, err := i.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -246,7 +246,7 @@ func (i *Index) DropModel(ctx context.Context, model string) (n int, err error) 
 }
 
 // ModelsInUse lists every embedding model that has vectors stored. It is what
-// makes a model switch reportable: a model here that nobody is asking with
+// makes a model switch reportable. A model here that nobody is asking with
 // any more is storage being paid for and never read.
 func (i *Index) ModelsInUse(ctx context.Context) ([]string, error) {
 	rows, err := i.sql.QueryContext(ctx, `SELECT DISTINCT model FROM embeddings ORDER BY model`)

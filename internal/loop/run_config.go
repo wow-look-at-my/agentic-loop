@@ -73,7 +73,6 @@ type Config struct {
 	// turnHook, when non-nil, is invoked with the -based turn number as each turn begins.
 	TurnHook func(turn int)
 
-	// unknownTool, when non-nil, replaces the text answering a call to an unoffered name.
 	UnknownTool func(name string) string
 }
 

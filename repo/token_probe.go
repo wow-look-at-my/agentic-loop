@@ -29,8 +29,9 @@ type TokenTestResult struct {
 }
 
 // TokenTestRepo is repository visible to the tested token, with the
-// permission levels GitHub reports for it in a repo-list response's per-repo
-// "permissions" object (shared by /user/repos and /orgs/{org}/repos).
+// permission levels GitHub reports. This holds for it in a repo-list
+// response's per-repo "permissions" object (shared by /user/repos and
+// /orgs/{org}/repos).
 type TokenTestRepo struct {
 	FullName string `json:"full_name"`
 	Private  bool   `json:"private"`
@@ -53,7 +54,7 @@ type TokenTestOrg struct {
 
 // TestToken issues the probe. apiBase and httpClient mirror GitHubConfig
 // (empty apiBase defaults to https://api.github.com) so a caller outside this
-// package's tool wiring — a Settings API handler — can use it without
+// package's tool wiring — a Settings API handler. Can use it without
 // building a client over the user's whole token list.
 func TestToken(ctx context.Context, apiBase, token string, httpClient *http.Client) (result TokenTestResult) {
 	e := NewGitHub(GitHubConfig{HTTPClient: httpClient, APIBaseURL: apiBase})
@@ -104,16 +105,16 @@ func TestToken(ctx context.Context, apiBase, token string, httpClient *http.Clie
 // orgSweepMaxOrgs caps how many organizations get their own /orgs/{org}/repos sweep.
 const orgSweepMaxOrgs = 20
 
-// listVisibleRepos enumerates every repository the token can see via
-// GET /user/repos, paginated up to OwnerReposMaxPages full pages of
-// OwnerReposPerPage each — the same page size and cap OwnerRepos uses for
-// an owner listing. It reports truncated=true when more pages remain past
-// the cap, and a non-empty error string when a page could not be fetched (the
-// token itself already passed the /user check, so this is reported alongside
-// OK rather than failing the whole test). orgOwners collects the distinct
-// Organization-type repo owners seen, in -seen order, as a fallback
-// source of organizations to sweep when the token can't self-report its org
-// memberships via /user/orgs.
+// listVisibleRepos enumerates every repository the token can see via GET
+// /user/repos, paginated up to OwnerReposMaxPages full pages of
+// OwnerReposPerPage each. The same page size and cap OwnerRepos uses for an
+// owner listing. It reports truncated=true. This happens when more pages
+// remain past the cap, and a non-empty error string when a page could not be
+// fetched (the token itself. Already passed the /user check. This is reported
+// alongside OK rather than failing the whole test). orgOwners collects the
+// distinct Organization-type repo owners seen. That repo is in -seen order,
+// as a fallback source of organizations to sweep when the token can't
+// self-report its org memberships. Via /user/orgs.
 func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []TokenTestRepo, orgOwners []string, truncated bool, errMsg string) {
 	now := time.Now()
 	seenOrg := set.New[string]()
@@ -146,10 +147,10 @@ func (e *GitHub) listVisibleRepos(ctx context.Context, token string) (repos []To
 // sweepOrgs discovers every organization the token can see — GET
 // /user/orgs, unioned with orgOwners (the Organization-type owners already
 // found in the flat repo listing, which needs no org-level permission at all)
-// — and gives each its own GET /orgs/{org}/repos listing in result.Orgs. A
-// repo that sweep finds but the flat /user/repos listing missed is folded
-// into result.Repos too (deduplicated by full_name), so Repos stays the
-// complete union regardless of which source saw it.
+// — and gives each its own GET /orgs/{org}/repos listing. That listing is
+// in result.Orgs. A repo that sweep finds but the flat /user/repos listing
+// missed is folded into result.Repos too (deduplicated by full_name). Repos
+// stays the complete union regardless of which source saw it.
 func (e *GitHub) sweepOrgs(ctx context.Context, token string, orgOwners []string, result *TokenTestResult) {
 	discovered, orgsErr := e.listVisibleOrgs(ctx, token)
 	if orgsErr != "" {
@@ -200,10 +201,10 @@ func mergeOrgLogins(discovered, fromRepos []string) []string {
 
 // listVisibleOrgs lists the organizations the token can self-report via
 // GET /user/orgs, paginated the same way as listVisibleRepos. Many
-// fine-grained PATs scoped only to repository contents cannot read their own
-// org memberships at all — that failure is expected and non-fatal here
-// (sweepOrgs still covers those orgs via the repo owners it already found),
-// so it is reported through errMsg rather than treated as the token failing.
+// fine-grained PATs scoped only to repository contents cannot read. Their
+// own org memberships at all — that failure is expected and non-fatal here
+// (sweepOrgs still covers those orgs via the repo owners it already found).
+// It is reported through errMsg rather than treated as the token failing.
 func (e *GitHub) listVisibleOrgs(ctx context.Context, token string) (logins []string, errMsg string) {
 	now := time.Now()
 	for page := 1; page <= OwnerReposMaxPages; page++ {
@@ -262,7 +263,7 @@ func (e *GitHub) listOrgRepos(ctx context.Context, token, org string) (repos []T
 
 // ghUserRepo is repository from a repo-list response (/user/repos or
 // /orgs/{org}/repos), including the permissions object GitHub reports for the
-// authenticated credential and the owner GitHub attributes it to.
+// authenticated credential. The owner GitHub attributes it to.
 type ghUserRepo struct {
 	FullName string `json:"full_name"`
 	Private  bool   `json:"private"`

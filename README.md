@@ -10,12 +10,12 @@ Package `agentic` is the module root:
 import agentic "github.com/wow-look-at-my/agentic-loop"
 ```
 
-Optional families are sibling packages: [`vfs/`](vfs/), [`repo/`](repo/), [`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/), [`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
+Optional families sibl packages: [`vfs/`](vfs/), [`repo/`](repo/), [`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/), [`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
 
 ## Design points
 
 - **Three dialects, one model.** A neutral `Message`/`Tool`/`Usage` model maps onto OpenAI chat completions, the OpenAI Responses API and the Anthropic Messages API. The loop and every seam is dialect-agnostic.
-- **Faithful passthrough.** Provider-specific parameters ride in `Request.Extra` verbatim, and a "rejected parameter" 400 is recovered by stripping exactly the named key and retrying once.
+- **Faithful passthrough.** Stripping exactly the named key and retrying once recovers provider-specific parameters ride in `Request.Extra` verbatim, and a "rejected parameter" 400.
 - **Caching is built in.** Anthropic requests carry ephemeral cache breakpoints applied to per-request copies. As a result, the stored transcript stays marker-free.
 - **Honest accounting.** Cache counts are tri-state, and streamed usage snapshots are kept in order rather than summed.
 

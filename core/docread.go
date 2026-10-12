@@ -14,8 +14,8 @@ const maxDocument = 64 << 20
 
 // ReadDocument reads exactly document from r, leaving whatever follows it
 // for the next call. It returns io.EOF when the stream ends cleanly between
-// documents, and an error when it ends in the middle of -- a truncated
-// document is not a document, and a reader that returned it as if it were
+// documents, and an error when it ends in the middle of. A truncated
+// document is not a document, and a reader. That returned it as if it were
 // would be handing the caller half an answer with no way to tell.
 func ReadDocument(r *bufio.Reader) ([]byte, error) {
 	var buf bytes.Buffer
@@ -98,7 +98,7 @@ func (s *docScanner) feed(b byte) bool {
 			return false
 		case s.lead[0] == '!':
 			// A comment and a CDATA section are only distinguishable after a
-			// few bytes, and both hold text that looks like markup -- which is
+			// few bytes. Both hold text that looks like markup -- which is
 			// exactly why they have to be recognized here.
 			switch {
 			case bytes.Equal(s.lead, []byte("!--")):

@@ -229,9 +229,10 @@ const webSummarySystemPrompt = "You summarize cleaned web content for another as
 
 // generateWebSummary asks the model to summarize cleaned fetched content:
 // bounded (webSummaryModelTimeout), tool-less call with no retry, via
-// OneShot. onCompletion, when non-nil, is handed the call's Completion --
-// including a partial from a failed call, because those tokens were spent too
-// and a host that is not told about them under-counts what the session cost.
+// OneShot. onCompletion, when non-nil, is handed the call's Completion. It is
+// including a partial from a failed call. This is because those tokens were
+// spent too and a host that is not told about them under-counts what the
+// session cost.
 func generateWebSummary(ctx context.Context, p agentic.Provider, onCompletion func(*agentic.Completion), model, url, cleaned, instructions string, maxTokens int, extra map[string]any) (string, error) {
 	comp, err := agentic.OneShot(ctx, p, agentic.Request{
 		Model:  model,
@@ -305,9 +306,9 @@ func readLimited(r io.Reader, limit int64) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// The HTML cleanup pipeline, ported verbatim: strip comments and
-// non-content elements, convert breaks and block-element closes to newlines,
-// drop the remaining tags, unescape entities, and normalize whitespace.
+// The HTML cleanup pipeline, ported verbatim. Strip comments and non-content
+// elements, convert breaks and block-element closes to newlines, drop the
+// remaining tags, unescape entities, and normalize whitespace.
 var (
 	htmlCommentRE = regexp.MustCompile(`(?is)<!--.*?-->`)
 	htmlDropRE    = regexp.MustCompile(`(?is)<(script|style|noscript|template|svg|canvas|head)[^>]*>.*?</\s*(script|style|noscript|template|svg|canvas|head)\s*>`)

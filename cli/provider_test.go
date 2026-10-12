@@ -81,7 +81,7 @@ func TestDialectIsDetectedAndTheFailureNamesTheFlag(t *testing.T) {
 	require.ErrorContains(t, err, "pass --dialect")
 }
 
-// The API key is the process's, never the command line's: a key in argv is a
+// The API key is the process's, never the command line's. A key in argv is a
 // key in the shell history and in every process listing on the machine.
 func TestTheKeyComesFromTheEnvironment(t *testing.T) {
 	var auth string
@@ -120,8 +120,8 @@ func TestSettingsFallBackToTheEnvironment(t *testing.T) {
 }
 
 // A prompt is the arguments joined, or stdin when it is piped -- and nothing
-// at all is an error that says what was wanted, rather than a command that
-// sits waiting on input nobody knew to type.
+// at all is an error that says what was wanted. The prompt is not a command
+// that sits waiting on input nobody knew to type.
 func TestPromptComesFromArgumentsOrAPipe(t *testing.T) {
 	srv, bodies := upstream(t, "ok")
 	_, err := run(t, "", "ask", "--endpoint", srv.URL, "--dialect", "openai", "--model", "m",

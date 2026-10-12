@@ -63,7 +63,7 @@ func env(flag, key string) string {
 }
 
 // newProvider builds the provider the flags describe. The API key comes from
-// the environment only: a key on a command line is a key in the shell history
+// the environment only. A key on a command line is a key in the shell history
 // and in every process listing on the machine.
 func newProvider(cmd *cobra.Command) (client.Provider, error) {
 	endpoint := env(flagEndpoint, "CAI_ENDPOINT")

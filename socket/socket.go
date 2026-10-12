@@ -3,11 +3,11 @@
 //
 // Both carry the same documents as every other way in. A document is
 // self-delimiting -- it ends when its root element closes -- so the unix
-// socket needs no framing layer at all: documents ride back-to-back in both
-// directions, and a reader knows where each ends because XML already says
-// so. The websocket has framing whether we want it or not, so each flush of
-// the answer is text message, and a client concatenates them into the same
-// document a unix-socket client reads byte for byte.
+// socket needs no framing layer at all. The unix socket documents ride
+// back-to-back in both directions, and a reader knows where each ends because
+// XML already says so. The websocket has framing whether we want it or not,
+// so each flush of the answer is text message. A client concatenates them
+// into the same document a unix-socket client reads byte for byte.
 package socket
 
 import (

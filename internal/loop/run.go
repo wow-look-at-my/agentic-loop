@@ -423,7 +423,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 
 		// The model stopped without writing an answer, and something is
 		// queued. Deliver that instead of spending a wrap-up call on a turn
-		// with nothing to wrap up: the queued message is newer than anything
+		// with nothing to wrap up. The queued message is newer than anything
 		// the model could synthesize here, and the next turn drains it.
 		if cfg.Messages.Pending() && moreTurnsAllowed(turn) {
 			stalled := assistant

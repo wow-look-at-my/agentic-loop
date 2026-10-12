@@ -137,9 +137,9 @@ func TestDropModelRemovesOnlyThatModelsVectors(t *testing.T) {
 	assert.Equal(t, int64(1), status.EmbeddedMessages)
 }
 
-// A message's chunks never span batches, so a batch that lands is a whole
-// number of finished messages -- which is what lets embed_status be trusted as
-// "this message is done".
+// A message's chunks never span batches. A batch that lands is a whole number
+// of finished messages -- which is what lets embed_status be trusted as "this
+// message is done".
 func TestAMessagesChunksNeverSpanTwoRequests(t *testing.T) {
 	ctx := context.Background()
 	idx := testIndex(t)

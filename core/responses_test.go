@@ -35,7 +35,7 @@ func respCompletedEvent(response jsonObj) string {
 }
 
 // The request is the Responses shape, not chat-completions wearing a new URL:
-// the system prompt is `instructions`, the transcript is `input` items, and a
+// the system prompt is `instructions`. The transcript is `input` items, and a
 // tool declares its name at the top level rather than inside a "function".
 func TestResponsesRequestShape(t *testing.T) {
 	h, base := respServer(t, respCompletedEvent(jsonObj{"status": "completed"}))
@@ -99,8 +99,8 @@ func TestResponsesIncludeIsOverridable(t *testing.T) {
 }
 
 // The whole point of the dialect: reasoning survives a tool call. It goes back
-// as a reasoning ITEM, before the text and the calls it produced, and only when
-// it carries the payload that makes it the model's own thinking rather than a
+// as a reasoning ITEM, before the text. The calls it produced, and only when it
+// carries the payload that makes it the model's own thinking rather than a
 // paraphrase of it.
 func TestResponsesReplaysReasoningAcrossAToolCall(t *testing.T) {
 	h, base := respServer(t, respCompletedEvent(jsonObj{"status": "completed"}))
@@ -147,8 +147,8 @@ func TestResponsesReplaysReasoningAcrossAToolCall(t *testing.T) {
 	assert.NotContains(t, out, "role", "a tool result is an item, not a message with a role")
 }
 
-// A finished item arrives whole, so tool calls need no fragment accumulator --
-// and text must not be taken from both the deltas and the final item.
+// A finished item arrives whole, so tool calls need no fragment accumulator.
+// Text must not be taken from both the deltas and the final item.
 func TestResponsesStreamsTextReasoningAndCalls(t *testing.T) {
 	_, base := respServer(t,
 		jsonMust(jsonObj{"type": "response.reasoning_summary_text.delta", "delta": "thinking "}),

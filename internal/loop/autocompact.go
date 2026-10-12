@@ -37,7 +37,7 @@ func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
 // fraction, returning the replacement and whether it replaced anything. A failure
 // is non-fatal: the run continues on the transcript it already had.
 //
-// The host's stored row id lands on the summary message, so the next assistant row
+// The host's stored row id lands on the summary message. The next assistant row
 // hangs off the summary instead of detaching from the conversation tree.
 func compactHere(ctx context.Context, cfg *Config, req Request, transcript []Message,
 	last *Completion, res *Result, deduper *OutputDeduper) ([]Message, bool) {

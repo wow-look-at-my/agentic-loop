@@ -83,7 +83,7 @@ func TestRepoStatusCheckRunsFailureIsNotedNotFatal(t *testing.T) {
 
 // The bug: a token without `checks` got "CI is red" and no reason, which is
 // the whole question. The same runs are readable through the Actions API on
-// the `actions` permission, so a failed job and the step that failed inside it
+// the `actions` permission, so a failed job. The step that failed inside it
 // must still reach the reader.
 func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	g, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
@@ -178,7 +178,7 @@ func TestRepoStatusActionsFallbackFailureIsStated(t *testing.T) {
 }
 
 // A jobs read that fails says so under its run, rather than rendering a run
-// with no jobs — which reads as a run that did nothing.
+// with no jobs. Which reads as a run that did nothing.
 func TestRepoStatusActionsJobsFailureIsStatedUnderItsRun(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -232,7 +232,7 @@ func TestRepoStatusCombinedStatusFailureIsFatal(t *testing.T) {
 }
 
 // A near-expiry token gets the SAME advisory on a successful what=status
-// call as it does on an explained failure — the header is real either way.
+// call as it does on an explained failure. The header is real either way.
 func TestRepoStatusAppendsANearExpiryAdvisory(t *testing.T) {
 	expiry := time.Now().Add(2 * 24 * time.Hour)
 	g, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {
@@ -265,7 +265,6 @@ func TestRepoStatusRequiresOrgRepo(t *testing.T) {
 }
 
 // A branch name containing "/" (a common convention) must survive in the
-// URL literally, not as %2F — EscapeSegments is what the rest of this
 // package already relies on for the same reason.
 func TestRepoStatusRefWithSlashIsNotPercentEncoded(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{}, func(c ghCall) (int, string) {

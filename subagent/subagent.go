@@ -23,8 +23,8 @@ const DefaultSubagentSystemPrompt = "You are a sub-agent launched by another ass
 // adaptation: the source enumerated its own application's read-only tools
 // ("fetch a web page (web_fetch), read GitHub repositories (repo_read:...),
 // and any read-only MCP tools that are enabled") inside the CAPABILITIES
-// sentence; the library cannot know the host's toolset, so that enumeration
-// is dropped. Everything else is verbatim.
+// sentence. This also covers the library cannot know the host's toolset.
+// That enumeration is dropped. Everything else is verbatim.
 const subagentToolDescription = "Launch a sub-agent: an autonomous helper that runs its own agentic loop in a separate, " +
 	"throwaway context and reports back only its final answer. " +
 	"WHAT IT'S FOR: offload a focused, self-contained, read-only task so all the intermediate work -- many tool " +
@@ -100,7 +100,7 @@ var subagentSchema = json.RawMessage(`{
 }`)
 
 // Subagent activity kinds delivered to SubagentConfig.OnActivity while a
-// run_subagent call executes, so a host can show what the otherwise silent
+// run_subagent call executes. A host can show what the otherwise silent
 // sub-agent is doing instead of an opaque, indefinite "running" state.
 const (
 	SubagentActivityTurn       = "turn"        // a new sub-agent turn began
@@ -195,13 +195,12 @@ func grantableToolNames(tools []agentic.ToolDecl) []string {
 }
 
 // advertisedSchema returns the run_subagent parameter schema with
-// allowed_tools specialised to this turn's grantable toolset: its description
+// allowed_tools specialised to this turn's grantable toolset. Its description
 // lists the available tools ( the ones that modify state) and its items carry
-// an enum of their exact names, so the model is both told and constrained to
-// the valid names. With no grantable tools it returns the static schema
-// unchanged (allowed_tools is then inert). The map round-trip keeps the
-// static schema literal the source of truth; any defensive fall-through
-// returns it intact.
+// an enum of their exact names. The model is both told and constrained to the
+// valid names. With no grantable tools it returns the static schema unchanged
+// (allowed_tools is then inert). The map round-trip keeps the static schema
+// literal the source of truth; any defensive fall-through returns it intact.
 func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessage {
 	if len(tools) == 0 {
 		return subagentSchema
@@ -227,12 +226,12 @@ func (e *subagentTool) advertisedSchema(tools []agentic.ToolDecl) json.RawMessag
 	return subagentSchema
 }
 
-// allowedToolsDescription is the allowed_tools field description, naming the
+// allowedToolsDescription is the allowed_tools field description. Naming the
 // concrete tools available this turn so the model knows exactly what it can
 // pin the sub-agent to. Tools that are NOT read-only are flagged "(modifies
-// state)" so the model sees that listing grants a side-effecting tool —
-// by default the sub-agent only gets read-only tools, and naming a tool here
-// is what makes a non-read-only available.
+// state)" so the model sees that listing grants a side-effecting tool. By
+// default the sub-agent only gets read-only tools. Naming a tool here is
+// what makes a non-read-only available.
 func allowedToolsDescription(tools []agentic.ToolDecl) string {
 	labels := make([]string, len(tools))
 	for i, t := range tools {

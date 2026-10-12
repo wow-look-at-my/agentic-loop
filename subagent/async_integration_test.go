@@ -27,8 +27,8 @@ func (l *updateLog) record(u agentic.SubagentUpdate) {
 // --- asynchronous launches --------------------------------------------------
 
 // With a registry configured, run_subagent hands back a receipt rather than an
-// answer -- which is what lets a model fan several out in turn -- and the
-// report arrives through the registry.
+// answer -- which is what lets a model fan several out in turn. The report
+// arrives through the registry.
 func TestSubagentToolLaunchesAsynchronously(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("no defects found")}}}
 	runs := agentic.NewSubagentRuns(nil)
@@ -52,7 +52,7 @@ func TestSubagentToolLaunchesAsynchronously(t *testing.T) {
 }
 
 // What the sub-agent spent rides up with its report, so a host that watches
-// only lifecycle still gets the total. A sub-agent answers in text; nothing
+// only lifecycle still gets the total. A sub-agent answers in text. Nothing
 // else in the result carries a number, and money that was never emitted cannot
 // be recovered after the run.
 func TestAsyncSubagentReportCarriesItsUsages(t *testing.T) {

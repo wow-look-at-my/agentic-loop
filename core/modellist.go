@@ -87,9 +87,9 @@ func modelListURL(baseURL string) (string, error) {
 // DecodeModelList reads a model-list document.
 //
 // A document that will not parse is an ERROR, not an empty result. The are
-// different facts a host has to be able to tell apart: an endpoint that
+// different facts a host has to be able to tell apart. An endpoint that
 // publishes no prices renders an em dash and is working correctly, and an
-// endpoint answering with an HTML error page is not — reporting both as "no
+// endpoint answering with an HTML error page is not. Reporting both as "no
 // prices" is how a misconfigured URL looks exactly like a cheap provider.
 func DecodeModelList(body []byte) (*ModelList, error) {
 	var doc struct {
