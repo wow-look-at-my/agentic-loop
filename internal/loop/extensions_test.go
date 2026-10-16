@@ -207,6 +207,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
+	// Turn stalled, so the wrap-up is turn, not the MaxTurns+.
 	assert.Equal(t, []int{1, 2}, begins)
 	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)

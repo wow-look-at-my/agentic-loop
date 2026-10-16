@@ -194,8 +194,7 @@ func TestTestTokenNeverFallsBackToAnonymous(t *testing.T) {
 	assert.Equal(t, []string{"Bearer bad-token"}, authSeen, "exactly one request, with exactly the given token")
 }
 
-// --- organization enumeration
-// -----------------------------------------------
+// organization enumeration -----------------------------------------------
 //
 // "list every repo you can see" has to mean every ORG you can see too. A
 // fine-grained PAT scoped to read/write all of an org's contents can still

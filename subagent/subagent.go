@@ -23,8 +23,8 @@ const DefaultSubagentSystemPrompt = "You are a sub-agent launched by another ass
 // adaptation: the source enumerated its own application's read-only tools
 // ("fetch a web page (web_fetch), read GitHub repositories (repo_read:...),
 // and any read-only MCP tools that are enabled") inside the CAPABILITIES
-// sentence. This also covers the library cannot know the host's toolset.
-// That enumeration is dropped. Everything else is verbatim.
+// sentence; the library cannot know the host's toolset, so that enumeration
+// is dropped. Everything else is verbatim.
 const subagentToolDescription = "Launch a sub-agent: an autonomous helper that runs its own agentic loop in a separate, " +
 	"throwaway context and reports back only its final answer. " +
 	"WHAT IT'S FOR: offload a focused, self-contained, read-only task so all the intermediate work -- many tool " +

@@ -1,6 +1,6 @@
 # Searching stored conversations
 
-Word and found search` indexes a host's conversations so they can, when an embedding model is available, by meaning. It owns one SQLite file: an FTS5 index over message text, plus the vectors for a semantic search over the same messages.
+`search` indexes a host's conversations so they can be found by word and, when an embedding model is available, by meaning. It owns one SQLite file: an FTS5 index over message text, plus the vectors for a semantic search over the same messages.
 
 The conversations stay wherever the host keeps them. The index reads them through `Source`, and `SessionSource` adapts a `session.Store`, so `cai`. The http/socket servers get searchable history without changing how any of them store anything.
 
@@ -71,7 +71,7 @@ An edit, rather than an append, retires a message id whose vector no conversatio
 
 ## Ranking
 
-Reciprocal rank fusion**: `scor fuses the halvese = Σ 1/(60 + rank)`. Fusion is by position rather than by score. This is because bm25 is an unbounded relevance score whose scale depends on the corpus and cosine similarity is a bounded geometric one. Putting them on a common axis means inventing an exchange rate between them. Using positions means never claiming one exists.
+The halves are fused by **reciprocal rank fusion**: `score = Σ 1/(60 + rank)`. Fusion is by position rather than by score. This is because bm25 is an unbounded relevance score whose scale depends on the corpus and cosine similarity is a bounded geometric one. Putting them on a common axis means inventing an exchange rate between them. Using positions means never claiming one exists.
 
 Each half is asked for twice the caller's limit, because fusion reorders. A result placed second in both lists outranks one that leads only the first. It cannot do that if it was cut before fusing.
 
@@ -97,7 +97,7 @@ The index is always slightly behind. Embedding needs a network call. As a result
 
 `Search` reports its `Mode` for the same reason. A semantic hit may share no word with the query at all, and a result list that does not say which kind it is reads. This is as a bug.
 
-Nothing is ever marked permanently failed. The next pass embedded a message that cannot, however many passes that takes. The reason is in `Status.LastError` rather than buried in a counter that ran out.
+Nothing is ever marked permanently failed. A message that cannot be embedded today is picked up by the next pass, however many passes that takes. The reason is in `Status.LastError` rather than buried in a counter that ran out.
 
 ## The embedder seam is asymmetric
 

@@ -166,6 +166,7 @@ func (e *todoTool) Decl() agentic.ToolDecl {
 func (e *todoTool) NeedsApproval() bool { return false }
 
 // schema is inferred from the tool's argument struct, per the hard rule that a
+// tool's schema is never hand-written. closedState constrains the state field
 // to the enum a host can render.
 func (e *todoTool) schema() json.RawMessage {
 	var closed map[string][]string

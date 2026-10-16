@@ -43,6 +43,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	repeats := 0
 	// lastComp is the newest completion, whose PromptTokens decide compaction.
 	var lastComp *Completion
+	// servedAsked is the served model name the model list was last asked about, so an alias is resolved once.
+	var servedAsked string
 	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
 	currentAssistantID := MessageID("")
 	finalizeAssistant := func(ev FinalizeAssistantEvent) {
@@ -188,6 +190,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 		calls := assistant.ToolCalls
 		lastComp = comp
+		resolveServedWindow(ctx, &cfg, req, comp, &servedAsked)
 
 		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {

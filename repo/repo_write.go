@@ -242,7 +242,7 @@ func (e *repoTools) fileWrite(ctx context.Context, args json.RawMessage) agentic
 // The tool is CREATE-ONLY: a path that already exists is refused with a
 // teaching error. Existing files are edited through a PR workspace's
 // workspace_edit replace, never rewritten wholesale by a direct commit. The
-// existence check runs against the ref. The content would come. From — the
+// existence check runs against the ref the content would come from — the
 // target branch, or, when the branch is still to be created, the ref it would
 // be created from — so a fresh branch cannot be used to dodge the check
 // (and a refused call creates nothing, branch included).

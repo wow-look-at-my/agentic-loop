@@ -87,7 +87,7 @@ func TestThinkingSignatureRepairSecondFailureSurfaces(t *testing.T) {
 }
 
 // TestThinkingSignatureRepairOverAnthropicProvider proves the wrapper reads
-// the SAME index Anthropic's own error names. Off the real wire body, not a
+// the SAME index Anthropic's own error names off the real wire body, not a
 // hand-computed, by driving the real dialect encoder end to end.
 func TestThinkingSignatureRepairOverAnthropicProvider(t *testing.T) {
 	hits := 0

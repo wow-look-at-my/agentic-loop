@@ -127,6 +127,7 @@ func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 	assert.True(t, errors.Is(err, context.Canceled))
 }
 
+// countingTransport is a RoundTripper stub that counts the requests it
 // forwards.
 type countingTransport struct {
 	mu    sync.Mutex

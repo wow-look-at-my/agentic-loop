@@ -117,13 +117,14 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 // merged so the typed core fields always win; reserved keys in Extra
 // (messages, model, stream, tools) are silently ignored so they cannot break
 // routing. stream is always forced true, tools are sent only when non-empty
-// (no tool_choice is ever sent). Stream_options defaults to {"include_usage".
-// True} only when the caller has not supplied a stream_options key via Extra
-// AND includeDefaultStreamOptions is true -- without it OpenAI. And most
-// compatibles omit usage from streamed responses entirely, but a few reject
-// the field outright. This is what includeDefaultStreamOptions=false is for
-// (see Complete's retry). MaxTokens > sets max_tokens (overriding an Extra
-// value); leaves the field to Extra or the provider default.
+// (no tool_choice is ever sent), and stream_options defaults to
+// {"include_usage":true} only when the caller has not supplied a
+// stream_options key via Extra AND includeDefaultStreamOptions is true --
+// without it OpenAI and most compatibles omit usage from streamed responses
+// entirely, but a few reject the field outright, which is what
+// includeDefaultStreamOptions=false is for (see Complete's retry). MaxTokens
+// > sets max_tokens (overriding an Extra value); leaves the field to Extra or
+// the provider default.
 func (o *openaiProvider) buildBody(req Request, includeDefaultStreamOptions bool) ([]byte, error) {
 	body := map[string]any{}
 	for k, v := range req.ParamsFor(DialectOpenAI) {

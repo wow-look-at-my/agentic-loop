@@ -21,6 +21,7 @@ type anEvent struct {
 // anMessageStart is the message envelope of a message_start event.
 type anMessageStart struct {
 	Usage *anUsage `json:"usage"`
+	Model string   `json:"model"`
 }
 
 // anContentBlock seeds a block at content_block_start: id/name for tool_use,
@@ -133,6 +134,7 @@ type anStream struct {
 	cacheRead    *int
 	cacheWrite   *int
 	haveUsage    bool
+	model        string
 
 	sawData bool
 }
@@ -159,6 +161,9 @@ func (st *anStream) onData(data []byte) error {
 	switch msg.Type {
 	case "message_start":
 		st.sawData = true
+		if msg.Message != nil && msg.Message.Model != "" {
+			st.model = msg.Message.Model
+		}
 		if msg.Message != nil && msg.Message.Usage != nil {
 			u := msg.Message.Usage
 			st.haveUsage = true
@@ -298,7 +303,7 @@ func (st *anStream) completion() *Completion {
 	}
 	msg := Message{Role: RoleAssistant, Parts: parts}
 	msg.SyncViews()
-	comp := &Completion{Message: msg, StopReason: stop, Streamed: true}
+	comp := &Completion{Message: msg, StopReason: stop, Streamed: true, Model: st.model}
 	if st.haveUsage {
 		// Usage fragments (input+cache at start, output at delta) join into; Raw is the wire shape.
 		u := st.currentUsage()

@@ -147,8 +147,8 @@ func TestFoldClonesTriStatePointers(t *testing.T) {
 	assert.Equal(t, 5, *reported)
 }
 
-// A failed call that already streamed hands back its partial completion. The
-// fold must not turn that into a nil. The layers above read a non-nil
+// A failed call that already streamed hands back its partial completion, and
+// the fold must not turn that into a nil: the layers above read a non-nil
 // completion as "this attempt streamed, do not re-send it".
 func TestFoldKeepsAPartialCompletion(t *testing.T) {
 	inner := &coreProvider{

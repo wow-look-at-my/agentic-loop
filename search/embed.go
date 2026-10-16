@@ -108,10 +108,10 @@ type batchMessage struct {
 // model and returns how many messages it finished.
 //
 // A request that fails aborts the pass with that error rather than skipping
-// the batch. The messages stay unembedded, so the next pass picks them up
-// again. There is no attempt counter and nothing is marked permanently
-// failed. A message that cannot be embedded today is retried on whatever
-// cadence the caller runs. The reason is reported through Status rather than
+// the batch: the messages stay unembedded, so the next pass picks them up
+// again. There is no attempt counter and nothing is marked permanently failed
+// -- a message that cannot be embedded today is retried on whatever cadence
+// the caller runs, and the reason is reported through Status rather than
 // buried.
 func (i *Index) EmbedPending(ctx context.Context, owner, model string, e Embedder, limit int) (int, error) {
 	msgs, err := i.PendingForModel(ctx, owner, model, limit)

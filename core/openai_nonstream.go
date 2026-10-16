@@ -12,6 +12,7 @@ type oaNonStream struct {
 		FinishReason string             `json:"finish_reason"`
 	} `json:"choices"`
 	Usage json.RawMessage `json:"usage"`
+	Model string          `json:"model"`
 }
 
 // oaNonStreamMessage is the assistant message inside a non-streaming choice.
@@ -54,6 +55,7 @@ func (o *openaiProvider) parseNonStream(data []byte) (*Completion, error) {
 		Message:    oaAssistantMessage(first.Message.Reasoning, details, content, calls),
 		StopReason: normalizeStopReason(first.FinishReason),
 		Streamed:   false,
+		Model:      resp.Model,
 	}
 	if len(resp.Usage) > 0 {
 		var u oaUsage
