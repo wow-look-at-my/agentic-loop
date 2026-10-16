@@ -23,4 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The newest published go-toolchain, handed to the action as binary: the action then skips its own download.
+      - uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@lkgb
+        id: gt
+        with:
+          project: go-toolchain
+          path: ${{ runner.temp }}/go-toolchain
       - uses: wow-look-at-my/go-toolchain@master
+        with:
+          binary: ${{ steps.gt.outputs.path }}
