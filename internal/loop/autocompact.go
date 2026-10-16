@@ -33,6 +33,35 @@ func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
 	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true})
 }
 
+// resolveServedWindow fills Config.ContextWindow from the model list's entry for the model a response names,
+// when the host left the window unset and the requested name resolved nothing. An endpoint that serves an alias
+// lists the model it served, not the alias. Each served name is asked once per run.
+func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) {
+	if req.AutoCompact <= 0 || cfg.ContextWindow > 0 || comp == nil {
+		return
+	}
+	served := comp.Model
+	if served == "" || served == req.Model || served == *asked {
+		return
+	}
+	*asked = served
+	l, ok, err := ModelLimitsOf(ctx, cfg.Provider, served)
+	switch {
+	case !ok:
+		return
+	case err != nil:
+		err = fmt.Errorf("agentic: reading the context window for %q, the model the response named: %w", served, err)
+	case l.ContextWindow <= 0:
+		err = fmt.Errorf("agentic: the model list publishes no context window for %q, the model the response named", served)
+	}
+	if err != nil {
+		cfg.Events.emitContextWindow(ContextWindowEvent{Served: served, Err: err})
+		return
+	}
+	cfg.ContextWindow = l.ContextWindow
+	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true, Served: served})
+}
+
 // compactHere summarizes the transcript when the last turn reached the AutoCompact
 // fraction, returning the replacement and whether it replaced anything. A failure
 // is non-fatal: the run continues on the transcript it already had.

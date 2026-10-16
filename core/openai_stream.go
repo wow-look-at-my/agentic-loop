@@ -9,6 +9,7 @@ import (
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
+	Model   string     `json:"model,omitempty"`
 	// Timings is a llama.cpp/ollama timing snapshot; each replaces the (last wins).
 	Timings *Timings `json:"timings,omitempty"`
 	// PromptProgress is a non-standard prefill-progress update emitted on a choices-less chunk.
@@ -226,6 +227,7 @@ type oaStream struct {
 	finish           string
 	usages           []Usage
 	timings          []Timings
+	model            string
 	sawData          bool
 	// sentParts counts parts already delivered via OnPart; the rest goes out at the end.
 	sentParts int
@@ -260,6 +262,9 @@ func (st *oaStream) onData(data []byte) error {
 	var chunk oaChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
 		return nil
+	}
+	if chunk.Model != "" {
+		st.model = chunk.Model
 	}
 	if chunk.PromptProgress != nil {
 		st.sawData = true
@@ -350,5 +355,6 @@ func (st *oaStream) completion() *Completion {
 		Timings:    st.timings,
 		Streamed:   true,
 		StopReason: normalizeStopReason(finish),
+		Model:      st.model,
 	}
 }

@@ -203,6 +203,8 @@ Every built-in provider is a `ModelLimiter`. It reads its own endpoint's list on
 
 `Run` compacts against `Config.ContextWindow`. When that is zero and the request auto-compacts, it uses the window the provider's model list publishes. `Events.OnContextWindow` says which window the run settled on. A run that has none gets an `Err` naming why, and never auto-compacts.
 
+A gateway that resolves an alias (`auto-pr-resolve`) lists the model it serves, not the alias. Every response names that model (`Completion.Model`), so when the requested name resolved no window, the loop asks the list about the served name after the first completion, once per name, and reports it in the event's `Served`. `ModelList.LimitsFor` also accepts the served name without its provider prefix: `deepseek/x` finds the one entry ending in `/deepseek/x`.
+
 One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one request and one decode. `FetchModelList` does a `GET {base}/v1/models`, sending both credential forms, since which server is answering is the very thing in question.
 
 The trailing `/v1` is trimmed off the base first. The chat dialects disagree about what a base URL contains — the OpenAI request is `baseURL + "/chat/completions"`. As a result, its base **ends** in `/v1`, while the Anthropic one is `baseURL + "/v1/messages"`. As a result, its base does not. And appending to the first spelling asks for `/v1/v1/models`, a 404 that reads as an endpoint publishing neither a dialect nor a price.

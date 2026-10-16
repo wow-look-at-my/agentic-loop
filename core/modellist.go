@@ -29,6 +29,30 @@ type Limits struct {
 	MaxOutput int
 }
 
+// LimitsFor answers the limits the list publishes for model: the entry with that id, else the one entry whose
+// id ends in "/"+model. A gateway names the model it served without its provider prefix (deepseek/x for the list's
+// openrouter/deepseek/x), and that suffix is the same model. Two entries with that suffix name nothing.
+func (l *ModelList) LimitsFor(model string) (Limits, bool) {
+	if l == nil || model == "" {
+		return Limits{}, false
+	}
+	if lim, ok := l.Limits[model]; ok {
+		return lim, true
+	}
+	var found Limits
+	matches := 0
+	for id, lim := range l.Limits {
+		if strings.HasSuffix(id, "/"+model) {
+			found = lim
+			matches++
+		}
+	}
+	if matches != 1 {
+		return Limits{}, false
+	}
+	return found, true
+}
+
 // modelListMaxBytes caps the read; a model list is small, so anything larger is not the document being read.
 const modelListMaxBytes = 1 << 20
 

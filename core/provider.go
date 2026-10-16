@@ -175,6 +175,9 @@ type Completion struct {
 	Timings    []Timings
 	Streamed   bool
 	StopReason string
+	// Model is the model the response names. A gateway that resolves an alias names the model it served here,
+	// which is the name its model list knows. Empty when the response named none.
+	Model string
 }
 
 // Provider runs streaming model call; after data arrives, returns partial Completion + error.

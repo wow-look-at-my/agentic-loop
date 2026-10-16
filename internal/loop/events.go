@@ -111,7 +111,10 @@ type ContextWindowEvent struct {
 	Window int
 	// FromModelList is true when Config.ContextWindow was unset and the provider's model list supplied Window.
 	FromModelList bool
-	Err           error
+	// Served names the model the list was asked about when it is not the requested one: the model a response
+	// named after the endpoint resolved an alias.
+	Served string
+	Err    error
 }
 
 // Events are the loop's callbacks; all optional, and a returned error aborts the run.

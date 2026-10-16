@@ -10,6 +10,7 @@ type anNonStream struct {
 	Content    []anNonStreamBlock `json:"content"`
 	StopReason string             `json:"stop_reason"`
 	Usage      *anUsage           `json:"usage"`
+	Model      string             `json:"model"`
 }
 
 // anNonStreamBlock is content block of a non-streaming response.
@@ -39,6 +40,7 @@ func parseAnthropicNonStream(data []byte) (*Completion, error) {
 		Message:    Message{Role: RoleAssistant},
 		StopReason: resp.StopReason,
 		Streamed:   false,
+		Model:      resp.Model,
 	}
 	for _, b := range resp.Content {
 		switch b.Type {
