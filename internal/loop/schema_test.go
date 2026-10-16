@@ -43,10 +43,10 @@ func TestInferSchemaWithNothingRequired(t *testing.T) {
 	assert.Contains(t, string(InferSchema[optional]()), `"required":[]`)
 }
 
-// Every of these is a wiring mistake in the package that declares the
-// tool, so it fails at construction rather than on the call that reaches
-// it -- a tool advertised with a contract its handler does not honour is worse
-// than a build that stops.
+// Every of these is a wiring mistake in the package that declares the tool. It
+// fails at construction rather than on the call that reaches it. This is a
+// tool advertised with a contract its handler does not honour is worse than a
+// build that stops.
 func TestInferSchemaPanicsOnAMisdeclaredArgument(t *testing.T) {
 	type noTag struct{ Path string }
 	type emptyName struct {

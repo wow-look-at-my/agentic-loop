@@ -29,6 +29,32 @@ type Limits struct {
 	MaxOutput int
 }
 
+// LimitsFor answers the limits the list publishes for model: the entry with
+// that id, else the entry whose id ends in "/"+model. A gateway names the
+// model it served without its provider prefix (deepseek/x for the list's
+// openrouter/deepseek/x), and that suffix is the same model. Entries with
+// that suffix name nothing.
+func (l *ModelList) LimitsFor(model string) (Limits, bool) {
+	if l == nil || model == "" {
+		return Limits{}, false
+	}
+	if lim, ok := l.Limits[model]; ok {
+		return lim, true
+	}
+	var found Limits
+	matches := 0
+	for id, lim := range l.Limits {
+		if strings.HasSuffix(id, "/"+model) {
+			found = lim
+			matches++
+		}
+	}
+	if matches != 1 {
+		return Limits{}, false
+	}
+	return found, true
+}
+
 // modelListMaxBytes caps the read; a model list is small, so anything larger is not the document being read.
 const modelListMaxBytes = 1 << 20
 
@@ -87,9 +113,9 @@ func modelListURL(baseURL string) (string, error) {
 // DecodeModelList reads a model-list document.
 //
 // A document that will not parse is an ERROR, not an empty result. The are
-// different facts a host has to be able to tell apart: an endpoint that
+// different facts a host has to be able to tell apart. An endpoint that
 // publishes no prices renders an em dash and is working correctly, and an
-// endpoint answering with an HTML error page is not — reporting both as "no
+// endpoint answering with an HTML error page is not. Reporting both as "no
 // prices" is how a misconfigured URL looks exactly like a cheap provider.
 func DecodeModelList(body []byte) (*ModelList, error) {
 	var doc struct {

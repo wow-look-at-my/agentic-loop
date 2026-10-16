@@ -284,8 +284,8 @@ func TestOpenAIStreamDecode(t *testing.T) {
 	assert.Equal(t, comp.Usages, usages, "OnUsage saw exactly what the completion carries")
 }
 
-// TestOpenAIReasoningDetailsStream reproduces the OpenRouter shape: a
-// reasoning.text item fragmented across deltas at the same index, then a
+// TestOpenAIReasoningDetailsStream reproduces the OpenRouter shape. A
+// reasoning.text item fragmented across deltas at the same index. Then a
 // reasoning.encrypted item at the next index, both accumulated into the
 // turn's ThinkingBlock -- its Signature carries the whole captured array,
 // verbatim, for replay.
@@ -317,12 +317,12 @@ func TestOpenAIReasoningDetailsStream(t *testing.T) {
 	assert.Equal(t, "rs_2", details[1].ID)
 }
 
-// TestOpenAIReplayReasoningDetails is the regression test for the bug: a
+// TestOpenAIReplayReasoningDetails is the regression test for the bug. A
 // gateway fronting a Responses-only reasoning model needs the exact
 // reasoning_details array echoed back on the next turn to pair a
-// function_call with its output; replaying only the flattened text drops the
-// item ids and the gateway 400s with "No tool output found for function call
-// X" on the next turn after a tool call.
+// function_call. This holds with its output. Replaying only the flattened
+// text drops the item ids and the gateway 400s with "No tool output found for
+// function call X" on the next turn after a tool call.
 func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	details := []oaReasoningDetail{
 		{Type: "reasoning.text", Text: "step one", ID: "rs_1", Format: "openai-responses-v1"},
@@ -360,7 +360,7 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 }
 
 // TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server
-// default still sends neither field: a server that never advertised
+// default still sends neither field. A server that never advertised
 // reasoning_details must not see it because a captured block happens to
 // carry.
 func TestOpenAINoReasoningDetailsWithoutReplay(t *testing.T) {

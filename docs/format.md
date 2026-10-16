@@ -25,7 +25,7 @@ Everything common is an ordinary element or an unqualified attribute. Everything
 
 Each dialect's schema declares its own, and the core schema references them by `ref`. There is no wildcard anywhere, so a misspelled provider attribute is a validation error here rather than a 400 from an upstream. A reader knows what every attribute in a document means.
 
-A parameter no dialect schema has named goes in a `<params>` tree instead -- under the dialect's namespace when it is addressed to one dialect, unqualified. This is when it is addressed to whoever runs the request.
+A parameter no dialect schema named goes in a `<params>` tree instead -- under the dialect's namespace when it is addressed to one dialect, unqualified. This is when it is addressed to whoever runs the request.
 
 ## The param tree
 
@@ -43,6 +43,6 @@ JSON text in an element.
 
 ## Usage
 
-One `<usage>` element per report the provider sent, in order, exactly as sent. A call can produce several: OpenAI emits one final snapshot, usage-on-every-chunk upstreams attach a cumulative one to each, Anthropic sends fragments. Reconciling them is a policy and the format has none -- the document says what the provider said, and `go/client` folds them for a Go caller.
+One `<usage>` element per report the provider sent, in order, exactly as sent. A call can produce several: OpenAI emits one last snapshot, usage-on-every-chunk upstreams attach a cumulative one to each, Anthropic sends fragments. Reconciling them is a policy and the format has none -- the document says what the provider said, and `go/client` folds them for a Go caller.
 
 An absent `cache-read-tokens` means the provider reported no cache information, which is not the same as reporting zero. Attribute presence is the tri-state.

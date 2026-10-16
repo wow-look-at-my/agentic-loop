@@ -107,7 +107,7 @@ func TestSubagentRunsCollectReturnsNothingWhenIdle(t *testing.T) {
 }
 
 // A loop may consult a registry it was never given -- a run with no
-// asynchronous sub-agents has none -- so every question has a nil answer.
+// asynchronous sub-agents has none. So every question has a nil answer.
 func TestNilSubagentRunsIsIdle(t *testing.T) {
 	var runs *SubagentRuns
 	assert.Zero(t, runs.Pending())
@@ -194,7 +194,7 @@ func TestFormatSubagentDeliverySaysWhatWasAbandoned(t *testing.T) {
 }
 
 // A turn that would END while a sub-agent is out instead waits for it and
-// hands the report to the model -- the promise the receipt made.
+// hands the report to the model. The promise the receipt made.
 func TestRunDeliversAnOutstandingSubagentReport(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("launched one; waiting")},

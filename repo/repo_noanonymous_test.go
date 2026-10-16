@@ -9,13 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// NoAnonymous is the host's policy knob: a server holding at least PAT
-// must never let a read fall through to an unauthenticated request, because
-// GitHub buckets the anonymous request by the server's own IP and answers it
-// with a different (worse) verdict than the token's real failure. These tests
-// pin that the client-level flag drops the anonymous attempt from the read
-// paths (FetchURLOpts, Credentials, OwnerRepos) while leaving the default
-// ( tokens) anonymous-friendly for public repositories.
+// NoAnonymous is the host's policy knob: a server holding at least PAT must
+// never let a read fall through to an unauthenticated request. This is
+// because GitHub buckets the anonymous request. This holds by the server's
+// own IP and answers it with a different (worse) verdict than the token's
+// real failure. These tests pin that the client-level flag drops the
+// anonymous attempt from the read paths (FetchURLOpts, Credentials,
+// OwnerRepos). This happens while leaving the default ( tokens)
+// anonymous-friendly for public repositories.
 
 func TestNoAnonymousDropsTheUnauthenticatedAttemptFromReads(t *testing.T) {
 	var auths []string
@@ -59,8 +60,8 @@ func TestCredentialsNoAnonymousContainNoAnonymousAttempt(t *testing.T) {
 }
 
 // A cache that remembers the anonymous attempt as a repository's winner -- a
-// store seeded before the user added any token -- must not put it ahead of the
-// tokens, and under NoAnonymous must not put it anywhere.
+// store seeded before the user added any token. The store must not put it
+// ahead of the tokens, and under NoAnonymous must not put it anywhere.
 func TestCachedAnonymousWinnerNeverOutranksATokenOrDefeatsNoAnonymous(t *testing.T) {
 	var auths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +92,9 @@ func TestCachedAnonymousWinnerNeverOutranksATokenOrDefeatsNoAnonymous(t *testing
 		"with anonymous allowed it still runs last, never promoted by the cache")
 }
 
-// An anonymous win is not remembered: the cache holds tokens only, so a token
-// configured later is tried rather than shadowed by a stored preference
-// for no credential.
+// An anonymous win is not remembered. The cache holds tokens only, so a token
+// configured later is tried rather than shadowed by a stored preference for
+// no credential.
 func TestAnAnonymousWinIsNotRemembered(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

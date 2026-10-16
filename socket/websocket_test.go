@@ -14,10 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The websocket half is hand-rolled against RFC, so the frame handling is
-// this project's code and gets tested like it: a peer that pings, that
-// closes, that never asked to upgrade, and an answer too big for a short
-// length field.
+// The websocket half is hand-rolled against RFC. The frame handling is this
+// project's code. The frame handling gets tested like it: a peer that pings
+// and that closes.
 
 // wsServer starts a websocket server over the given provider.
 func wsServer(t *testing.T, p commonai.Provider) *httptest.Server {
@@ -74,7 +73,7 @@ func (c *wsClient) receiveFrame() (byte, []byte, error) {
 	return op, payload, nil
 }
 
-// A ping is answered with a pong carrying the same payload, and the connection
+// A ping is answered with a pong carrying the same payload. The connection
 // carries on -- a keepalive that dropped the conversation would be worse than
 // no keepalive.
 func TestWebSocketAnswersAPingAndKeepsGoing(t *testing.T) {
@@ -119,9 +118,9 @@ func TestWebSocketCarriesAnAnswerTooBigForAShortLength(t *testing.T) {
 	assert.Equal(t, big, comp.Message.Content)
 }
 
-// The handshake is refused, with a status rather than a hijacked connection,
-// when the request is not a websocket upgrade or does not carry the key the
-// accept token is derived from.
+// The handshake is refused, with a status rather than a hijacked connection.
+// This happens when the request is not a websocket upgrade or does not carry
+// the key the accept token is derived from.
 func TestWebSocketRefusesAHandshakeItCannotComplete(t *testing.T) {
 	s, err := NewServer(Config{Provider: &fakeProvider{text: "hi"}})
 	require.NoError(t, err)

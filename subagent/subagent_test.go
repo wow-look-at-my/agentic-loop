@@ -469,7 +469,7 @@ func activityKinds(acts []SubagentActivity) []string {
 }
 
 // A sub-agent answers its parent in TEXT, so without this every nested model
-// call was spend a host could not see: the turn_end step carries the whole
+// call was spend a host could not see. The turn_end step carries the whole
 // Completion, live, and the report carries the run's totals.
 func TestSubagentTurnEndCarriesTheCompletion(t *testing.T) {
 	cost := 0.5
@@ -660,7 +660,7 @@ func TestSubagentExecuteErrors(t *testing.T) {
 }
 
 func TestSubagentCustomSystemPromptAndUncappedTurns(t *testing.T) {
-	// A custom system prompt replaces the default, and the nested loop runs as
+	// A custom system prompt replaces the default. The nested loop runs as
 	// long as the sub-agent keeps working -- no cap cuts its research short.
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("", agentic.ToolCall{ID: "s1", Name: "Repo__read", Arguments: `{"i":1}`})},

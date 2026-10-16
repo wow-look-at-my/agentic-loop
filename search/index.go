@@ -4,9 +4,9 @@
 // It owns SQLite file holding an FTS5 index over message text plus the
 // vectors for a semantic search over the same messages. The conversations
 // themselves stay wherever the host keeps them: the index reads them through
-// the Source interface, and SessionSource adapts an agentic-loop
-// session.Store, so cai and the http/socket servers get searchable history
-// without changing how they store anything.
+// the Source interface. SessionSource adapts an agentic-loop session.Store,
+// so cai and the http/socket servers get searchable history without changing
+// how they store anything.
 package search
 
 import (
@@ -67,10 +67,10 @@ func open(ctx context.Context, path, synchronous string) (*Index, error) {
 // Close closes the index database.
 func (i *Index) Close() error { return i.sql.Close() }
 
-// applySchema creates both halves and rebuilds either whose recorded
-// version is not the current, or whose tables on disk are not the shape
-// that version describes. The halves are handled independently, which is the
-// whole point of versioning them separately: a change to the text index must
+// applySchema creates both halves and rebuilds either whose recorded version
+// is not the current, or whose tables on disk are not the shape. That
+// version describes. The halves are handled independently, which is the
+// whole point of versioning them separately. A change to the text index must
 // not cost every caller their embeddings.
 func (i *Index) applySchema(ctx context.Context) error {
 	if _, err := i.sql.ExecContext(ctx, metaSchema); err != nil {
@@ -122,11 +122,11 @@ func (i *Index) applySchema(ctx context.Context) error {
 //
 // The recorded version says which shape the file is MEANT to have. It cannot
 // say which shape the file has, because the number is not the library's
-// alone: another implementation of this index writes its own versions into
+// alone. Another implementation of this index writes its own versions into
 // the same meta table, and of them met version with a different column set.
-// The version then reads as up to date, no rebuild runs, and the CREATE INDEX
-// over a column that is not there fails -- on every open, forever, for a file
-// that is derived data and free to rebuild.
+// The version then reads as up to date. No rebuild runs, and the CREATE INDEX
+// over a column that is not there fails -- on every open, forever. That
+// rebuild is for a file that is derived data and free to rebuild.
 func (i *Index) shapeMatches(ctx context.Context, want map[string][]string) (bool, error) {
 	for table, columns := range want {
 		rows, err := i.sql.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
@@ -173,7 +173,7 @@ func (i *Index) meta(ctx context.Context, key string) (string, error) {
 }
 
 // metaInt reads meta value as an integer. An unset key is. A key holding
-// something that is not a number is a corrupt index rather than a: it is
+// something that is not a number is a corrupt index rather than a. It is
 // reported, because reading it as would silently skip a schema rebuild.
 func (i *Index) metaInt(ctx context.Context, key string) (int64, error) {
 	v, err := i.meta(ctx, key)

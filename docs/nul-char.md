@@ -10,7 +10,7 @@ XML 1.1's `Char` production starts at `#x1`, so U+0000 is not a character XML ad
 
 A tool result is bytes a program produced, and programs produce NUL. The alternatives were all worse:
 
-- drop it -- a wrong answer that looks like a right one.
+- drop it -- a incorrect answer that looks like a right one.
 - substitute U+FFFD -- the same, plus a fabricated character.
 - base64 the whole part -- unreadable content, for one byte.
 - fail the call -- a model call refused over a byte the model handled fine.

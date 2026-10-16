@@ -110,7 +110,7 @@ func TestADeletedConversationLeavesTheIndexWithItsVectors(t *testing.T) {
 }
 
 // An EDIT, rather than an append, retires a message id. Its vector is keyed by
-// that id and no conversation-level delete reaches it, so without the orphan
+// that id. No conversation-level delete reaches it, so without the orphan
 // sweep it would be paid-for storage no query can read, forever.
 func TestAReplacedMessageDoesNotLeaveItsVectorBehind(t *testing.T) {
 	ctx := context.Background()
@@ -251,7 +251,7 @@ func TestACorruptSchemaVersionIsReportedNotReadAsZero(t *testing.T) {
 
 // oldForeignFTSSchema is the text half as ANOTHER implementation of this index
 // wrote it, recording the same fts_schema_version this package is on. It is
-// simple-llm-ui's internal/search, which this package was extracted from: the
+// simple-llm-ui's internal/search, which this package was extracted from. The
 // owner column was user_id, there was no position and no indexed_conversations.
 const oldForeignFTSSchema = `
 DROP TRIGGER IF EXISTS indexed_messages_ai;

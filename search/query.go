@@ -149,8 +149,8 @@ func (i *Index) searchText(ctx context.Context, owner, query string, limit int) 
 		return nil, nil
 	}
 	// Ties break on recency. bm25 gives identical scores to messages that use
-	// a term the same way -- which, in a chat history, is most of them -- and
-	// the newer of equally relevant messages is the being looked for.
+	// a term. The same way -- which, in a chat history, is most of them --
+	// and the newer of equally relevant messages is the being looked for.
 	rows, err := i.sql.QueryContext(ctx, `
 		SELECT m.message_id, bm25(messages_fts)
 		FROM messages_fts
@@ -309,7 +309,7 @@ func escapeLike(s string) string {
 // the ranking order.
 //
 // owner is re-checked here even though every half already scoped by it. The
-// halves fuse into a list of bare ids, and a list of ids is exactly the shape
+// halves fuse into a list of bare ids. A list of ids is exactly the shape
 // that loses its scope on the next edit to this file.
 func (i *Index) hydrate(ctx context.Context, owner string, ranked []Hit) ([]Hit, error) {
 	if len(ranked) == 0 {

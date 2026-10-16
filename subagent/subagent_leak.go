@@ -21,7 +21,7 @@ var leakedToolCallOpeners = []string{
 }
 
 // SubagentCutOffNote is appended to a report that was cut short by a leaked
-// tool-call envelope, so the orchestrator treats what survived as partial
+// tool-call envelope. The orchestrator treats what survived as partial
 // rather than as the sub-agent's conclusions.
 const SubagentCutOffNote = "\n\n[cut short: the sub-agent tried to call another tool instead of answering, " +
 	"so everything above is partial working notes, NOT its conclusions. Relaunch it with a narrower task " +
@@ -34,7 +34,7 @@ const SubagentNoReportText = "the sub-agent produced no report: it ended by tryi
 
 // splitLeakedToolCalls returns the report text with any trailing leaked
 // tool-call envelope removed, and whether was found. The cut runs from the
-// opener to the end of the text: a model starts emitting an envelope, the
+// opener to the end of the text. A model starts emitting an envelope, the
 // rest of the message is that envelope.
 func splitLeakedToolCalls(s string) (clean string, leaked bool) {
 	cut := -1

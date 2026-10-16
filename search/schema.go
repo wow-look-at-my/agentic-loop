@@ -21,15 +21,15 @@ const (
 // ftsSchema builds the text half.
 //
 // indexed_messages carries its own copy of the content because an
-// external-content FTS5 table has to read from a table in the SAME database,
-// and the host's conversations are not in this -- they may not be in a
-// database at all.
+// external-content FTS5 table has to read from a table in the SAME database.
+// The host's conversations are not in this -- they may not be in a database
+// at all.
 //
 // It also carries owner, so scoping a search to whoever owns the conversation
 // is a predicate on the row that answers the query. That is the only place the
 // check cannot be forgotten.
 //
-// indexed_conversations is what makes re-indexing incremental: it remembers
+// indexed_conversations is what makes re-indexing incremental. It remembers
 // the revision each conversation had when it was last read, so a pass re-reads
 // only the conversations whose transcripts have moved.
 const ftsSchema = `
@@ -71,9 +71,9 @@ END;
 `
 
 // ftsTables and embedTables are the columns each half's tables have at the
-// versions above. applySchema reads the file's real shape against them and
-// rebuilds a half that does not match, so a recorded version that describes
-// some OTHER implementation's tables costs a re-index instead of failing every
+// versions above. applySchema reads the file's real shape against them. It
+// rebuilds a half that does not match. A recorded version that describes some
+// OTHER implementation's tables costs a re-index instead of failing every
 // open. Keep each list in step with the CREATE statements beside it.
 var (
 	ftsTables = map[string][]string{
@@ -88,8 +88,8 @@ var (
 
 // dropFTSSchema tears the text half down for a version bump. The triggers go:
 // dropping indexed_messages while its delete trigger still exists would fire
-// that trigger for every row into an FTS table that is about to be dropped
-// anyway.
+// that trigger for every row into an FTS table. That table is about to be
+// dropped anyway.
 const dropFTSSchema = `
 DROP TRIGGER IF EXISTS indexed_messages_ai;
 DROP TRIGGER IF EXISTS indexed_messages_ad;

@@ -49,7 +49,7 @@ func (r *thinkingSignatureRepair) Complete(ctx context.Context, req Request, ev 
 }
 
 // withoutBadSignatures returns a copy of msgs with every thinking block
-// carrying a remembered bad signature cleared; msgs itself is never
+// carrying a remembered bad signature cleared. Msgs itself is never
 // mutated, and msgs is returned unchanged when nothing needs stripping.
 func (r *thinkingSignatureRepair) withoutBadSignatures(msgs []Message) []Message {
 	if !r.anyBad(msgs) {
@@ -97,7 +97,7 @@ func (r *thinkingSignatureRepair) isBad(sig string) bool {
 
 // findRejectedSignature locates the exact signature value Anthropic
 // rejected, by rebuilding the same wire content the failed call sent and
-// reading the named block back out of it -- so this never re-derives the
+// reading the named block back. Out of it -- so this never re-derives the
 // tool-result-folding/dropped-turn rules anWireMessages already implements.
 func (r *thinkingSignatureRepair) findRejectedSignature(msgs []Message, errStr string) (string, bool) {
 	m := invalidThinkingSigPattern.FindStringSubmatch(errStr)

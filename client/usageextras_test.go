@@ -43,7 +43,6 @@ func TestOpenAIStreamUsageExtras(t *testing.T) {
 }
 
 func TestOpenAIEstimatedCostAndCostPrecedence(t *testing.T) {
-	// DeepInfra-style estimated_cost is honored when cost is absent...
 	h := &sseHandler{payloads: []string{
 		`{"choices":[{"delta":{"content":"x"}}]}`,
 		`{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"estimated_cost":0.005}}`,

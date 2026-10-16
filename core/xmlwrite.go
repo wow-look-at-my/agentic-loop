@@ -151,9 +151,9 @@ func escapeAttr(s string) string {
 	return escape(s, true)
 }
 
-// escape is the escaper both forms share. A byte that is not valid UTF-
-// has no character to reference at all, so it is written as its own code
-// point -- the only representable reading of a byte that should not be there.
+// escape is the escaper both forms share. A byte that is not valid UTF- has
+// no character to reference at all. It is written as its own code point --
+// the only representable reading of a byte that should not be there.
 func escape(s string, inAttr bool) string {
 	if !needsEscape(s, inAttr) {
 		return s

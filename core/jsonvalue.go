@@ -17,8 +17,8 @@ func marshalValue(v any) ([]byte, error) {
 }
 
 // unmarshalValue reads a passthrough value back. Numbers stay json.Number so a
-// value that came in as does not go out as, and an integer id does not
-// come back in scientific notation.
+// value that came in as does not go out as. An integer id does not come back
+// in scientific notation.
 func unmarshalValue(raw []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()

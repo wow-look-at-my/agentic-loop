@@ -92,7 +92,7 @@ func TestOnPartCarriesTheThinkingSignature(t *testing.T) {
 }
 
 // A block still filling when the connection drops was never announced, but it
-// is still in the completion: a host writes what it was told plus whatever the
+// is still in the completion. A host writes what it was told plus whatever the
 // completion holds beyond that.
 func TestOnPartSkipsABlockThatNeverFinished(t *testing.T) {
 	srv := sseServer(t,

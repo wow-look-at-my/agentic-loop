@@ -1,8 +1,8 @@
-// Command todo_driver is the entry-point launch check for the task-list
-// tools. It drives the real NewTodoTools constructor and each tool's Execute
-// through a realistic mutation sequence, and verifies that the host's recorded
-// store reaches exactly the intended end state. It exits only when the
-// shipped code behaved; running it must produce identical output.
+// Command todo_driver is the entry-point launch check for the task-list tools.
+// It drives the real NewTodoTools constructor and each tool's Execute through
+// a realistic mutation sequence. Verifies that the host's recorded store
+// reaches exactly the intended end state. It exits only when the shipped code
+// behaved; running it must produce identical output.
 package main
 
 import (

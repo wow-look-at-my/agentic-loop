@@ -11,7 +11,7 @@ import (
 )
 
 // zeroArgTranscript is assistant turn that called a tool taking no
-// arguments, as a host replays it out of storage: the model sent no argument
+// arguments, as a host replays it out of storage. The model sent no argument
 // bytes, so Arguments is empty.
 func zeroArgTranscript() []Message {
 	return []Message{
@@ -21,10 +21,10 @@ func zeroArgTranscript() []Message {
 	}
 }
 
-// A -argument tool call still carries an arguments field on the openai
-// wire. Z.AI answers a function object without with "Invalid API
-// parameter, please check the documentation", which fails the turn -- and the
-// call is in the stored transcript, so every later turn fails the same way.
+// A -argument tool call still carries an arguments field on the openai wire.
+// Z.AI answers a function object without with "Invalid API parameter, please
+// check the documentation", which fails the turn. The call is in the stored
+// transcript, so every later turn fails the same way.
 func TestOpenAIReplaysZeroArgumentToolCall(t *testing.T) {
 	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
 	srv := httptest.NewServer(h)
@@ -93,7 +93,7 @@ func TestResponsesReplaysMalformedToolArgumentsAsEmptyObject(t *testing.T) {
 }
 
 // Valid JSON that is not an object (a model answering a bare string) is still
-// what the model said, and still valid on this wire: it is sent as it is.
+// what the model said, and still valid on this wire. It is sent as it is.
 func TestReplayToolArgsKeepsValidJSON(t *testing.T) {
 	assert.Equal(t, `{"a":1}`, replayToolArgs(`{"a":1}`))
 	assert.Equal(t, `"x"`, replayToolArgs(`"x"`))
@@ -121,8 +121,8 @@ func TestResponsesReplaysZeroArgumentToolCall(t *testing.T) {
 }
 
 // Anthropic streams a -argument tool_use as a block with no
-// input_json_delta at all. The non-streaming path already reads that as {};
-// the streamed must agree, or which transport served the turn decides
+// input_json_delta at all. The non-streaming path already reads that as {}.
+// The streamed must agree, or which transport served the turn decides
 // whether the transcript can be replayed later.
 func TestAnthropicStreamZeroArgumentToolCall(t *testing.T) {
 	h := &anSSEHandler{events: [][2]string{

@@ -32,8 +32,8 @@ const (
 const maxFrame = 64 << 20
 
 // WebSocketHandler serves the same operations over a websocket: the client
-// sends a document as or more text messages, and the answer comes back as
-// text message per flush -- which concatenate into exactly the document a
+// sends a document as or more text messages. The answer comes back as text
+// message per flush -- which concatenate into exactly the document a
 // unix-socket client reads.
 func (s *Server) WebSocketHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
