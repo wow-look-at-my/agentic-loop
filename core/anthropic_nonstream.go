@@ -10,6 +10,7 @@ type anNonStream struct {
 	Content    []anNonStreamBlock `json:"content"`
 	StopReason string             `json:"stop_reason"`
 	Usage      *anUsage           `json:"usage"`
+	Model      string             `json:"model"`
 }
 
 // anNonStreamBlock is content block of a non-streaming response.
@@ -39,6 +40,7 @@ func parseAnthropicNonStream(data []byte) (*Completion, error) {
 		Message:    Message{Role: RoleAssistant},
 		StopReason: resp.StopReason,
 		Streamed:   false,
+		Model:      resp.Model,
 	}
 	for _, b := range resp.Content {
 		switch b.Type {
@@ -84,8 +86,8 @@ func intOrZero(p *int) int {
 }
 
 // toUsage normalizes a Messages-API usage object: input_tokens EXCLUDES
-// cached tokens, so the full prompt is input + cache_read + cache_creation;
-// the tri-state cache pointers pass through as reported.
+// cached tokens. The full prompt is input + cache_read + cache_creation.
+// The tri-state cache pointers pass through as reported.
 func (u *anUsage) toUsage() Usage {
 	read, write := 0, 0
 	if u.CacheReadInputTokens != nil {

@@ -8,7 +8,7 @@ import (
 
 // ReadCapped reads up to max bytes, reporting truncation. When truncated it
 // drops a trailing partial UTF- rune (at most a few bytes) so valid text stays
-// valid; binary content is left as-is for the caller's binary check.
+// valid. Binary content is left as-is for the caller's binary check.
 func ReadCapped(r io.Reader, max int64) (data []byte, truncated bool, err error) {
 	var b bytes.Buffer
 	n, err := b.ReadFrom(io.LimitReader(r, max+1))

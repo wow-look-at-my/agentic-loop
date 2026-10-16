@@ -168,7 +168,7 @@ func TestRepoCheckRunSaysWhenTheCheckReportedNothing(t *testing.T) {
 	assert.Contains(t, res.Content, "https://example.com/run/41")
 }
 
-// An annotations read the token cannot make is a NOTE, not an empty list: the
+// An annotations read the token cannot make is a NOTE, not an empty list. The
 // check's own output is still worth having, and "(none)" would be a lie.
 func TestRepoCheckRunNotesAnUnreadableAnnotationList(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Name: "one", Token: "tok"}}}, func(c ghCall) (int, string) {

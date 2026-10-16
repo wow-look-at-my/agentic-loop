@@ -4,7 +4,7 @@ import agentic "github.com/wow-look-at-my/agentic-loop"
 
 // What the model is told about each file tool. Every string here is contract:
 // they are the whole of what a model knows about the filesystem before it
-// uses, and the host appends only its own MountsBlurb and per-tool Notes.
+// uses. The host appends only its own MountsBlurb and per-tool Notes.
 
 const (
 	listDirDescription  = "Lists a directory."

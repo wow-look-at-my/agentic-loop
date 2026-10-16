@@ -42,7 +42,7 @@ func TestRunOnStopInjectsAndContinues(t *testing.T) {
 }
 
 // A host that re-arms on every verdict keeps being asked. Nothing in the loop
-// counts the asks: a policy that judges each answer needs every boundary, and
+// counts the asks. A policy that judges each answer needs every boundary, and
 // what ends a run that will not settle is the host's own guard.
 func TestRunOnStopIsAskedAtEveryBoundary(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{

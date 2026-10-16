@@ -51,7 +51,7 @@ func (q *MessageQueue) Close() []Message {
 
 // drainLocked takes every value out of the underlying queue and stable-
 // partitions it: every SystemMessage ahead of every UserMessage, each
-// keeping its own arrival order. Must be called with q.mu held, which is
+// keeping its own arrival order. Must be called with q.mu held. Which is
 // what stops a racing Queue call from adding a message after the take-loop
 // below has already decided the queue looks empty.
 func (q *MessageQueue) drainLocked() []Message {

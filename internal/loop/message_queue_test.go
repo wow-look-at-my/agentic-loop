@@ -11,7 +11,7 @@ import (
 )
 
 // A message queued while the model works is delivered at the top of the next
-// turn -- the model asked for a tool, so a turn boundary is coming anyway.
+// turn -- the model asked for a tool. A turn boundary is coming anyway.
 func TestQueuedMessageIsDeliveredAtTheNextTurn(t *testing.T) {
 	q := &MessageQueue{}
 	provider := &scriptProvider{steps: []scriptStep{
@@ -95,8 +95,8 @@ func TestQueuedMessageContinuesAStalledTurn(t *testing.T) {
 	assert.Equal(t, 2, res.Turns, "no wrap-up call is spent when a message is waiting")
 }
 
-// Run closes the queue on the way out, so a producer that misses the run is
-// told so instead of leaving a message nothing will read.
+// Run closes the queue on the way out, so a producer. That misses the run
+// is told so instead of leaving a message nothing will read.
 func TestQueueAfterTheRunEndsIsRefused(t *testing.T) {
 	q := &MessageQueue{}
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("done")}}}

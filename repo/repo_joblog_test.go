@@ -61,8 +61,8 @@ func TestRepoJobLogWindowIsAddressableSoTheWholeLogIsReachable(t *testing.T) {
 }
 
 // GitHub does not serve the log from the API host: it answers with a
-// short-lived signed URL on storage. Following that is the whole read, and the
-// Authorization header must NOT cross to the other host -- the signature is the
+// short-lived signed URL on storage. Following that is the whole read. The
+// Authorization header must NOT cross to the other host. The signature is the
 // credential there, and forwarding a PAT to storage would hand it over.
 func TestRepoJobLogFollowsTheRedirectToStorageWithoutForwardingTheToken(t *testing.T) {
 	var storageAuth string
@@ -110,9 +110,9 @@ func TestRepoJobLogFailureExplainsItself(t *testing.T) {
 }
 
 // GitHub 404s the logs endpoint for a job that has not finished -- the log is
-// not archived to storage yet -- and that looks identical on the wire to a
-// job no token can see. The tool must tell them apart rather than call a job
-// that is still running "gone".
+// not archived to storage yet. And that looks identical on the wire to a job
+// no token can see. The tool must tell them apart rather than call a job that
+// is still running "gone".
 func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -133,7 +133,7 @@ func TestRepoJobLogStillRunningNamesTheJobsRealState(t *testing.T) {
 }
 
 // A job GitHub reports as genuinely completed, whose log 404s anyway, must
-// NOT blame the tokens: the status re-read proved the job exists and these
+// NOT blame the tokens: the status re-read proved the job exists. These
 // tokens can see it, so "none of those tokens can see it" would contradict a
 // read that succeeded. The log itself is what is missing.
 func TestRepoJobLogCompletedJobBlamesTheLogNotTheTokens(t *testing.T) {
@@ -158,8 +158,8 @@ func TestRepoJobLogCompletedJobBlamesTheLogNotTheTokens(t *testing.T) {
 }
 
 // A job GitHub marks "skipped" never ran a step, so it never produced a log
-// -- the is real and permanent, but it is not a permission problem, and
-// must not be reported as.
+// -- the is real and permanent. However, it is not a permission problem,
+// and must not be reported as.
 func TestRepoJobLogSkippedJobNeverHadOne(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "secret-pat"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
@@ -179,7 +179,7 @@ func TestRepoJobLogSkippedJobNeverHadOne(t *testing.T) {
 	assert.NotContains(t, res.Content, "will not fix itself")
 }
 
-// The whole chain a PAT-only host has: the Checks API is refused, the Actions
+// The whole chain a PAT-only host has: the Checks API is refused. The Actions
 // fallback names the failing job AND the id needed to read its log, and that
 // read answers with the log. A step name without a reachable log is where this
 // chain used to end.

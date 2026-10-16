@@ -54,9 +54,9 @@ func anWireMessages(msgs []Message) ([]map[string]any, error) {
 
 // anUserContent builds a user message's content: the plain string when it is
 // only text, and the block array when it carries an image. The source keeps
-// the form it was supplied in -- base64 for inline bytes, url for a reference
-// -- because converting between them means either fetching a URL the caller
-// did not ask this library to fetch, or inventing for bytes.
+// the form it was supplied in -- base64 for inline bytes, url for a
+// reference. This is because converting between them means either fetching a
+// URL the caller did not ask this library to fetch, or inventing for bytes.
 func anUserContent(m Message) (any, error) {
 	if !hasImage(m) {
 		return m.Content, nil

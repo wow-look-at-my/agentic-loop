@@ -175,6 +175,8 @@ type Completion struct {
 	Timings    []Timings
 	Streamed   bool
 	StopReason string
+	// Model is the model the response names.
+	Model string
 }
 
 // Provider runs streaming model call; after data arrives, returns partial Completion + error.

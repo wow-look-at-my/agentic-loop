@@ -1,8 +1,8 @@
 // ratelimit_test.go pins the fixed-rate limiter and its transport wrapper:
 // request starts are spaced at least interval apart (so n per minute is a
-// hard ceiling), the caller is admitted immediately, a slow previous call
+// hard ceiling). The caller is admitted immediately. A slow previous call
 // lets the gate catch up instead of blocking forever, context cancellation
-// aborts a wait, and the transport gates every request it forwards. All
+// aborts a wait. And the transport gates every request it forwards. All
 // timing is injected (a fake clock), so the suite is hermetic and fast.
 package extras
 
@@ -127,7 +127,7 @@ func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 	assert.True(t, errors.Is(err, context.Canceled))
 }
 
-// countingTransport is a roundTripper stub that counts the requests it
+// countingTransport is a RoundTripper stub that counts the requests it
 // forwards.
 type countingTransport struct {
 	mu    sync.Mutex

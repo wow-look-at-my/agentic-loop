@@ -80,7 +80,7 @@ func (s *streamWriter) events() *commonai.StreamEvents {
 	}
 }
 
-// finish writes what the events never announced and closes the document: the
+// finish writes what the events never announced and closes the document. The
 // parts of a call that did not stream at all (a server that ignored
 // stream:true), and the tail of that was cut off mid-part.
 func (s *streamWriter) finish(comp *commonai.Completion, callErr error) {

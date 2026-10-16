@@ -10,7 +10,7 @@ Package `agentic` is the module root:
 import agentic "github.com/wow-look-at-my/agentic-loop"
 ```
 
-Optional families are sibling packages: [`vfs/`](vfs/), [`repo/`](repo/), [`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/), [`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
+Optional families sibl packages: [`vfs/`](vfs/), [`repo/`](repo/), [`subagent/`](subagent/), [`webfetch/`](webfetch/), [`todo/`](todo/), [`resources/`](resources/). See [USAGE.md](USAGE.md) for the API tour.
 
 ## Design points
 

@@ -153,7 +153,7 @@ func (e errStr) Error() string { return string(e) }
 
 // explainFailures fetches the detail of each failing check run, up to
 // statusFailureDetailLimit. It returns the fetched details by check-run id and
-// the names it did NOT explain, so the report can say so rather than let a
+// the names it did NOT explain. The report can say so rather than let a
 // bounded read pass for a complete.
 func (e *repoTools) explainFailures(ctx context.Context, org, repo string, runs []ghCheckRun) (map[int64]ghCheckRun, []string) {
 	details := map[int64]ghCheckRun{}
@@ -194,7 +194,7 @@ func (e *repoTools) fetchCheckRun(ctx context.Context, org, repo string, id int6
 }
 
 // formatStatus renders both CI mechanisms as report. A check-runs failure is
-// noted, not fatal — a token can read the status and lack Checks API access
+// noted, not fatal. A token can read the status and lack Checks API access
 // (or vice versa), and a partial answer beats none.
 func formatStatus(org, repo, ref string, combined ghCombinedStatus, checks ghCheckRunsResponse, checksNote, actions, actionsNote string, details map[int64]ghCheckRun, undetailed []string) string {
 	sha := combined.SHA
@@ -326,7 +326,7 @@ func (e *repoTools) checkRunRead(ctx context.Context, in repoReadArgs) agentic.T
 }
 
 // fetchAnnotations reads a check run's annotations. A failure is reported as a
-// note rather than as an error: the check's own output is still worth having,
+// note rather than as an error. The check's own output is still worth having,
 // and a silently empty annotation list would read as "no errors were flagged".
 func (e *repoTools) fetchAnnotations(ctx context.Context, org, repo string, id int64) ([]ghAnnotation, string) {
 	target := fmt.Sprintf("%s/check-runs/%d/annotations?per_page=%d", e.gh.RepoURL(org, repo), id, checkRunAnnotationLimit)
