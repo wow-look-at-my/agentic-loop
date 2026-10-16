@@ -29,9 +29,9 @@ type Limits struct {
 	MaxOutput int
 }
 
-// LimitsFor answers the limits the list publishes for model: the entry with that id, else the one entry whose
-// id ends in "/"+model. A gateway names the model it served without its provider prefix (deepseek/x for the list's
-// openrouter/deepseek/x), and that suffix is the same model. Two entries with that suffix name nothing.
+// LimitsFor answers the limits the list publishes for model: the entry with that id, else the one entry whose id
+// ends in "/"+model. A gateway names the model it served without its provider prefix (deepseek/x for the list's
+// openrouter/deepseek/x), and that suffix is the same model. Entries with that suffix name nothing.
 func (l *ModelList) LimitsFor(model string) (Limits, bool) {
 	if l == nil || model == "" {
 		return Limits{}, false

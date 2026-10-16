@@ -17,6 +17,8 @@ type Completion struct {
 	CostUsd         *float64
 	Streamed        bool
 	StopReason      string
+	// Model is the model the response names; a gateway that resolves an alias names the model it served.
+	Model string
 }
 
 // fold turns what the provider SAID into the figure a caller bills against.
@@ -32,6 +34,7 @@ func fold(c *commonai.Completion) *Completion {
 		Message:    c.Message,
 		Streamed:   c.Streamed,
 		StopReason: c.StopReason,
+		Model:      c.Model,
 	}
 	if n := len(c.Timings); n > 0 {
 		t := c.Timings[n-1]
@@ -74,6 +77,7 @@ func unfold(c *Completion) *commonai.Completion {
 		Message:    c.Message,
 		Streamed:   c.Streamed,
 		StopReason: c.StopReason,
+		Model:      c.Model,
 	}
 	if hasUsage(c) {
 		u := c.Usage
