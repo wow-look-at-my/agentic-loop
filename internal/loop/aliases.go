@@ -1,8 +1,8 @@
 // aliases.go is this package's wire half, which lives in client/ over core/.
-// Everything here is an ALIAS or a thin call through, never a copy: a value
-// built as agentic.Message IS a client.Message, so the loop and the wire half
+// Everything here is an ALIAS or a thin call through, never a copy. A value
+// built as agentic.Message IS a client.Message, so the loop. The wire half
 // hand values to each other without a conversion step and nothing has to be
-// kept in sync between declarations of the same type.
+// kept in sync. Between declarations of the same type.
 package loop
 
 import (

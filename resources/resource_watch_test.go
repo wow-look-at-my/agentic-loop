@@ -190,8 +190,8 @@ func TestFirstPassIsABaseline(t *testing.T) {
 	assert.NotContains(t, text, "changed since the last turn")
 }
 
-// An unchanged resource says nothing at all: silence is the common case, and
-// re-announcing it every turn would cost the model a line per turn forever.
+// An unchanged resource says nothing at all: silence is the common case.
+// Re-announcing it every turn would cost the model a line per turn forever.
 func TestUnchangedResourcesAreSilent(t *testing.T) {
 	src := newFakeSource("s1", "docs", map[string]string{"file://a": "same"})
 	snaps := newMemSnapshots()
@@ -205,8 +205,8 @@ func TestUnchangedResourcesAreSilent(t *testing.T) {
 	assert.False(t, poll.Baseline, "the second pass has a stored baseline")
 }
 
-// A modification is reported with the shape of the change, and its id resolves
-// to the before/after captured AT THAT MOMENT -- not to the current state.
+// A modification is reported with the shape of the change. Its id resolves to
+// the before/after captured AT THAT MOMENT -- not to the current state.
 func TestAChangeIdKeepsAnsweringItsOwnChange(t *testing.T) {
 	src := newFakeSource("s1", "docs", map[string]string{"file://a": "one\ntwo\n"})
 	snaps := newMemSnapshots()
@@ -253,8 +253,8 @@ func TestARemovedResourceIsReported(t *testing.T) {
 }
 
 // A source that could not be listed makes its resources UNKNOWN, never
-// removed: absent-because-unreachable is not absent, and reporting a removal
-// would tell the model something false.
+// removed. The source absent-because-unreachable is not absent, and
+// reporting a removal would tell the model something false.
 func TestAnUnreachableSourceIsAWarningNotARemoval(t *testing.T) {
 	src := newFakeSource("s1", "docs", map[string]string{"file://a": "x"})
 	snaps := newMemSnapshots()

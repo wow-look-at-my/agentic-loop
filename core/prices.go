@@ -67,13 +67,13 @@ type modelListPricing struct {
 	CurrencyIrrelevant json.RawMessage `json:"currency"`
 }
 
-// ratesOf converts pricing block. The return is false when the block
-// carried no usable number at all, which keeps an empty `"pricing": {}` out of
-// the map instead of turning it into a free model.
+// ratesOf converts pricing block. The return is false when the block carried
+// no usable number at all. This keeps an empty `"pricing": {}` out of the map
+// instead of turning it into a free model.
 //
-// Cache rates fall back to the prompt rate when the block omits them, because
-// an omitted cache rate on a provider that charges for cache reads is a low
-// number, and the prompt rate is the price we know the tokens could have
+// Cache rates fall back to the prompt rate when the block omits them. This is
+// because an omitted cache rate on a provider that charges for cache reads is
+// a low number. The prompt rate is the price we know the tokens could have
 // cost. A host that wants the exact figure sets it in config.
 func ratesOf(p modelListPricing) (Rates, bool) {
 	var r Rates

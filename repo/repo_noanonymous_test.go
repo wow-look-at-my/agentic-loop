@@ -59,8 +59,8 @@ func TestCredentialsNoAnonymousContainNoAnonymousAttempt(t *testing.T) {
 }
 
 // A cache that remembers the anonymous attempt as a repository's winner -- a
-// store seeded before the user added any token -- must not put it ahead of the
-// tokens, and under NoAnonymous must not put it anywhere.
+// store seeded before the user added any token. The store must not put it
+// ahead of the tokens, and under NoAnonymous must not put it anywhere.
 func TestCachedAnonymousWinnerNeverOutranksATokenOrDefeatsNoAnonymous(t *testing.T) {
 	var auths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +91,9 @@ func TestCachedAnonymousWinnerNeverOutranksATokenOrDefeatsNoAnonymous(t *testing
 		"with anonymous allowed it still runs last, never promoted by the cache")
 }
 
-// An anonymous win is not remembered: the cache holds tokens only, so a token
-// configured later is tried rather than shadowed by a stored preference
-// for no credential.
+// An anonymous win is not remembered. The cache holds tokens only, so a token
+// configured later is tried rather than shadowed by a stored preference for
+// no credential.
 func TestAnAnonymousWinIsNotRemembered(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

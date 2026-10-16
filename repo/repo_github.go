@@ -85,10 +85,10 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 // disables caching) and returns the response.
 //
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
-// last: the last attempt is the anonymous, whose says only that no
-// credential was sent. Returning that hid the actual reason a configured token
-// was refused — a spent code-search rate limit reads as " Requires
-// authentication", so a transient wait looks like a permanent auth problem.
+// last. The last attempt is the anonymous, whose says only that no credential
+// was sent. Returning that hid the actual reason a configured token was
+// refused — a spent code-search rate limit reads as " Requires
+// authentication". A transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
 	var best GHResponse
 	bestRank := rankNone
@@ -182,10 +182,10 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 	return u
 }
 
-// OwnerRepos enumerates the repositories owned by a GitHub org or user.
-// Listing /repos/<owner> (no repo segment) means "show every repository under
-// this owner". GitHub splits this across endpoints — /orgs/<owner>/repos for
-// organizations and /users/<owner>/repos for personal accounts — so each
+// OwnerRepos enumerates the repositories owned by a GitHub org or user. Listing
+// /repos/<owner> (no repo segment) means "show every repository under this
+// owner". GitHub splits this across endpoints — /orgs/<owner>/repos for
+// organizations and /users/<owner>/repos for personal accounts. So each
 // candidate credential is tried against the org endpoint, then the user
 // endpoint, until returns 2xx. The winning credential is cached under the
 // lowercased owner name (no slash, so it never collides with an "org/repo" key).

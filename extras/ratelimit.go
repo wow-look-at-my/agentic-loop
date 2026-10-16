@@ -6,7 +6,7 @@
 // The limiter belongs to the Provider, like retry: making a call happen
 // without tripping the upstream's rate limit is "how the call gets made", the
 // layer's job. It is wired in as an http.RoundTripper on the provider's
-// client, so EVERY request it sends -- its transient-failure retries included,
+// client. EVERY request it sends -- its transient-failure retries included,
 // which ride the same client -- passes through the gate.
 package extras
 
@@ -36,10 +36,10 @@ func NewRateLimiter(n int) *RateLimiter {
 	return &RateLimiter{interval: time.Minute / time.Duration(n)}
 }
 
-// Wait blocks until the next request may start, or until ctx is done (it then
-// returns ctx.Err(), which the transport surfaces like any other canceled
-// request). The caller is admitted immediately; each later caller waits until
-// interval has passed since the start.
+// Wait blocks until the next request may start, or until ctx is done. (it
+// then returns ctx.Err(), which the transport surfaces like any other
+// canceled request). The caller is admitted immediately; each later caller
+// waits until interval has passed since the start.
 func (l *RateLimiter) Wait(ctx context.Context) error {
 	l.mu.Lock()
 	now := l.now

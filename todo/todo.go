@@ -104,12 +104,12 @@ const (
 // slice. Each is a separate agentic.Tool; none is Readonly and none is approval-gated.
 //
 // The tools are NOT read-only. They write state the host owns and shows to the
-// user, and a sub-agent inheriting them would overwrite its parent's plan;
-// granting them to is the caller's explicit choice (allowed_tools).
+// user, and a sub-agent inheriting them would overwrite its parent's plan.
+// Granting them to is the caller's explicit choice (allowed_tools).
 func NewTodoTools(cfg TodoConfig) agentic.Tools {
 	store := &todoStore{items: append([]Todo(nil), cfg.Initial...), next: 1}
 	// Mint above every id already in hand, so a restored list and a task added
-	// to it can never share an id — which resolve would then refuse to act on.
+	// to it can never share an id. Which resolve would then refuse to act on.
 	for _, t := range store.items {
 		if t.ID >= store.next {
 			store.next = t.ID + 1
@@ -165,9 +165,8 @@ func (e *todoTool) Decl() agentic.ToolDecl {
 // NeedsApproval always reports false; approval wiring stays the caller's concern.
 func (e *todoTool) NeedsApproval() bool { return false }
 
-// schema is inferred from the tool's argument struct, per the hard rule that a
-// tool's schema is never hand-written. closedState constrains the state field
-// to the enum a host can render.
+// schema is inferred from the tool's argument struct, per the hard rule that
+// a tool's schema is never hand-written.
 func (e *todoTool) schema() json.RawMessage {
 	var closed map[string][]string
 	if e.kind == todoKindAdd || e.kind == todoKindEdit {
@@ -311,7 +310,7 @@ func (e *todoTool) doComplete(ctx context.Context, args json.RawMessage) (agenti
 }
 
 // resolve finds the single stored task with the given id. Ids are minted
-// monotonically and never reused, so an id names at most task; the check
+// monotonically and never reused, so an id names at most task. The check
 // is kept so a corrupted store is refused rather than silently edited.
 func (e *todoTool) resolve(id int) (int, string) {
 	idx := -1
@@ -370,7 +369,7 @@ func todoDefaultState(state TodoState) TodoState {
 }
 
 // writeList persists the store's whole list, then answers the model with the
-// current list rendered in text and carried to the host as a todo_list part.
+// current list rendered in text. It carried to the host as a todo_list part.
 func (e *todoTool) writeList(ctx context.Context) (agentic.ToolResult, error) {
 	list := e.store.items
 	if list == nil {

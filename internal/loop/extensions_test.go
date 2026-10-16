@@ -103,10 +103,10 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 }
 
 // A call that fails before producing any completion must still finalize as
-// "cancelled" when its error is a context cancellation, matching the
-// classification the mid-stream partial-completion path already applies.
+// "cancelled" when its error is a context cancellation. That call is matching
+// the classification the mid-stream partial-completion path already applies.
 // Before the fix, a nil completion always finalized "error" regardless of
-// cause, so an outbound call torn down before it streamed a single byte (e.g.
+// cause. An outbound call torn down before it streamed a single byte (e.g.
 // "openai: Post...: context canceled") persisted as a permanent failure
 // instead of the graceful cancellation it was.
 func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
@@ -207,7 +207,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
-	// Turn stalled, so the wrap-up is turn, not the maxTurns+.
+	// Turn stalled, so the wrap-up is turn, not the MaxTurns+.
 	assert.Equal(t, []int{1, 2}, begins)
 	assert.Equal(t, []int{1, 2}, ends)
 	assert.Equal(t, "synthesized report", res.Final.Content)

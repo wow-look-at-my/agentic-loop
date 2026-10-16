@@ -160,11 +160,10 @@ func writeUsage(x *writer, u Usage) {
 	x.end()
 }
 
-// writeError writes an <error> element, saying what kind of failure it was so a
-// reader can tell a rejected request from a dropped connection without parsing
-// prose.
-// lead is prepended to the attributes, for the standalone document form where
-// the element is the root and has to declare the namespace.
+// writeError writes an <error> element, saying what kind of failure. It was so
+// a reader can tell a rejected request from a dropped connection without
+// parsing prose. lead is prepended to the attributes, for the standalone
+// document form where the element is the root and has to declare the namespace.
 func writeError(x *writer, err error, lead ...attr) {
 	if err == nil {
 		return

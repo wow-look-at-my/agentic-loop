@@ -73,14 +73,14 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 	return json.Marshal(w)
 }
 
-// oaWireMessages maps the neutral transcript onto the OpenAI wire: the system
+// oaWireMessages maps the neutral transcript onto the OpenAI wire. The system
 // prompt (when non-empty) is prepended as a system message, assistant tool
-// calls are replayed as tool_calls, and tool results ride as role:"tool"
-// messages keyed by tool_call_id. Message.Thinking is not replayed on this
-// dialect by default (a strict OpenAI-compatible server rejects an unknown
-// field) -- only when replayReasoning is set, and then both the flattened
-// text (reasoning) and, when captured, the verbatim reasoning_details array
-// go out -- a gateway requiring the latter for tool-call continuity (see
+// calls are replayed as tool_calls. Tool results ride as role:"tool" messages
+// keyed by tool_call_id. Message.Thinking is not replayed on this dialect by
+// default (a strict OpenAI-compatible server rejects an unknown field), only
+// when replayReasoning is set, and then both the flattened text (reasoning)
+// and, when. Captured, the verbatim reasoning_details array go out. A gateway
+// requiring the latter for tool-call continuity (see
 // oaReplayReasoningDetails) ignores the former, and a server that only knows
 // the ignores the latter. Message.ToolIsError has no wire equivalent.
 func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMessage, error) {
@@ -114,9 +114,9 @@ func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMe
 }
 
 // oaContentBlocks renders a message as the content ARRAY this dialect takes
-// when a message holds more than text, and nil when the plain string form says
-// the same thing -- which is what every OpenAI-compatible server accepts,
-// including the ones that never implemented the array.
+// when a message holds more than text. Nil when the plain string form says the
+// same thing -- which is what every OpenAI-compatible server accepts. That Nil
+// is including the ones that never implemented the array.
 func oaContentBlocks(m Message) ([]map[string]any, error) {
 	if !hasImage(m) {
 		return nil, nil
@@ -153,10 +153,10 @@ func reasoningText(m Message) string {
 	return b.String()
 }
 
-// oaReasoningDetail is item of an OpenRouter-style reasoning_details
-// array. A field this dialect never interprets (Signature, Format, Index) is
-// still captured and replayed, since a downstream gateway checks the whole
-// item, not the fields this library happens to read.
+// oaReasoningDetail is item of an OpenRouter-style reasoning_details array.
+// A field this dialect never interprets (Signature, Format, Index) is still
+// captured and replayed. This happens since a downstream gateway checks the
+// whole item, not the fields this library happens to read.
 type oaReasoningDetail struct {
 	Type      string  `json:"type"`
 	Text      string  `json:"text,omitempty"`
@@ -208,8 +208,8 @@ func oaMarkPromptCache(msgs []oaMessage) {
 }
 
 // oaWithMarkedContent returns a copy of the message whose content carries the
-// ephemeral cache breakpoint: a non-empty block array gets the marker on its
-// last block, a non-empty string becomes a -block array, and empty content
+// ephemeral cache breakpoint. A non-empty block array gets the marker on its
+// last block. A non-empty string becomes a -block array, and empty content
 // passes through unmarked.
 func oaWithMarkedContent(m oaMessage) oaMessage {
 	switch {

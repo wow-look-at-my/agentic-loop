@@ -80,9 +80,9 @@ type ResourceSnapshot struct {
 }
 
 // ResourceChangeRecord is the durable record of detected change. It carries
-// its OWN copy of the before/after, which is what makes a change id honest: a
-// resource that has moved times since still answers the notice with
-// the change.
+// its OWN copy of the before/after, which is what makes a change id honest. A
+// resource that has moved times since still answers the notice with the
+// change.
 type ResourceChangeRecord struct {
 	SourceID      string
 	SourceName    string
@@ -132,9 +132,9 @@ type resourceWatcher struct {
 	warned set.Set[string]
 }
 
-// NewResourceWatcher returns a watcher over cfg.Sources, or nil when there is
-// nothing to watch or nowhere to keep it -- which is the common case, and the
-// where this whole subsystem must cost nothing.
+// NewResourceWatcher returns a watcher over cfg.Sources. Nil when there is
+// nothing to watch or nowhere to keep it. This is which is the common case,
+// and the where this whole subsystem must cost nothing. Do this otherwise.
 func NewResourceWatcher(cfg ResourceWatchConfig) agentic.ResourceWatcher {
 	var sources []ResourceSource
 	for _, s := range cfg.Sources {
@@ -314,7 +314,7 @@ func (w *resourceWatcher) readAll(ctx context.Context) ([]capture, []warning) {
 // joined so the whole read is hashable unit.
 //
 // Binary blobs are hashed but NOT stored: base64 bytes are useless as model
-// context and ruinous to prompt caching, so a binary resource is watched by
+// context and ruinous to prompt caching. A binary resource is watched by
 // size and hash and reported as such.
 func (w *resourceWatcher) capture(src ResourceSource, res Resource, contents []ResourceContent) capture {
 	c := capture{

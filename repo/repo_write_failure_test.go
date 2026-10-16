@@ -10,7 +10,7 @@ import (
 
 // What an exhausted credential rotation reports. A covers a repository no
 // token can see, none of them may write to, and an object that is not
-// there -- so which of those it was has to be established, never assumed.
+// there. So which of those it was has to be established, never assumed.
 
 func TestRepoFileWriteAllTokensLackWriteAccess(t *testing.T) {
 	_, ex := newFakeGitHub(t, writableCfg(GitHubConfig{}, GitHubToken{ID: "t1", Token: "a"}, GitHubToken{ID: "t2", Token: "b"}), func(c ghCall) (int, string) {

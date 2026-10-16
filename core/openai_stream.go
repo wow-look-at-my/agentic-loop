@@ -9,6 +9,7 @@ import (
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
+	Model   string     `json:"model,omitempty"`
 	// Timings is the llama.cpp-style timing snapshot llama.cpp/ollama attach
 	// to streamed chunks; each occurrence replaces the previous (last wins).
 	Timings *Timings `json:"timings,omitempty"`
@@ -245,6 +246,7 @@ type oaStream struct {
 	finish           string
 	usages           []Usage
 	timings          []Timings
+	model            string
 	sawData          bool
 	// sentParts counts the parts already delivered through OnPart, so the
 	// remainder can go out at the end without any part going twice.
@@ -285,6 +287,9 @@ func (st *oaStream) onData(data []byte) error {
 	var chunk oaChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
 		return nil
+	}
+	if chunk.Model != "" {
+		st.model = chunk.Model
 	}
 	if chunk.PromptProgress != nil {
 		st.sawData = true
@@ -355,11 +360,11 @@ func (st *oaStream) onData(data []byte) error {
 	return nil
 }
 
-// completion assembles the final (or partial) result: accumulated content,
+// completion assembles the final (or partial) result. Accumulated content,
 // reasoning as a single ThinkingBlock (its Signature carrying the verbatim
 // reasoning_details array when the upstream sent one), assembled tool calls,
 // the merged usage with the total floored at prompt+completion (a genuine
-// surplus -- reasoning tokens -- is preserved), the last timings snapshot
+// surplus -- reasoning tokens -- is preserved). The last timings snapshot
 // (nil when the upstream reported none), and the normalized stop reason.
 func (st *oaStream) completion() *Completion {
 	var calls []ToolCall
@@ -380,5 +385,6 @@ func (st *oaStream) completion() *Completion {
 		Timings:    st.timings,
 		Streamed:   true,
 		StopReason: normalizeStopReason(finish),
+		Model:      st.model,
 	}
 }

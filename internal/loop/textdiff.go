@@ -52,8 +52,8 @@ type diffOp struct {
 }
 
 // diffOps computes the line-level edit script between a and b: common prefix
-// and suffix are matched, and the remaining middle is aligned with an
-// LCS dynamic program when it fits the budget ( replace block otherwise).
+// and suffix are matched. The remaining middle is aligned with an LCS
+// dynamic program when it fits the budget ( replace block otherwise).
 func diffOps(a, b []string) []diffOp {
 	// Common prefix.
 	p := 0

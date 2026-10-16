@@ -50,7 +50,7 @@ func TestCompact(t *testing.T) {
 }
 
 // The replacement transcript must not leave CompactRequestText standing as the
-// newest instruction: a model that reads it answers with another summary instead
+// newest instruction. A model that reads it answers with another summary instead
 // of continuing, which is what the summary exists to let it do.
 func TestCompactReplacementCarriesNoLiveSummarizeInstruction(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("recap")}}}
@@ -100,8 +100,8 @@ func TestOneShot(t *testing.T) {
 }
 
 // The reason the signature is the whole Completion: a Usage return cannot say
-// whether the upstream reported usage at all, and it drops the dollar figure
-// the upstream did report.
+// whether the upstream reported usage at all. It drops the dollar figure the
+// upstream did report.
 func TestOneShotSurfacesWhatAUsageReturnCannot(t *testing.T) {
 	cost := 0.0042
 	silent := &Completion{Message: Message{Role: RoleAssistant, Content: "done"}}

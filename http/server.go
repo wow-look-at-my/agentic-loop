@@ -2,10 +2,10 @@
 // that runs a call, and a set of stateful ones that keep the conversation.
 //
 // There is no envelope and no vocabulary. A request IS a <request>
-// document, an answer IS the <response> document, and a streamed answer is
-// that same document written progressively down a chunked body -- so `curl`
-// shows the answer appearing, and a consumer in any language parses it with
-// the XML parser it already has.
+// document. An answer IS the <response> document. A streamed answer is that
+// same document written progressively down a chunked body -- so `curl`
+// shows the answer appearing. A consumer in any language parses it with the
+// XML parser it already has.
 package httpapi
 
 import (
@@ -134,7 +134,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 // call over the whole transcript, and appends the answer.
 //
 // The posted document's other fields override the stored defaults for this
-// turn only: a caller raising max-tokens for question has not changed what
+// turn only. A caller raising max-tokens for question has not changed what
 // the conversation is.
 func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 	if !s.haveStore(w) {

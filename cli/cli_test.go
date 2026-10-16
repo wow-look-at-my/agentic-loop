@@ -195,9 +195,9 @@ func TestSessionListShowAndRemove(t *testing.T) {
 	assert.Empty(t, out)
 }
 
-// A failure after some of the answer arrived keeps the text and still reports
-// the failure: output the caller saw is theirs, and a partial answer that
-// looks complete is worse than no answer.
+// Consider a failure after some of the answer. That failure arrived keeps the
+// text and still reports the failure. Output the caller saw is theirs, and a
+// partial answer that looks complete is worse than no answer.
 func TestAskReportsAFailureAfterOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

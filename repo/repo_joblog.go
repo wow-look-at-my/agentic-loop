@@ -74,11 +74,11 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) agentic.Too
 }
 
 // fetchJobForLogFailure re-reads GET /actions/jobs/{id} after a failed log
-// fetch, so the log failure can be explained by the job's own confirmed
-// state instead of assumed to be a permission or existence problem with the
-// job. ok is false only when this re-read itself failed -- a job GitHub
-// cannot be reached to confirm adds nothing over the log fetch's own error,
-// which is the explanation then.
+// fetch. The log failure can be explained by the job's own confirmed state
+// instead of assumed to be a permission or existence problem with the job.
+// ok is false only when this re-read itself failed. A job GitHub cannot be
+// reached to confirm adds nothing over the log fetch's own error, which is
+// the explanation then.
 func (e *repoTools) fetchJobForLogFailure(ctx context.Context, org, repo string, jobID int64) (job ghJob, ok bool) {
 	target := fmt.Sprintf("%s/actions/jobs/%d", e.gh.RepoURL(org, repo), jobID)
 	res, err := e.gh.FetchURL(ctx, RepoCacheKey(org, repo), target, "application/vnd.github+json")
@@ -93,8 +93,8 @@ func (e *repoTools) fetchJobForLogFailure(ctx context.Context, org, repo string,
 
 // renderJobLog picks the window and states, always, which lines these are out
 // of how many. A log slice that does not say where it came from reads as the
-// whole log, and "the error is not in here" is then a conclusion drawn from
-// text the reader never saw.
+// whole log. The error is not in here" is then a conclusion drawn from text
+// the reader never saw.
 func renderJobLog(in repoReadArgs, resource string, lines []string, truncated bool) string {
 	total := len(lines)
 	start, end, tailed := jobLogWindow(in.Offset, in.Limit, total)

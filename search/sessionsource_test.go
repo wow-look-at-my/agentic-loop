@@ -113,9 +113,9 @@ func TestSearchableTextIsWhatTheUserActuallySaw(t *testing.T) {
 	assert.NotContains(t, got, "hidden")
 }
 
-// The revision must move when the indexed text moves, or the index goes
-// quietly stale -- and must NOT move for a change the index cannot see, or
-// every pass re-reads the corpus to write identical rows.
+// The revision must move when the indexed text moves. Otherwise, the index
+// goes quietly stale -- and must NOT move for a change the index cannot
+// see. Otherwise, every pass re-reads the corpus to write identical rows.
 func TestTranscriptRevisionTracksTheIndexedTextOnly(t *testing.T) {
 	base := commonai.Request{Messages: []commonai.Message{
 		{Role: commonai.RoleUser, Content: "hello"},
@@ -157,7 +157,7 @@ func TestAHostAssignedMessageIDIsUsedAsIs(t *testing.T) {
 }
 
 // session.File answers revisions from a stat rather than by reading and
-// validating every document, which is the difference between a stat per
+// validating every document. This is the difference between a stat per
 // conversation and the whole store on every indexing pass.
 func TestFileStoreRevisionsAvoidReadingEveryDocument(t *testing.T) {
 	ctx := context.Background()

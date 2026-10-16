@@ -12,9 +12,9 @@ import (
 const float32Bytes = 4
 
 // encodeVector L2-normalizes v and returns it as a little-endian float32 BLOB.
-// A -magnitude vector is rejected: it has no direction, so its similarity
-// to everything is, and storing it would make a message permanently
-// unfindable while still counting as embedded.
+// A -magnitude vector is rejected. It has no direction, so its similarity to
+// everything is, and storing it would make a message permanently unfindable
+// while still counting as embedded.
 func encodeVector(v []float32) ([]byte, error) {
 	if len(v) == 0 {
 		return nil, fmt.Errorf("search: refusing to store an empty vector")
@@ -54,8 +54,8 @@ func dotBlob(query []float32, blob []byte) (score float64, ok bool) {
 
 // normalize returns a unit-length copy of v, for the query side (stored vectors
 // are already normalized). It returns ok=false for a vector with no direction,
-// which is what an embedding endpoint returning zeros looks like: scoring
-// against it would rank the whole corpus at and present that as a result.
+// which is what an embedding endpoint returning zeros looks like: scoring.
+// Against it would rank the whole corpus at and present that as a result.
 func normalize(v []float32) (unit []float32, ok bool) {
 	var sum float64
 	for _, f := range v {

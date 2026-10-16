@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// jsonServer answers every request with JSON body, which is what an
-// upstream that ignored stream:true (or a proxy that buffered the stream) hands
-// back: a that is not an event stream.
+// jsonServer answers every request with JSON body, which is what an upstream
+// that ignored stream:true (or a proxy that buffered the stream) hands back.
+// This is a that is not an event stream.
 func jsonServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

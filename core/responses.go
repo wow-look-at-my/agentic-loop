@@ -172,7 +172,8 @@ type respIncomplete struct {
 
 // The streamed event types this dialect acts on. Everything else -- the
 // added/done lifecycle chatter around parts, the per-item bookkeeping -- is
-// ignored, because the deltas plus the final Response carry the whole result.
+// ignored. This is because the deltas plus the final Response carry the whole
+// result.
 const (
 	respEvOutputTextDelta = "response.output_text.delta"
 	respEvSummaryDelta    = "response.reasoning_summary_text.delta"
@@ -205,7 +206,7 @@ type respStream struct {
 // including the failing delta.
 //
 // Completed items are read from response.output_item.done rather than
-// reassembled from argument fragments: this API sends each item whole when it
+// reassembled from argument fragments. This API sends each item whole when it
 // finishes, so there is no accumulator to get wrong. The argument-delta events
 // are therefore not decoded at all -- a fragment stream nobody needs is a
 // source of truth for the same bytes.
@@ -261,7 +262,7 @@ func (st *respStream) onData(data []byte) error {
 
 // addItem records a finished output item, in the position the API gave it. A
 // completed message item carries its own text, so that -- not the delta
-// accumulator -- is what lands in the parts; taking it from both would double
+// accumulator -- is what lands in the parts. Taking it from both would double
 // the content.
 func (st *respStream) addItem(item respItem) {
 	switch item.Type {
@@ -309,7 +310,7 @@ func (st *respStream) finishResponse(raw []byte, r respResponse) error {
 func (st *respStream) completion() *Completion {
 	parts := st.parts
 	// Deltas the message item never got to confirm: a stream cut mid-message
-	// still delivered them, and dropping them would discard output the caller
+	// still delivered them. Dropping them would discard output the caller
 	// already watched arrive.
 	if got, seen := st.content.String(), st.itemText.String(); strings.HasPrefix(got, seen) && len(got) > len(seen) {
 		parts = append(parts, TextPart{Text: got[len(seen):]})

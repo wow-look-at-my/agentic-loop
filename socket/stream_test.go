@@ -68,9 +68,9 @@ func TestFailureAfterOutputRidesInsideTheDocument(t *testing.T) {
 	assert.Equal(t, "partial", comp.Message.Content)
 }
 
-// A completion whose parts no event announced is still written: OnPart is how
-// a part is normally delivered, not the only way can exist, and a provider
-// that answers without streaming must not lose its content on the way out.
+// A completion whose parts no event announced is still written. OnPart is how
+// a part is normally delivered, not the only way can exist, and a provider.
+// That answers without streaming must not lose its content on the way out.
 func TestPartsNoEventAnnouncedAreStillWritten(t *testing.T) {
 	p := &scriptProvider{
 		comp: &commonai.Completion{
@@ -185,7 +185,7 @@ func TestTurnOverridesTheConversationsDefaults(t *testing.T) {
 }
 
 // Without a Store, a <conversation> is refused rather than quietly run as a
-// stateless call: an answer that forgets what it was asked to remember is
+// stateless call. An answer that forgets what it was asked to remember is
 // worse than no answer.
 func TestConversationWithoutAStoreIsRefused(t *testing.T) {
 	buf, err := encodeConversation(commonai.Request{

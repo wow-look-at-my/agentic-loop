@@ -83,7 +83,7 @@ func init() {
 
 // messageText renders transcript entry for a human. A tool call shows the
 // call rather than nothing: a transcript that silently omits the turns where
-// the model asked for something reads as if it never did.
+// the model asked for something reads as. This happens if it never did.
 func messageText(m commonai.Message) string {
 	var b strings.Builder
 	for _, p := range m.EffectiveParts() {

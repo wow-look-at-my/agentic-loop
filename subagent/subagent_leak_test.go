@@ -9,8 +9,9 @@ import (
 )
 
 // The observed failure, verbatim in shape: a sub-agent's last turn is working
-// notes followed by a raw tool-call envelope, because the backend did not parse
-// the model's tool-call template. Handed up unchanged it reads as findings.
+// notes followed by a raw tool-call envelope. This is because the backend did
+// not parse the model's tool-call template. Handed up unchanged it reads as
+// findings.
 const leakedReport = `Both memtraffic.go and traffic.go define ` + "`estimateMemoryTraffic`" + ` — that's a new critical finding.
 Let me check the descriptorGroup struct in dram.go and its ` + "`taps`" + ` field.
 

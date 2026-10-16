@@ -6,8 +6,8 @@ import (
 )
 
 // The format's own types are the client's types. They are aliases, not
-// conversions: a value built here IS the core value, so a caller can hand
-// to the encoder, a transport, or another client without a copy step, and
+// conversions: a value built here IS the core value. A caller can hand to
+// the encoder. A transport, or another client without a copy step, and
 // nothing has to be kept in sync between declarations of the same thing.
 //
 // [Completion] is the exception, and the reason this package exists -- see
@@ -106,8 +106,8 @@ var (
 )
 
 // Format entry points, for a caller that wants the document a call would
-// produce -- to store a conversation, to send over a transport, or to
-// check against the schema.
+// produce. This is to store a conversation, to send over a transport, or
+// to check against the schema.
 var (
 	NewMessage           = commonai.NewMessage
 	Validate             = commonai.Validate

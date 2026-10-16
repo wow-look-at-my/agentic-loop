@@ -48,9 +48,9 @@ var repoReadFieldRedirect = map[string]string{
 
 // validateRepoReadArgs rejects a call carrying arguments the chosen read
 // ignores. It decodes the raw object a time because what matters is which
-// fields the caller supplied — a field carrying its value states no intent
-// (a client that marshals the whole argument struct sends every key), so only
-// a field with a value in it counts.
+// fields the caller supplied. A field carrying its value states no intent (a
+// client that marshals the whole argument struct sends every key), so only a
+// field with a value in it counts.
 func validateRepoReadArgs(what string, raw json.RawMessage) error {
 	allowed, known := repoReadFields[what]
 	if !known {

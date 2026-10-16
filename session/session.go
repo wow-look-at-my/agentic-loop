@@ -1,11 +1,11 @@
 // Package session stores conversations between calls, for the transports that
 // keep state on the caller's behalf.
 //
-// A stored conversation IS a request that has not been sent: the same model,
-// system prompt, tools and defaults, plus the transcript a next turn appends
-// to. That is why it is <conversation> document rather than a schema of
-// its own -- a session a caller can read, edit and hand back is worth more
-// than an opaque handle.
+// A stored conversation IS a request that has not been sent. This covers the
+// same model, system prompt, tools and defaults, plus the transcript a next
+// turn appends to. That is why it is <conversation> document rather than a
+// schema of its own -- a session a caller can read, edit. And hand back is
+// worth more than an opaque handle.
 package session
 
 import (

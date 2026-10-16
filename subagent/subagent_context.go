@@ -117,13 +117,12 @@ const contextSummarySystemPrompt = "You condense a conversation into a briefing 
 	"Capture the salient facts, decisions, constraints, and any specific identifiers, names, or values the sub-agent will need to act correctly. " +
 	"Be faithful and concise; omit pleasantries and meta-commentary. Output only the briefing."
 
-// generateContextSummary asks the same model to summarize a parent
-// conversation into a briefing a sub-agent can use: bounded
-// (subagentSummaryTimeout), tool-less call with no retry, via OneShot. An
-// empty transcript yields an empty summary and a nil completion, with no model
-// call. The completion is returned rather than dropped because this briefing is
-// part of what the sub-agent run spent, and it rides up with the sub-run's own
-// usages.
+// generateContextSummary asks the same model to summarize a parent conversation
+// into a briefing a sub-agent can use. This is bounded
+// (subagentSummaryTimeout), tool-less call with no retry, via OneShot. An empty
+// transcript yields an empty summary and a nil completion, with no model call.
+// The completion is returned rather than dropped because this briefing is part
+// of what the sub-agent run spent. It rides up with the sub-run's own usages.
 func generateContextSummary(ctx context.Context, p agentic.Provider, model string, msgs []agentic.Message, maxTokens int, extra map[string]any) (string, *agentic.Completion, error) {
 	transcript := RenderTranscript(msgs)
 	if strings.TrimSpace(transcript) == "" {

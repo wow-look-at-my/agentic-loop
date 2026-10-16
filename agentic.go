@@ -1,13 +1,13 @@
-// Package agentic is the module-root package: the agentic tool loop,
+// Package agentic is the module-root package. The agentic tool loop,
 // re-exported from the implementation in internal/loop so the module
 // root stays small forwarding file.
 //
 // Everything the loop package exposes — the Run loop, tools, approval,
 // the wire half (aliases of the client types), compaction, sub-agent and
-// resource-watch machinery — is available here by the same names, and
-// the optional tool families (vfs, repo, subagent, webfetch, todo,
-// resources) import this package. The implementation lives in
-// internal/loop; this file only forwards it.
+// resource-watch machinery. Everything the loop package is available
+// here by the same names, and the optional tool families (vfs, repo,
+// subagent, webfetch, todo, resources) import this package. The
+// implementation lives in internal/loop; this file only forwards it.
 package agentic
 
 import (
