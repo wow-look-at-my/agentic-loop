@@ -119,7 +119,7 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 	assert.Equal(t, "alpha", exec.executed[0].Name)
 }
 
-// A compacted turn keeps the tool result the model asked for: the summary is
+// A compacted turn keeps the tool result the model asked for. The summary is
 // taken after the batch, so nothing is summarized around an unanswered call.
 func TestRunAutoCompactSummarizesAfterTheToolResults(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
@@ -153,8 +153,9 @@ func TestRunAutoCompactSummarizesAfterTheToolResults(t *testing.T) {
 	assert.True(t, sawResult, "and the result answering it")
 }
 
-// The host's stored row id lands on the summary, so the assistant row minted
-// after compaction hangs off it instead of detaching from the message tree.
+// Consider the host's stored row id. That id lands on the summary, so the
+// assistant row minted after compaction hangs off it instead of detaching
+// from the message tree.
 func TestRunAutoCompactAttachesTheNextTurnToTheStoredSummary(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: usageComp("working", 8000, ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},

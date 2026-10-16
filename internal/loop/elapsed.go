@@ -56,7 +56,7 @@ func (t *elapsedTracker) mark() string {
 	return FormatElapsedNotice(at, prev)
 }
 
-// FormatElapsedNotice renders the notice the model reads: the wall clock in
+// FormatElapsedNotice renders the notice the model reads. The wall clock in
 // now's own zone, and the gap when there is a previous request to measure from.
 // A since, or a clock that went backwards, states the time alone.
 func FormatElapsedNotice(now, since time.Time) string {

@@ -44,9 +44,9 @@ func EncodeRequest(w io.Writer, req Request) error {
 	return x.err
 }
 
-// EncodeConversation writes a stored conversation: an id plus the same body a
-// request has, which is what a session is -- the defaults and the transcript
-// a next turn will be appended to.
+// EncodeConversation writes a stored conversation. An id plus the same body a
+// request has, which is what a session is. This is the defaults and the
+// transcript a next turn will be appended to.
 func EncodeConversation(w io.Writer, id string, req Request) error {
 	x := newWriter(w)
 	attrs := append([]attr{{name: "id", value: id}}, requestAttrs(req)...)
@@ -80,9 +80,8 @@ func EncodeConversationIDs(w io.Writer, ids []string) error {
 }
 
 // EncodeResponse writes comp as a <response> document. It produces exactly what
-// a ResponseWriter produces for the same completion, so a caller cannot tell
-// from the bytes whether the call was streamed -- only from what the document
-// says.
+// a ResponseWriter produces for the same completion. A caller cannot tell from
+// the bytes whether the call was streamed -- only from what the document says.
 func EncodeResponse(w io.Writer, comp *Completion) error {
 	rw := NewResponseWriter(w, comp.Message.Role)
 	for _, p := range comp.Message.EffectiveParts() {
@@ -104,7 +103,7 @@ func EncodeResponse(w io.Writer, comp *Completion) error {
 }
 
 // requestAttrs is the root element's attributes: the typed scalars, then every
-// namespace declaration the body will need, then the provider parameters that
+// namespace declaration the body will need. Then the provider parameters that
 // have a declared attribute of their own.
 func requestAttrs(req Request) []attr {
 	attrs := []attr{{name: "xmlns", value: NS}}

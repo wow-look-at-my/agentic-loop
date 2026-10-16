@@ -59,7 +59,8 @@ func (c *modelListCache) limits(ctx context.Context, cfg ProviderConfig, model s
 		}
 		c.list = list
 	}
-	return c.list.Limits[model], nil
+	lim, _ := c.list.LimitsFor(model)
+	return lim, nil
 }
 
 func (o *openaiProvider) ModelLimits(ctx context.Context, model string) (Limits, error) {

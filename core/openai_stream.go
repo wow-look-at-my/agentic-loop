@@ -9,6 +9,7 @@ import (
 type oaChunk struct {
 	Choices []oaChoice `json:"choices"`
 	Usage   *oaUsage   `json:"usage,omitempty"`
+	Model   string     `json:"model,omitempty"`
 	// Timings is a llama.cpp/ollama timing snapshot; each replaces the (last wins).
 	Timings *Timings `json:"timings,omitempty"`
 	// PromptProgress is a non-standard prefill-progress update emitted on a choices-less chunk.
@@ -88,11 +89,11 @@ func (u *oaUsage) costUsd() *float64 {
 
 // toUsage normalizes a wire snapshot: the largest cache signal present wins
 // (the dialects are mutually exclusive in practice) and lands in
-// CacheReadTokens; when any cache info was reported, CacheWriteTokens is an
-// explicit -- OpenAI-compatible servers neither report nor bill a separate
-// cache-write class -- while a snapshot with no cache fields at all leaves
-// both nil (unknown). prompt_tokens already includes cached tokens on this
-// layer, so PromptTokens passes through untouched.
+// CacheReadTokens. CacheWriteTokens is an explicit -- OpenAI-compatible
+// servers neither report nor bill a separate cache-write class. While a
+// snapshot with no cache fields at all leaves both nil (unknown). This
+// holds when any cache info was reported. prompt_tokens already includes
+// cached tokens on this layer, so PromptTokens passes through untouched.
 func (u *oaUsage) toUsage() Usage {
 	out := Usage{
 		PromptTokens:     u.PromptTokens,
@@ -226,6 +227,7 @@ type oaStream struct {
 	finish           string
 	usages           []Usage
 	timings          []Timings
+	model            string
 	sawData          bool
 	// sentParts counts parts already delivered via OnPart; the rest goes out at the end.
 	sentParts int
@@ -240,8 +242,8 @@ func (st *oaStream) closeReasoning() error {
 	return st.ev.EmitPart(ThinkingPart{Text: st.reason.String()})
 }
 
-// emitRemaining delivers the parts that only exist the stream is over:
-// the accumulated text, and the tool calls, which arrive as fragments keyed by
+// emitRemaining delivers the parts that only exist the stream is over: the
+// accumulated text, and the tool calls. These arrive as fragments keyed by
 // index and are not a call until the last lands.
 func (st *oaStream) emitRemaining(comp *Completion) error {
 	parts := comp.Message.EffectiveParts()
@@ -260,6 +262,9 @@ func (st *oaStream) onData(data []byte) error {
 	var chunk oaChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
 		return nil
+	}
+	if chunk.Model != "" {
+		st.model = chunk.Model
 	}
 	if chunk.PromptProgress != nil {
 		st.sawData = true
@@ -325,11 +330,11 @@ func (st *oaStream) onData(data []byte) error {
 	return nil
 }
 
-// completion assembles the final (or partial) result: accumulated content,
+// completion assembles the final (or partial) result. Accumulated content,
 // reasoning as a single ThinkingBlock (its Signature carrying the verbatim
 // reasoning_details array when the upstream sent), assembled tool calls,
 // the merged usage with the total floored at prompt+completion (a genuine
-// surplus -- reasoning tokens -- is preserved), the last timings snapshot
+// surplus -- reasoning tokens -- is preserved). The last timings snapshot
 // (nil when the upstream reported none), and the normalized stop reason.
 func (st *oaStream) completion() *Completion {
 	var calls []ToolCall
@@ -350,5 +355,6 @@ func (st *oaStream) completion() *Completion {
 		Timings:    st.timings,
 		Streamed:   true,
 		StopReason: normalizeStopReason(finish),
+		Model:      st.model,
 	}
 }

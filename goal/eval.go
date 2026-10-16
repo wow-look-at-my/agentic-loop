@@ -59,10 +59,10 @@ type Verdict struct {
 	Reason     string `json:"reason"`
 }
 
-// ParseVerdict reads verdict out of a model's reply. An empty reason is a
-// parse failure rather than a verdict with nothing to say: the reason is the
-// whole of what the user and the model are told, and a block carrying none is a
-// refusal nobody can act on.
+// ParseVerdict reads verdict out of a model's reply. An empty reason is a parse
+// failure rather than a verdict with nothing to say. The reason is the whole of
+// what the user and the model are told. A block carrying none is a refusal
+// nobody can act on.
 func ParseVerdict(text string) (Verdict, error) {
 	var v Verdict
 	body := strings.TrimSpace(unfence(text))
@@ -292,9 +292,9 @@ type Evaluator struct {
 	Judge Judge
 }
 
-// Evaluate makes the decision. It never returns an error: a provider that would
+// Evaluate makes the decision. It never returns an error. A provider that would
 // not answer is a failure of this policy, whose stated failure direction is open
-// -- so it suspends itself loudly and lets the run end.
+// -- so it suspends itself loudly. And lets the run end.
 func (e *Evaluator) Evaluate(ctx context.Context) Verdicts {
 	// Cancellation always wins, and it wins WITHOUT a model call. A goal a user
 	// cannot interrupt is a wedged session.
@@ -357,9 +357,9 @@ func (e *Evaluator) Evaluate(ctx context.Context) Verdicts {
 }
 
 // ask makes the evaluator call, with retry on an unusable answer. The retry
-// sends the identical request: the failure it is for is a model that wrapped its
-// object in prose, not a request that was wrong. A failure suspends, and
-// the message names which of the failures it was.
+// sends the identical request. The failure it is for is a model that wrapped its
+// object in prose, not a request that was wrong. A failure suspends, and the
+// message names which of the failures it was.
 func (e *Evaluator) ask(ctx context.Context, window string) (Verdict, *agentic.Completion, error) {
 	user := EvalUser(e.State.Condition, window)
 

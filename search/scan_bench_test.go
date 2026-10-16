@@ -12,7 +12,7 @@ import (
 )
 
 // What the semantic half costs is the question that decides whether this
-// package needs a vector index at all, so it is measured here rather than
+// package needs a vector index at all. It is measured here rather than
 // asserted in prose. The numbers this produces, and what they mean for a real
 // corpus, are written up in docs/search.md.
 //
@@ -99,10 +99,10 @@ func BenchmarkVectorScan(b *testing.B) {
 	}
 }
 
-// The scan is linear in vectors x dimensions, so a regression that made it
+// The scan is linear in vectors x dimensions, so a regression. That made it
 // quadratic -- decoding each blob into a fresh slice, say, or re-normalizing
-// the query per row -- would show up as a multiple, not a few percent. The
-// bound is deliberately far above the measured cost: it is an alarm for a
+// the query per row. It would show up as a multiple, not a few percent. The
+// bound is deliberately far above the measured cost. It is an alarm for a
 // change in the SHAPE of the cost, not a performance target to tune against.
 func TestVectorScanStaysLinear(t *testing.T) {
 	if testing.Short() {

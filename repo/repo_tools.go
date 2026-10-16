@@ -9,11 +9,11 @@ import (
 )
 
 // The repo tools give the model real GitHub capability. A required "what"
-// selector picks the read, and every of them is history or metadata the
-// REST API serves: commits, commit's diff, pull requests, issues, CI. A
-// repository's FILES are not here -- they are a filesystem the host mounts at
-// /repos, listed, read, found and grepped with the file tools (files.go),
-// which share this client's credentials and caching. approval-gated write
+// selector picks the read, and every of them is history or metadata the REST
+// API serves. It commits, commit's diff, pull requests, issues, CI. A
+// repository's FILES are not here. They are a filesystem the host mounts at
+// /repos, listed, read, found and grepped with the file tools (files.go).
+// Which share this client's credentials and caching. approval-gated write
 // tools (a single-file commit and PR creation) stay separate: they reach
 // GitHub, they use ONLY the write credential list, and they never fall through
 // to unauthenticated.
@@ -54,7 +54,7 @@ type RepoToolsConfig struct {
 
 // NewRepoTools returns repo_read plus the writes. The writes are not
 // Readonly, which is the whole of what they declare: they reach GitHub and no
-// undo exists, so Config.Approver decides each call and a run with no Approver
+// undo exists. Config.Approver decides each call and a run with no Approver
 // refuses them.
 func NewRepoTools(cfg RepoToolsConfig) agentic.Tools {
 	if cfg.GitHub == nil {
@@ -143,7 +143,7 @@ var repoReadWhats = map[string]func(*repoTools, context.Context, repoReadArgs) a
 
 var repoReadWhatList = strings.Join(repoReadWhatOrder, ", ")
 
-// repoReadMovedWhats names the reads that became filesystem operations, so a
+// repoReadMovedWhats names the reads that became filesystem operations. A
 // model still calling them by the name is redirected rather than told the
 // what is merely unknown.
 var repoReadMovedWhats = map[string]string{

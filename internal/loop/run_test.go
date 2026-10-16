@@ -220,7 +220,7 @@ func TestRunApprovalAllow(t *testing.T) {
 	assert.Equal(t, "ran danger", res.Messages[1].Content)
 }
 
-// With nobody to ask, the declaration decides: a tool that only reads runs,
+// With nobody to ask, the declaration decides. A tool that only reads runs,
 // and anything that can change state is refused with the exact denial text.
 func TestRunNilApproverAllowsReadonlyAndDeniesTheRest(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
@@ -617,8 +617,8 @@ func toolMessages(t *testing.T, res *Result) []Message {
 }
 
 // identicalExec is a fake executor whose every call to a tool returns the
-// same byte-identical content, modeling a read-only probe whose output does
-// not change between calls.
+// same byte-identical content. That identicalExec is modeling a read-only
+// probe whose output does not change between calls.
 func identicalExec(tools []ToolDecl, content string) *fakeExec {
 	return &fakeExec{
 		tools: tools,

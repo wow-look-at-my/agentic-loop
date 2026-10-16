@@ -195,7 +195,7 @@ func TestWebFetchSummaryPath(t *testing.T) {
 	assert.Contains(t, input, "page body")
 }
 
-// The summary is a real model call whose only visible output is text, so
+// The summary is a real model call whose only visible output is text.
 // OnCompletion is the route out for what it cost -- a host without it
 // charges every summarized fetch as free.
 func TestWebFetchOnCompletionReportsTheSummaryCall(t *testing.T) {
@@ -225,7 +225,7 @@ func TestWebFetchOnCompletionReportsTheSummaryCall(t *testing.T) {
 	assert.InDelta(t, cost, *got[0].CostUsd, 1e-9)
 }
 
-// A fetch with no summary_prompt makes no model call, so there is nothing to
+// A fetch with no summary_prompt makes no model call. There is nothing to
 // report -- and a summary that FAILED after streaming still spent tokens, so
 // there is.
 func TestWebFetchOnCompletionFiresOnlyForARealCall(t *testing.T) {

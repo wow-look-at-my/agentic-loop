@@ -1,14 +1,14 @@
-// Package goal is goal mode: a stopping condition the user states in words, and
+// Package goal is goal mode. A stopping condition the user states in words, and
 // a stop policy that refuses to end a run until it holds.
 //
 // Every string this package emits is contract and is pinned by a test. A host
 // shows these words to its user and sends the directive to its model, so
 // hosts running goal mode behave the same. Do not "improve" them.
 //
-// The host owns seams and nothing else: where the state is stored, where
-// the transcript comes from (Evaluator.Window), and how a model call is made
+// The host owns seams and nothing else. Where the state is stored, where the
+// transcript comes from (Evaluator.Window), and how a model call is made
 // (Evaluator.Judge). Everything else -- the parse, the counters, the evaluator
-// prompt, the verdict, the notices -- is here, so a host cannot get a
+// prompt, the verdict, the notices. It is here, so a host cannot get a
 // different answer from the same condition. Depth: docs/goal.md.
 package goal
 
@@ -105,7 +105,7 @@ func Briefing(condition string) string {
 
 // Directive is the model-facing form of a blocked stop. Its last paragraph is
 // what makes a queued interjection safe: a mid-run message never edits the
-// condition, so a conflict surfaces as a visible stop with both texts quoted
+// condition. A conflict surfaces as a visible stop with both texts quoted
 // rather than as a run grinding against an instruction the user believes they
 // changed. Depth: docs/goal.md.
 func Directive(condition, reason string) string {

@@ -16,11 +16,11 @@ func batchFingerprint(calls []ToolCall) string {
 	return b.String()
 }
 
-// resolveCall produces the recorded ToolResult for requested call:
-// executed, denied, or a teaching error. EVERY call is put to the Approver --
-// a tool has no say in whether it is asked about, so a host's deny rule
-// reaches read-only calls too. The returned error is non-nil ONLY when an
-// approval decision never arrived (Approver.Ask failed), which ends the run.
+// resolveCall produces the recorded ToolResult for requested call: executed,
+// denied, or a teaching error. EVERY call is put to the Approver -- a tool
+// has no say in whether it is asked about. A host's deny rule reaches
+// read-only calls too. The returned error is non-nil ONLY when an approval
+// decision never arrived (Approver.Ask failed), which ends the run.
 func resolveCall(ctx context.Context, cfg *Config, call ToolCall) (ToolResult, error) {
 	tool, known := cfg.Tools.Find(call.Name)
 	if !known {

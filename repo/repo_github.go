@@ -74,10 +74,10 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 // by that mount and never reaches GitHub or the token rotation.
 //
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
-// last: the last attempt is the anonymous, whose says only that no
-// credential was sent. Returning that hid the actual reason a configured token
-// was refused — a spent code-search rate limit reads as " Requires
-// authentication", so a transient wait looks like a permanent auth problem.
+// last. The last attempt is the anonymous, whose says only that no credential
+// was sent. Returning that hid the actual reason a configured token was
+// refused — a spent code-search rate limit reads as " Requires
+// authentication". A transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
 	// A virtual filesystem owns this path: answer from it, never GitHub.
 	if e.vfs != nil {
@@ -142,12 +142,13 @@ type tokenAttempt struct {
 	token string
 }
 
-// tokenOrder is the credential order every repo read tries: the cached winner
+// tokenOrder is the credential order every repo read tries. The cached winner
 // for cacheKey (an empty cacheKey skips the cache), then every configured
 // token, then an unauthenticated attempt so public resources work without a
-// PAT -- unless NoAnonymous drops it, the host's policy that a server holding
-// a credential never lets a read fall through anonymously. Duplicates are
-// dropped. Writes use writeTokenOrder, which never falls through.
+// PAT. This happens unless NoAnonymous drops it, the host's policy that a
+// server holding a credential never lets a read fall through anonymously.
+// Duplicates are dropped. Writes use writeTokenOrder, which never falls
+// through.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()
@@ -198,10 +199,10 @@ func (e *GitHub) ContentsURL(org, repo, inner, ref string) string {
 	return u
 }
 
-// OwnerRepos enumerates the repositories owned by a GitHub org or user.
-// Listing /repos/<owner> (no repo segment) means "show every repository under
-// this owner". GitHub splits this across endpoints — /orgs/<owner>/repos for
-// organizations and /users/<owner>/repos for personal accounts — so each
+// OwnerRepos enumerates the repositories owned by a GitHub org or user. Listing
+// /repos/<owner> (no repo segment) means "show every repository under this
+// owner". GitHub splits this across endpoints — /orgs/<owner>/repos for
+// organizations and /users/<owner>/repos for personal accounts. So each
 // candidate credential is tried against the org endpoint, then the user
 // endpoint, until returns 2xx. The winning credential is cached under the
 // lowercased owner name (no slash, so it never collides with an "org/repo" key).

@@ -17,12 +17,14 @@ type Completion struct {
 	CostUsd         *float64
 	Streamed        bool
 	StopReason      string
+	// Model is the model the response names; a gateway that resolves an alias names the model it served.
+	Model string
 }
 
 // fold turns what the provider SAID into the figure a caller bills against.
 // Core keeps every usage report in the order it arrived, because that is the
-// honest record of the call; which to believe is a policy, and this is it:
-// the newest snapshot with at least as much evidence wins, snapshots are
+// honest record of the call. Which to believe is a policy, and this is it.
+// The newest snapshot with at least as much evidence wins, snapshots are
 // never summed, and the total is floored at prompt+completion.
 func fold(c *commonai.Completion) *Completion {
 	if c == nil {
@@ -32,6 +34,7 @@ func fold(c *commonai.Completion) *Completion {
 		Message:    c.Message,
 		Streamed:   c.Streamed,
 		StopReason: c.StopReason,
+		Model:      c.Model,
 	}
 	if n := len(c.Timings); n > 0 {
 		t := c.Timings[n-1]
@@ -64,7 +67,7 @@ func fold(c *commonai.Completion) *Completion {
 
 // unfold is fold's inverse, for handing a caller-supplied Provider back down to
 // a layer that speaks the format's own Completion. It reports the folded figure
-// as the call's single usage report, which is all such a provider ever had: the
+// as the call's single usage report, which is all such a provider ever had. The
 // individual snapshots were already gone before this package saw it.
 func unfold(c *Completion) *commonai.Completion {
 	if c == nil {
@@ -74,6 +77,7 @@ func unfold(c *Completion) *commonai.Completion {
 		Message:    c.Message,
 		Streamed:   c.Streamed,
 		StopReason: c.StopReason,
+		Model:      c.Model,
 	}
 	if hasUsage(c) {
 		u := c.Usage

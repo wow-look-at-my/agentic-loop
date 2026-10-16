@@ -153,9 +153,9 @@ func TestExplainFailureDistinguishesTheDenialModes(t *testing.T) {
 	assert.NotContains(t, denied, "does not exist", "a 403 is not evidence about existence")
 }
 
-// A means GitHub rejected the credential itself — the message ("the tokens
-// are valid but lack access") said the opposite of what a means, since a (not
-// a) is what GitHub sends for a valid-but-scoped token.
+// A means GitHub rejected the credential itself. The message ("the tokens are
+// valid but lack access") said the opposite of what a means, since a (not a)
+// is what GitHub sends for a valid-but-scoped token.
 func TestExplainFailure401RejectsTheCredentialNotJustAccess(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	res := GHResponse{
@@ -171,7 +171,7 @@ func TestExplainFailure401RejectsTheCredentialNotJustAccess(t *testing.T) {
 }
 
 // GitHub does not expose any signal distinguishing an expired token from a
-// revoked or wrong on a — the message must say so rather than invent a
+// revoked or wrong on a. The message must say so rather than invent a
 // distinction the API does not make.
 func TestExplainFailure401WithNoBodySaysNothingItCannotKnow(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -182,8 +182,9 @@ func TestExplainFailure401WithNoBodySaysNothingItCannotKnow(t *testing.T) {
 }
 
 // X-Accepted-GitHub-Permissions is the real, documented signal GitHub sends
-// on a fine-grained-PAT/GitHub-App permission failure, naming the exact
-// permission needed — far more actionable than the generic denial.
+// on a fine-grained-PAT/GitHub-App permission failure. Those
+// X-Accepted-GitHub-Permissions are naming the exact permission needed —
+// far more actionable than the generic denial.
 func TestExplainFailure403NamesTheMissingPermission(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	h := http.Header{}
@@ -211,9 +212,9 @@ func TestExplainFailure403FallsBackToBodyMessageWithoutThePermissionHeader(t *te
 	assert.Contains(t, msg, `"Must have admin rights to Repository."`)
 }
 
-// X-GitHub-SSO's "required; url=..." form names a -hour authorization
-// link — a different fix (visit the URL) than any scope/permission gap, and
-// GitHub sends it independently of whether the token has the right scope.
+// X-GitHub-SSO's "required; url=..." form names a -hour authorization link
+// — a different fix (visit the URL) than any scope/permission gap. GitHub
+// sends it independently of whether the token has the right scope.
 func TestExplainFailure403SurfacesTheSSOAuthorizeURL(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	h := http.Header{}
@@ -227,7 +228,7 @@ func TestExplainFailure403SurfacesTheSSOAuthorizeURL(t *testing.T) {
 }
 
 // X-OAuth-Scopes/X-Accepted-OAuth-Scopes is the classic-PAT equivalent of
-// X-Accepted-GitHub-Permissions: diff what the token has against what the
+// X-Accepted-GitHub-Permissions. Diff what the token has against what the
 // endpoint needs to name the exact missing scope.
 func TestExplainFailure403NamesTheMissingOAuthScope(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
@@ -258,7 +259,7 @@ func ghHeaderWithExpiry(t time.Time) http.Header {
 }
 
 // A token with months of runway must generate no advisory at all, on every
-// call — the whole point of the warn window is silence in the common case.
+// call. The whole point of the warn window is silence in the common case.
 func TestTokenExpiryDetailIsSilentFarFromExpiry(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	res := GHResponse{header: ghHeaderWithExpiry(now.Add(90 * 24 * time.Hour))}
@@ -307,9 +308,9 @@ func TestExplainFailure403AppendsExpiryAdvisoryAlongsideThePermissionDetail(t *t
 // When BOTH the token and the anonymous attempt are rate-limited, the token's
 // must be the reported. Before the fix both ranked, so the last attempt
 // (anonymous) won by virtue of running last, and the caller was told "this
-// was the unauthenticated (anonymous) request" when a PAT had been tried and
-// hit the same wall. A caller with valid PATs must never be told it ran
-// without.
+// was the unauthenticated (anonymous) request". This happens when a PAT had
+// been tried and hit the same wall. A caller with valid PATs must never be
+// told it ran without.
 func TestFailureRankTokenRateLimitOutranksAnonymousRateLimit(t *testing.T) {
 	limited := GHResponse{
 		status: http.StatusForbidden,

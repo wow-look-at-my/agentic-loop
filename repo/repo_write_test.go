@@ -175,7 +175,7 @@ func TestRepoFileWriteCreatesBranchFromDefault(t *testing.T) {
 }
 
 // The overwrite-via-fresh-branch dodge: the file exists on the branch the new
-// branch would be created from, so the create is refused — and NOTHING is
+// branch would be created from. The create is refused — and NOTHING is
 // mutated, the branch included.
 func TestRepoFileWriteRefusesExistingFileOnNewBranchSource(t *testing.T) {
 	gh, ex := newFakeGitHub(t, writableCfg(GitHubConfig{}, GitHubToken{ID: "t1", Token: "writer"}), func(c ghCall) (int, string) {
@@ -313,8 +313,8 @@ func TestRepoFileWriteNoTokensRefusesUnauthenticated(t *testing.T) {
 }
 
 // The initiator partition: tokens are configured but none is flagged for
-// model-initiated writes (an empty write list), so both write tools return
-// the recoverable teaching error naming the fix — before any request is made.
+// model-initiated writes (an empty write list). Both write tools return the
+// recoverable teaching error naming the fix — before any request is made.
 // Reads through the same client keep working with the unflagged token.
 func TestRepoWriteNoModelWriteTokensTeaches(t *testing.T) {
 	gh, client, ex := newFakeGitHubFull(t, GitHubConfig{
@@ -373,8 +373,8 @@ func TestRepoFileWriteUsesOnlyFlaggedTokens(t *testing.T) {
 }
 
 // Winner-cache audit: the cached winner for the repo is the user-only token
-// (recorded by a read or a user-initiated push). The model write must skip it
-// — its Authorization never appears — rotate the write list normally, and the
+// (recorded by a read or a user-initiated push). The model write must skip it —
+// its Authorization never appears — rotate the write list normally. The
 // completed write records its own flagged token as the new winner.
 func TestRepoFileWriteSkipsCachedUserOnlyWinner(t *testing.T) {
 	cache := newMemCache()

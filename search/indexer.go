@@ -97,10 +97,10 @@ func (i *Index) knownRevisions(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-// reindex replaces conversation's indexed messages and records the
-// revision they were read at, in a single transaction. The revision landing in
-// the same commit as the rows it describes is what makes a crash mid-pass
-// re-read that conversation rather than skip it.
+// reindex replaces conversation's indexed messages and records the revision
+// they were read at, in a single transaction. The revision landing in the same
+// commit as the rows it describes is what makes a crash mid-pass. Re-read that
+// conversation rather than skip it.
 func (i *Index) reindex(ctx context.Context, c Conversation, msgs []Message) (err error) {
 	tx, err := i.sql.BeginTx(ctx, nil)
 	if err != nil {

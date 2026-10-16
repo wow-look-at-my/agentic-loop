@@ -129,10 +129,10 @@ const tokenExpiryWarnWindow = 14 * 24 * time.Hour
 // tokenExpiryDetail renders GitHub's GitHub-Authentication-Token-Expiration
 // header when the token behind this call is expired or expiring soon. GitHub
 // sends it on requests it could identify the token for — which includes a
-// (permission denied, but the credential itself was recognized) as well as
-// any 2xx — so a caller with a real GHResponse from either case can surface it.
-// Absent or outside the warn window, this says nothing: a token with months
-// of runway generates no advisory, on every call, forever.
+// (permission denied, but the credential itself was recognized) as well as any
+// 2xx. So a caller with a real GHResponse from either case can surface it. Absent
+// or outside the warn window, this says nothing: a token with months of runway
+// generates no advisory, on every call, forever.
 func tokenExpiryDetail(res GHResponse, now time.Time) string {
 	raw := strings.TrimSpace(res.header.Get("GitHub-Authentication-Token-Expiration"))
 	if raw == "" {
@@ -175,11 +175,11 @@ func ssoAuthorizeDetail(res GHResponse) string {
 }
 
 // oauthScopeDetail is the classic-PAT/OAuth-token counterpart of
-// X-Accepted-GitHub-Permissions: X-OAuth-Scopes lists what the token has,
+// X-Accepted-GitHub-Permissions. X-OAuth-Scopes lists what the token has,
 // X-Accepted-OAuth-Scopes lists what the endpoint needs, and a scope present
-// in the but absent from the is exactly what is missing.
-// Fine-grained PATs and GitHub Apps don't send either header — nothing to
-// derive when X-Accepted-OAuth-Scopes is absent.
+// in the but absent. From the is exactly what is missing. Fine-grained PATs
+// and GitHub Apps don't send either header — nothing to derive when
+// X-Accepted-OAuth-Scopes is absent.
 func oauthScopeDetail(res GHResponse) string {
 	accepted := splitScopeHeader(res.header.Get("X-Accepted-OAuth-Scopes"))
 	if len(accepted) == 0 {

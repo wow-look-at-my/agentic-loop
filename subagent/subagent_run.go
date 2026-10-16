@@ -15,7 +15,7 @@ import (
 // configured), the nested Run, and the toolset it is given.
 
 // Execute runs sub-agent. Every misuse — a bad share_context selection,
-// an allowed_tools name that resolves to nothing — is a recoverable error
+// an allowed_tools name that resolves to nothing. It is a recoverable error
 // tool result that teaches the valid shape, never a Go error.
 func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	// A body nobody can parse is the failure still answered synchronously.
@@ -37,9 +37,9 @@ func (e *subagentTool) Execute(ctx context.Context, args json.RawMessage) (agent
 	return agentic.ToolResult{Content: SubagentLaunchReceipt(in.Description)}, nil
 }
 
-// launched runs asynchronously started sub-agent to completion and records
-// its outcome. It never returns anything to its caller -- the registry is the
-// only path back -- so every exit has to record something: a lost report would
+// launched runs asynchronously started sub-agent to completion and records its
+// outcome. It never returns anything to its caller -- the registry is the only
+// path back -- so every exit has to record something. A lost report would
 // leave the loop waiting on a promise nothing will keep. That includes a
 // panic, which on this goroutine would otherwise take the whole process down
 // rather than turn.
@@ -61,9 +61,9 @@ func (e *subagentTool) launched(ctx context.Context, callID string, in subagentA
 	e.cfg.Runs.Complete(callID, res.Content, res.IsError, spent)
 }
 
-// run executes sub-agent to completion. Every misuse — a bad
-// share_context selection, an allowed_tools name that resolves to nothing — is
-// a recoverable error tool result that teaches the valid shape.
+// run executes sub-agent to completion. Every misuse — a bad share_context
+// selection, an allowed_tools name that resolves to nothing — is a recoverable
+// error tool result. That result teaches the valid shape.
 func (e *subagentTool) run(ctx context.Context, in subagentArgs) agentic.ToolResult {
 	// Serialize per the shared Gate; acquisition is cancellable so a caller disconnect returns promptly.
 	release, err := e.cfg.Gate.Acquire(ctx)
@@ -78,8 +78,8 @@ func (e *subagentTool) run(ctx context.Context, in subagentArgs) agentic.ToolRes
 
 // runGated executes sub-agent with its concurrency slot already held. It
 // returns the report AND every usage the run spent -- the nested loop's turns
-// plus the share_context=summary briefing, in order -- because a sub-agent
-// answers its parent in text, so nothing else carries what it cost.
+// plus the share_context=summary briefing, in order. This is because a
+// sub-agent answers its parent in text, so nothing else carries what it cost.
 func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.ToolResult, []agentic.Usage) {
 	if e.cfg.Provider == nil || e.cfg.Model == "" {
 		return agentic.ToolResult{Content: "run_subagent is unavailable: no model is configured for the sub-agent", IsError: true}, nil
@@ -137,10 +137,10 @@ func (e *subagentTool) unavailableTool(granted bool) func(string) string {
 	}
 }
 
-// SubagentLaunchReceipt is what the model gets back in place of an answer
-// when run_subagent is asynchronous. It has to carry its own weight: the model
-// is about to choose what to do with a turn it did not expect to have, and a
-// bare "started" invites it to either idle-poll or invent the findings.
+// SubagentLaunchReceipt is what the model gets back in place of an answer when
+// run_subagent is asynchronous. It has to carry its own weight: the model is
+// about to choose what to do with a turn it did not expect to have. A bare
+// "started" invites it to either idle-poll or invent the findings.
 func SubagentLaunchReceipt(description string) string {
 	what := strings.TrimSpace(description)
 	if what == "" {
@@ -153,7 +153,7 @@ func SubagentLaunchReceipt(description string) string {
 		"arrives, say so in one short line and end your turn."
 }
 
-// runConfig assembles the nested Run's Config: the sub-agent's toolset, the
+// runConfig assembles the nested Run's Config. The sub-agent's toolset, the
 // approve-everything Approver (the explicit allowed_tools grant is itself the
 // authorization — the source loop gated no sub-agent call), and, when the host
 // listens, the activity telemetry hooks stamped with the parent call's ID.
@@ -172,8 +172,7 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
 	cfg.Events = &agentic.Events{}
-	// event.Event holds weak pointers, so the callbacks must outlive the
-	// augmentConfig call. Store them on a struct that lives as long as cfg.
+	// Store them on a struct that lives as long as cfg.
 	type cbs struct {
 		toolCall   func(agentic.ToolCallEvent) error
 		toolResult func(agentic.ToolResultEvent) error
@@ -206,7 +205,7 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 	}
 	// What the sub-agent itself said each turn. Without this a host can
 	// show every tool a sub-agent touched and still not show a word of its
-	// own reasoning or working notes — the run reads as a list of file
+	// own reasoning or working notes. The run reads as a list of file
 	// accesses with a report appearing from nowhere at the end.
 	c.turnEnd = func(ev agentic.TurnEndEvent) error {
 		turn, comp := ev.Turn, ev.Comp
@@ -270,7 +269,7 @@ func (approveAll) Ask(context.Context, agentic.ToolCall) (agentic.Approval, erro
 	return agentic.Approval{OK: true}, nil
 }
 
-// parentContext is the parent conversation's full input context: the system
+// parentContext is the parent conversation's full input context. The system
 // prompt (when non-empty) followed by the messages — the same list shape the
 // source application selected over, so last_n/messages indices count
 // identically.
@@ -287,9 +286,10 @@ func (e *subagentTool) parentContext() []agentic.Message {
 // buildContextBlock renders the parent-conversation context the orchestrator
 // chose to share (share_context). It returns the rendered block (possibly
 // empty when there is nothing to share) or a non-empty errMsg describing a
-// misuse the model should fix. The summary mode makes bounded model call,
-// and returns its Completion so the briefing's cost travels with the run that
-// asked for it -- including when the call failed after spending tokens.
+// misuse the model should fix. The summary mode makes bounded model call. The
+// summary mode returns its Completion so the briefing's cost travels with the
+// run that asked for it. It includes when the call failed after spending
+// tokens.
 func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (block string, comp *agentic.Completion, errMsg string) {
 	switch strings.ToLower(strings.TrimSpace(in.ShareContext)) {
 	case "", "none":
@@ -331,10 +331,10 @@ func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (
 // exact advertised names of the sub-agent's grantable tools (read-only ones
 // plus any non-read-only tool the orchestrator may explicitly name). A request
 // matches by exact advertised name, or — leniently — by its bare name (the
-// part after "__") when that is unambiguous, so dropping a server prefix
-// still works. It returns the advertised names to keep (in advertised order),
-// or a non-empty errMsg (which lists the available tools) when a requested
-// name resolves to nothing or the sub-agent has no tools at all — a
+// part after "__") when that is unambiguous, so dropping a server prefix still
+// works. It returns the advertised names to keep (in advertised order), or a
+// non-empty errMsg (which lists the available tools). This happens when a
+// requested name resolves to nothing or the sub-agent has no tools at all. A
 // recoverable tool error the model can correct.
 func resolveAllowedTools(available, requested []string) (keep []string, errMsg string) {
 	if len(available) == 0 {

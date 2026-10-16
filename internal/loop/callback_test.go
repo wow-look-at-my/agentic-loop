@@ -106,7 +106,7 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	assert.Equal(t, RoleAssistant, res.Messages[1].Role)
 }
 
-// A hook rewrites a call's arguments: the rewrite is what the Approver judges
+// A hook rewrites a call's arguments. The rewrite is what the Approver judges
 // and what the tool executes, while the transcript keeps recording what the
 // MODEL asked for. Both facts matter, so neither is overwritten by the other.
 func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
@@ -199,7 +199,7 @@ func TestRunOnToolBatchRefusesACallNoResultCanAnswer(t *testing.T) {
 }
 
 // A rewritten id must never become the id the tool result answers: the
-// transcript's assistant message carries the model's, and a mismatch is an
+// transcript's assistant message carries the model's. A mismatch is an
 // orphan tool call no upstream will replay.
 func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{

@@ -361,7 +361,7 @@ func TestAnthropicErrorEventOverflowConsistent(t *testing.T) {
 
 func TestAnthropicErrorEventAfterDataKeepsPartial(t *testing.T) {
 	// An error event after data has streamed still classifies ( transient),
-	// but the partial completion rides alongside the error — and Run's
+	// but the partial completion rides alongside the error. Run's
 	// nothing-streamed guard is what keeps such a call from being re-sent.
 	h := &anSSEHandler{events: [][2]string{
 		{"message_start", `{"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}`},
