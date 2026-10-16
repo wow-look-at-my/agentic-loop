@@ -121,8 +121,8 @@ func structProps(typ reflect.Type) []prop {
 }
 
 // schemaType maps a field's Go type to its JSON type, panicking on anything a
-// tool argument has no business being -- an unsupported field advertised as
-// the wrong type is worse than a build that stops.
+// tool argument has no business being. An unsupported field advertised as the
+// wrong type is worse than a build that stops.
 func schemaType(owner reflect.Type, f reflect.StructField) (jsonType, items string) {
 	t := f.Type
 	if t.Kind() == reflect.Pointer {

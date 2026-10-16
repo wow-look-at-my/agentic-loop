@@ -441,8 +441,8 @@ func TestConversationListRoundTrip(t *testing.T) {
 	assert.Empty(t, ids)
 }
 
-// A call that failed before it had any answer to give is still a document, and
-// the failure keeps its kind and status across the wire.
+// A call that failed before it had any answer to give is still a document. The
+// failure keeps its kind and status across the wire.
 func TestErrorDocumentRoundTrip(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, EncodeError(&buf, &APIError{Status: 429, Body: "slow down"}))

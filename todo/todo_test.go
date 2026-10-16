@@ -91,8 +91,8 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 }
 
 // todo_add appends exactly task, mints a fresh id, and answers with the new
-// full list both as rendered text and as a todo_list part whose JSON equals
-// the list the host stored.
+// full list both as rendered text and as a todo_list. Part whose JSON
+// equals the list the host stored.
 func TestTodoAddAppendsOneTaskAndReturnsTheNewFullList(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -135,9 +135,9 @@ func TestAMissingAddStateIsPending(t *testing.T) {
 }
 
 // The heart of the change: edit/cancel/complete address task by its stable
-// id and change only that, leaving every sibling's id, title and state
-// byte-for-byte unchanged, across several interleaved mutations. The model
-// never resends the parts it did not touch.
+// id and change only that, leaving every sibling's id. This also covers
+// title and state byte-for-byte unchanged, across several interleaved
+// mutations. The model never resends the parts it did not touch.
 func TestInterleavedMutationsTouchOnlyTheNamedTask(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -183,7 +183,7 @@ func idsOf(todos []Todo) []int {
 }
 
 // Every successful mutation must hand the host a todo_list part whose JSON
-// equals what it stored, so a host draws exactly what the model edited.
+// equals what it stored. A host draws exactly what the model edited.
 func TestEverySuccessfulMutationCarriesTheRenderedTextAndTheList(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -214,7 +214,7 @@ func TestEverySuccessfulMutationCarriesTheRenderedTextAndTheList(t *testing.T) {
 }
 
 // Clears the list by canceling its last task: the host must receive an empty
-// list, not nothing at all, so a finished plan stops being shown.
+// list, not nothing at all. A finished plan stops being shown.
 func TestCancelingTheLastTaskReachesTheHostAsAnEmptyList(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -252,8 +252,8 @@ func TestAnUnknownIdIsRefused(t *testing.T) {
 	assert.Equal(t, "no task with id 1; use a task id from the latest reply", res.Content)
 }
 
-// Ids are unique by construction, so an ambiguous address cannot arise through
-// the tools; the resolver still refuses on a damaged store rather than
+// Ids are unique by construction. An ambiguous address cannot arise through
+// the tools. The resolver still refuses on a damaged store rather than
 // silently editing the wrong task. This drives the real resolve on a store
 // corrupted to hold tasks with id.
 func TestAnAmbiguousIdIsRefused(t *testing.T) {
@@ -377,7 +377,7 @@ func TestNoWriterMeansTheToolsRefuse(t *testing.T) {
 	}
 }
 
-// AddCalls in a row hand out distinct ids; ids never collide across adds.
+// TestAddMintsMonotonicIds in a row hand out distinct ids; ids never collide across adds.
 func TestAddMintsMonotonicIds(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -404,7 +404,7 @@ func TestEditChangesTitleAndOrState(t *testing.T) {
 
 // A host that keeps the list between runs hands it back, and the tools carry
 // on from it. Without this the list is not merely forgotten: the mutation of
-// the new run persists a list holding only that task, and every task the run
+// the new run persists a list holding only that task. Every task the run
 // wrote is gone with nothing reporting a failure.
 func TestTodoInitialRestoresAListAcrossRuns(t *testing.T) {
 	rec := &recordingTodos{}

@@ -57,8 +57,8 @@ type ghJobs struct {
 
 // actionsReport renders the workflow runs for commit, each failed job and
 // the steps that failed inside it. The return is a note explaining why
-// nothing could be rendered; exactly of the is ever non-empty, so a
-// failed read can never pass for "no runs".
+// nothing could be rendered. Exactly of the is ever non-empty. A failed
+// read can never pass for "no runs".
 func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (string, string) {
 	resource := RepoPath(org, repo, "") + "@" + sha
 	target := fmt.Sprintf("%s/actions/runs?head_sha=%s&per_page=%d", e.gh.RepoURL(org, repo), EscapeSegments(sha), actionsRunLimit)
@@ -98,7 +98,7 @@ func (e *repoTools) actionsReport(ctx context.Context, org, repo, sha string) (s
 	return strings.TrimRight(b.String(), "\n"), ""
 }
 
-// jobsReport renders run's jobs, indented under it: every job's verdict, and
+// jobsReport renders run's jobs, indented under it. Every job's verdict, and
 // for a failed the steps that failed inside it — the line a reader is
 // after.
 func (e *repoTools) jobsReport(ctx context.Context, org, repo string, run ghWorkflowRun) string {

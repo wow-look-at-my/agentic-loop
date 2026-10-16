@@ -86,8 +86,8 @@ func intOrZero(p *int) int {
 }
 
 // toUsage normalizes a Messages-API usage object: input_tokens EXCLUDES
-// cached tokens, so the full prompt is input + cache_read + cache_creation;
-// the tri-state cache pointers pass through as reported.
+// cached tokens. The full prompt is input + cache_read + cache_creation.
+// The tri-state cache pointers pass through as reported.
 func (u *anUsage) toUsage() Usage {
 	read, write := 0, 0
 	if u.CacheReadInputTokens != nil {

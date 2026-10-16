@@ -36,11 +36,11 @@ func authFailureRank(a GitHubAuthError) int {
 }
 
 // explainExhaustedWrite says why every credential failed instead of guessing.
-// A from GitHub covers a repository the token cannot see, a repository it
-// cannot write to, and an object that is not there; announcing the as
-// the cause sends a user to Settings to fix a token that was never the
-// problem. extra read separates "cannot see it" from the rest, and a
-// on a step that read named object reports that object.
+// A from GitHub covers a repository the token cannot see. A repository it
+// cannot write to, and an object that is not there. Announcing the as the
+// cause sends a user to Settings to fix a token that was never the problem.
+// extra read separates "cannot see it" from the rest, and a on a step that
+// read named object reports that object.
 func (e *repoTools) explainExhaustedWrite(ctx context.Context, toolName, cacheKey string, order []tokenAttempt, bestAuth GitHubAuthError) string {
 	repo := cacheKey
 	if repo == "" {
@@ -59,9 +59,9 @@ func (e *repoTools) explainExhaustedWrite(ctx context.Context, toolName, cacheKe
 }
 
 // repoReadableWith reports whether any of these credentials can see the
-// repository. Best-effort: a transport failure answers "yes", since the only
-// thing this decides is whether to blame the credentials, and a request that
-// never arrived is no evidence against them.
+// repository. Best-effort: a transport failure answers "yes". This happens
+// since the only thing this decides is whether to blame the credentials, and
+// a request that never arrived is no evidence against them.
 func (e *repoTools) repoReadableWith(ctx context.Context, order []tokenAttempt, cacheKey string) bool {
 	org, repo, ok := strings.Cut(cacheKey, "/")
 	if !ok {

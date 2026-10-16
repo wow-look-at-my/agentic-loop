@@ -65,9 +65,9 @@ func TestToolsDeclsAndFind(t *testing.T) {
 	assert.False(t, ok, "an unoffered name simply is not there; the loop teaches the model")
 }
 
-// sources concatenate, and the to claim a name answers it -- so a
-// host appending its own tools to the library's gets a deterministic toolset
-// rather than that depends on map iteration.
+// sources concatenate. The to claim a name answers it. A host appending its
+// own tools to the library's gets a deterministic toolset rather than that
+// depends on map iteration.
 func TestFindResolvesToTheFirstClaimant(t *testing.T) {
 	a := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	b := &fakeExec{tools: []ToolDecl{{Name: "alpha"}, {Name: "beta"}}}

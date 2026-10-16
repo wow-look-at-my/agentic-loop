@@ -6,7 +6,6 @@ package commonai
 type Dialect string
 
 const (
-	// DialectAuto asks the endpoint (DetectDialect); it is the value, so a config that predates the field detects.
 	DialectAuto Dialect = ""
 	// DialectOpenAI is the OpenAI-compatible chat-completions API.
 	DialectOpenAI Dialect = "openai"
@@ -26,7 +25,7 @@ func (d Dialect) Valid() bool {
 }
 
 // Label is how a dialect reads on a screen. It lives here so a host's UI does
-// not have to carry its own copy of the vocabulary -- a list that goes
+// not have to carry its own copy of the vocabulary. This is a list that goes
 // stale the moment a dialect is added.
 func (d Dialect) Label() string {
 	switch d {

@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The behaviour fields are MCP's tool annotations, and of them default to
-// TRUE there. A Go struct of bare booleans reads an absent fact as false, which
-// is the dangerous answer for both of them: an unannotated tool would come out
+// The behaviour fields are MCP's tool annotations, and of them default to TRUE
+// there. A Go struct of bare booleans reads an absent fact as false, which is
+// the dangerous answer for both of them. An unannotated tool would come out
 // "non-destructive, closed-world". These tests pin the resolution, because the
 // value is what a caller gets by writing nothing.
 func TestUnstatedBehaviourResolvesToTheCautiousAnswer(t *testing.T) {
@@ -53,7 +53,7 @@ func TestAnUnvouchedClaimSaysSo(t *testing.T) {
 	assert.True(t, claimed.Readonly, "the claim is still carried, just marked")
 }
 
-// The wire format is the definition, so the tri-state has to survive it: an
+// The wire format is the definition, so the tri-state has to survive it. An
 // absent attribute means unknown, and a reader that decoded it as false would
 // silently promote every unannotated tool to non-destructive.
 func TestBehaviourSurvivesTheWireIncludingTheAbsentCase(t *testing.T) {

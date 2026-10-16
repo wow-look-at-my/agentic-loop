@@ -9,7 +9,7 @@ A model list identifies its SERVER (`DecodeModelList`), and for a long time that
           "type":"invalid_request_error","code":"unsupported_model"}}
 ```
 
-That is the endpoint naming the protocol for that model, in its own words. It is the same kind of fact as the model list's envelope, arriving on a different request, so it is read the same way. This is established, not guessed. Nothing here looks at a model NAME. A caller that mapped `o1-*` or `claude-*` onto a dialect will be encoding today's model lineup into code. It will be wrong for the next model and for every gateway that renames one.
+That is the endpoint naming the protocol for that model, in its own words. It is the same kind of fact as the model list's envelope, arriving on a different request, so it is read the same way. This is established, not guessed. Nothing here looks at a model NAME. A caller that mapped `o1-*` or `claude-*` onto a dialect will encodes today's model lineup into code. It will be incorrect for the next model and for every gateway that renames one.
 
 ## What it reads
 
@@ -25,6 +25,8 @@ It reaches through wrapping (`errors.As`), because a host puts its own text on t
 
 ## What it is not
 
-It is not a retry. It does not act. `DialectRefused` answers a question. The caller decides what to do with the answer. Typically re-running the same request against the other dialect's provider, and remembering the answer so the next turn goes straight there. That decision needs to know which providers exist and which credentials reach them, which is host knowledge. This is the same split as `IsTransient`: classification here, policy above.
+It is not a retry. It does not act. `DialectRefused` answers a question. The caller decides what to do with the answer. Typically re-running the same request against the other dialect's provider, and remembering the answer so the next turn goes straight there. That decision needs to know which providers exist and which credentials reach them, which is host knowledge.
+
+This is the same split as `IsTransient`: classification here, policy above.
 
 Safety of that re-run comes free from the status list. Every accepted status is a non-2xx response, so nothing streamed and no output reached the caller before the refusal.

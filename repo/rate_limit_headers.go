@@ -32,11 +32,11 @@ type RateLimitObservation struct {
 }
 
 // ReadRateLimit pulls the core-quota standing out of a response's headers,
-// reporting whether they were there at all. Only the CORE resource counts: a
+// reporting whether they were there at all. Only the CORE resource counts. A
 // code-search call spends a different, much smaller budget (GitHub names it in
-// x-ratelimit-resource), and folding the together reports a quota the
-// reader does not have. An absent resource header reads as core, since only
-// the search and graphql routes set it to anything else.
+// x-ratelimit-resource), and folding the together reports a quota the reader
+// does not have. An absent resource header reads as core, since only the
+// search and graphql routes set it to anything else.
 func ReadRateLimit(h http.Header, now time.Time) (RateLimitStatus, bool) {
 	if res := strings.TrimSpace(h.Get("X-RateLimit-Resource")); res != "" && res != "core" {
 		return RateLimitStatus{}, false

@@ -111,8 +111,7 @@ type ContextWindowEvent struct {
 	Window int
 	// FromModelList is true when Config.ContextWindow was unset and the provider's model list supplied Window.
 	FromModelList bool
-	// Served names the model the list was asked about when it is not the requested one: the model a response
-	// named after the endpoint resolved an alias.
+	// Served names the model the list was asked about.
 	Served string
 	Err    error
 }

@@ -65,9 +65,9 @@ type anError struct {
 }
 
 // anthropicErrorStatus maps a stream error event's error type onto the HTTP
-// status Anthropic documents for it, so an in-stream error classifies for
-// retry exactly like its non-2xx counterpart. Unrecognized types map to:
-// an unknown in-stream failure is a server-side abort, and treating it as
+// status Anthropic documents for it. An in-stream error classifies for
+// retry exactly like its non-2xx counterpart. Unrecognized types map to: an
+// unknown in-stream failure is a server-side abort, and treating it as
 // transient is the safe default.
 func anthropicErrorStatus(errType string) int {
 	switch errType {
@@ -251,9 +251,9 @@ func (st *anStream) onData(data []byte) error {
 }
 
 // currentUsage builds the normalized cumulative usage. input_tokens excludes
-// cached tokens on this layer, so the full prompt is
-// input + cache_read + cache_creation; the tri-state cache pointers are
-// passed through as reported.
+// cached tokens on this layer. The full prompt is input + cache_read +
+// cache_creation. The tri-state cache pointers are passed through as
+// reported.
 func (st *anStream) currentUsage() Usage {
 	read, write := 0, 0
 	if st.cacheRead != nil {
@@ -272,12 +272,12 @@ func (st *anStream) currentUsage() Usage {
 	return u
 }
 
-// completion assembles the final (or partial) result from every block, the
+// completion assembles the final (or partial) result from every block. The
 // cut off mid-stream included: what a block accumulated before the connection
 // dropped is output the caller already watched arrive. A missing stop_reason
-// falls back to tool_use when calls were
-// assembled, else end_turn. Completion.Timings stays nil on this layer --
-// the Messages API has no timings equivalent.
+// falls back to tool_use when calls were assembled, else end_turn.
+// Completion.Timings stays nil on this layer -- the Messages API has no
+// timings equivalent.
 func (st *anStream) completion() *Completion {
 	var parts []Part
 	haveCall := false

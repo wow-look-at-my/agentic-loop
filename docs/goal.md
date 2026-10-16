@@ -6,7 +6,7 @@ Every string the package emits is contract and is pinned by a test. A host shows
 
 ## The three seams
 
-- **State persistence.** `State` is a plain struct of exported scalars and one `time.Time`, and this package ships no encoding for it. How it is stored — a key-value row, one column per field, a file — is entirely the host's. A library that shipped an `Encode`/`Decode` pair will be deciding what a row in somebody else's database holds. Nothing there can query into it or notice a field this package added. Goal state must survive a restart, counters included: a goal that spent its budget before a crash does not get a fresh one for free.
+- **State persistence.** `State` is a plain struct of exported scalars and one `time.Time`, and this package ships no encoding for it. How it is stored — a key-value row, one column per field, a file — is fully the host's. A library that shipped an `Encode`/`Decode` pair will decids what a row in somebody else's database holds. Nothing there can query into it or notice a field this package added. Goal state must survive a start, counters included: a goal that spent its budget before a crash does not get a fresh one for free.
 - **`Evaluator.Window`.** The host maps its own transcript rows onto `[]Entry`. `EntriesFromMessages` does it for a host whose store IS `[]agentic.Message`.
 - **`Evaluator.Judge`.** One bounded, tool-less model call.  `OneShotJudge` builds the ordinary one over the session's own provider and model.
 
@@ -14,14 +14,14 @@ Every string the package emits is contract and is pinned by a test. A host shows
 
 ## What the evaluator reads, and what it must not
 
-`RenderWindow` renders the goal-scoped entries newest-first within `EvalTokens`, and heads the result with `OmittedMarker` when anything was dropped. That marker is a line rather than nothing. An evaluator judging a truncated transcript has to know it is truncated, or "no evidence of a test run" means different things it cannot tell apart. An empty window is a real state — a goal set before any work. The empty window says so, rather than handing the model a blank string to interpret.
+`RenderWindow` renders the goal-scoped entries newest-first within `EvalTokens`, and heads the result with `OmittedMarker` when anything was dropped. That marker is a line rather than nothing. An evaluator judging a truncated transcript has to know it is truncated. Otherwise, "no evidence of a test run" means different things it cannot tell apart. An empty window is a real state — a goal set before any work. The empty window says so, rather than handing the model a blank string to interpret.
 
 A long tool result keeps runes of head and 800 of tail. Evidence of a test run lives at both ends and nowhere in the middle.
 
 Things a host must NOT map onto an entry, and each exclusion is load-bearing:
 
 - **Private reasoning.** It is not evidence that work happened.
-- **Any notice goal mode itself wrote.** An evaluator that reads its own previous verdicts anchors on them, which turns one wrong judgment into every later one.
+- **Any notice goal mode itself wrote.** An evaluator that reads its own previous verdicts anchors on them, which turns one incorrect judgment into every later one.
 
 ## The outcomes
 
@@ -35,9 +35,11 @@ Things a host must NOT map onto an entry, and each exclusion is load-bearing:
 
 **Goal mode fails open.** Ending a run one iteration early is one keystroke from being resumed. The alternative is a wedged session. So a failure to evaluate suspends the goal loudly and permits the stop. A cancelled run is permitted without a model call at all — a goal a user cannot interrupt is a wedged session.
 
-**Three identical reasons end the goal.** The evaluator has now told us the same thing about the same non-progress a few times. That is the evidence `ErrStuck` uses one layer down and it earns the same answer. It is a verdict, not a budget, so it CLEARS the goal rather than pausing it.
+**Three same reasons end the goal.** The evaluator has now told us the same thing about the same non-progress a few times. That is the evidence `ErrStuck` uses one layer down and it earns the same answer. It is a verdict, not a budget, so it CLEARS the goal rather than pausing it.
 
-**One retry on an unusable answer. The message says which failure it was.** The retry sends the identical request, because the failure it is for is a model that wrapped its object in prose. This is not a request that was wrong. So "the evaluator is unreachable" and "the evaluator will not answer in JSON" never read as the same line. An empty `reason` is a parse failure rather than a verdict with nothing to say: the reason is the whole of what the user. The model are told, and a block carrying no reason is a refusal nobody can act on.
+**One retry on an unusable answer. The message says which failure it was.** The retry sends the same request, because the failure it is for is a model. That model wrapped its object in prose. This is not a request that was incorrect. So "the evaluator is unreachable" and "the evaluator will not answer in JSON" never read as the same line. An empty `reason` is a parse failure rather than a verdict with nothing to say: the reason is the whole of what the user.
+
+The model are told, and a block carrying no reason is a refusal nobody can act on.
 
 ## Hooking it to a run
 

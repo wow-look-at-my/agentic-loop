@@ -1,6 +1,6 @@
 # Searching stored conversations
 
-`search` indexes a host's conversations so they can be found by word and, when an embedding model is available, by meaning. It owns one SQLite file: an FTS5 index over message text, plus the vectors for a semantic search over the same messages.
+Word and can find `search` indexes a host's conversations so they, when an embedding model is available, by meaning. It owns one SQLite file: an FTS5 index over message text, plus the vectors for a semantic search over the same messages.
 
 The conversations stay wherever the host keeps them. The index reads them through `Source`, and `SessionSource` adapts a `session.Store`, so `cai`. The http/socket servers get searchable history without changing how any of them store anything.
 
@@ -26,7 +26,7 @@ Things the shape of that table says:
 
 **Rows cost more than dimensions.** Doubling the width of a vector adds about 25%, while doubling the number of vectors roughly doubles the time. The arithmetic is not the expense — fetching a row is. That is why the scan reads each blob through `sql.RawBytes`, borrowing the driver's buffer rather than copying the whole corpus into fresh slices. This is on every query. That change alone took the 10,000 × 1536 case from multiple ms to multiple ms and halved the allocation.
 
-**The ceiling is around 50,000 vectors.** Below roughly 10,000 the scan is smaller than the embedding round trip that precedes it. As a result, it is free in any sense a user perceives. At 50,000 it is about half a second and has become the dominant cost. Past that it stops being interactive. The honest answer is a real approximate-nearest-neighbour index or a narrower embedding model — not a bigger constant factor here.
+**The ceiling is around 50,000 vectors.** Below roughly 10,000 the scan is smaller than the embedding round trip that precedes it. As a result, it is free in any sense a user perceives. At 50,000 it is about half a second and became the dominant cost. Past that it stops being interactive. The honest answer is a real approximate-nearest-neighbour index or a narrower embedding model — not a bigger constant factor here.
 
 Most messages are one chunk, so "vectors" is close to "messages" for a typical history. A host expecting far more than 50,000 must know this is where the design runs out.
 
@@ -41,17 +41,17 @@ type Source interface {
 
 `Conversation.Revision` is opaque to the index: anything that changes when the transcript changes. `Ingest` compares it against the revision recorded when that conversation was last read, and re-reads only what moved.
 
-A conversation that moved is re-indexed **whole**, because the revision says only that something changed. Re-indexing whole does not re-embed whole: the vectors are keyed by message id. The vectors are never touched by `Ingest`, so a conversation that gained one message costs one embedding.
+A conversation that moved is re-indexed **whole**, because the revision says only that something changed. Message id keys re-indexing whole does not re-embed whole: the vectors. The vectors are never touched by `Ingest`, so a conversation that gained one message costs one embedding.
 
-**A revision that fails to move when the transcript does is the way to make this index quietly wrong.** A store that cannot answer honestly must return something that always differs and pay for the re-read.
+**A revision that fails to move when the transcript does is the way to make this index quietly incorrect.** A store that cannot answer honestly must return something that always differs and pay for the re-read.
 
 ### Message ids and what they cost
 
-`Message.ID` must be stable across re-reads: it is what the embeddings are keyed by. An id that changes re-embeds the message. One reused for different text attaches the wrong vector to it.
+`Message.ID` must be stable across re-reads: it is what the embeddings are keyed by. An id that changes re-embeds the message. One reused for different text attaches the incorrect vector to it.
 
 A host with real message ids passes them. `SessionSource` has none — a `session.Store` transcript is a list — so it derives `conversationID:position`. That is stable for the append-only transcript a turn produces: appending message N+1 does not move the first N. Inserting or removing a message mid-transcript does shift every position after it, and each of those is then embedded again. `session.Put` replacing a transcript wholesale is how that happens.
 
-The alternative, hashing the content, is worse: it silently merges identical messages in one conversation into a single searchable row.
+The alternative, hashing the content, is worse: it silently merges same messages in one conversation into a single searchable row.
 
 ### The stat optimization
 
@@ -63,17 +63,19 @@ Without help, `SessionSource` reads every conversation on every pass just to lea
 
 So a tokenizer or column change bumps the text version, the text tables are dropped and rebuilt. Every vector survives — `Ingest` re-indexes the same message ids. The embeddings are re-adopted with nothing re-sent.
 
-A version is what the file CLAIMS, so `applySchema` also reads what the file actually has. It compares each half's tables against `ftsTables`/`embedTables` and rebuilds the half that does not match. The number alone is not enough, because it is not this package's alone. `simple-llm-ui` shipped its own index first, and that one also recorded `fts_schema_version = 1` — over `user_id` where this one has `owner`, with no `position` and no `indexed_conversations`. Its files then read as current, no rebuild ran, and the first `CREATE INDEX` over a missing column failed every `Open`. Nothing in here is a source of truth, so a shape this package cannot read is a re-index. This is not a reason to stop the host from starting.
+A version is what the file CLAIMS, so `applySchema` also reads what the file actually has. It compares each half's tables against `ftsTables`/`embedTables` and rebuilds the half that does not match. The number alone is not enough, because it is not this package's alone. `simple-llm-ui` shipped its own index first, and that one also recorded `fts_schema_version = 1` — over `user_id` where this one has `owner`, with no `position` and no `indexed_conversations`. Its files then read as current, no rebuild ran, and the first `CREATE INDEX` over a missing column failed every `Open`. Nothing in here is a source of truth, so a shape this package cannot read is a re-index.
 
-An edit, rather than an append, retires a message id whose vector no conversation delete reaches. `dropOrphanedVectors` sweeps those at the end of every `Ingest`. Without it they accumulate for the life of the index as paid-for storage no query can read.
+This is not a reason to stop the host from starting.
+
+An edit, rather than an append, retires a message id whose vector no conversation delete reaches. `dropOrphanedVectors` sweeps those at the end of every `Ingest`. Without it they collect for the life of the index as paid-for storage no query can read.
 
 ## Ranking
 
-The halves are fused by **reciprocal rank fusion**: `score = Σ 1/(60 + rank)`. Fusion is by position rather than by score. This is because bm25 is an unbounded relevance score whose scale depends on the corpus and cosine similarity is a bounded geometric one. Putting them on a common axis means inventing an exchange rate between them. Using positions means never claiming one exists.
+**Reciprocal rank fusion fuses the halves**: `score = Σ 1/(60 + rank)`. Fusion is by position rather than by score. This is because bm25 is an unbounded relevance score whose scale depends on the corpus and cosine similarity is a bounded geometric one. Putting them on a common axis means inventing an exchange rate between them. Using positions means never claiming one exists.
 
 Each half is asked for twice the caller's limit, because fusion reorders. A result placed second in both lists outranks one that leads only the first. It cannot do that if it was cut before fusing.
 
-Within the text half, bm25 ties break on **recency**. Identical scores are the common case in a chat history — most messages use a term the same way. And the newer of multiple equally relevant messages is the one being looked for.
+Within the text half, bm25 ties break on **recency**. Same scores are the common case in a chat history — most messages use a term the same way. And the newer of multiple equally relevant messages is the one being looked for.
 
 A message contributes its **best** chunk to the semantic half. Summing or averaging its chunks will rank a long message above a short exact match for having more chances to be slightly relevant.
 
@@ -81,11 +83,11 @@ A message contributes its **best** chunk to the semantic half. Summing or averag
 
 `ftsQuery` wraps every term in double quotes, so FTS5's own operators — `AND`, `OR`, `NOT`, `NEAR`, `-`, `^`, `:`, parentheses — are literal text. A search for `NOT` or `c++` is a search, not a parse error. Terms are split on the same boundary the `unicode61` tokenizer uses, which is also why no term needs escaping inside its quotes. A double quote is not a letter or a digit. As a result, it ends a term rather than appearing in one.
 
-The last term gets a prefix match **only when the query ends mid-word**. This backs an as-you-type search box, where the final word is usually half-typed and requiring it whole empties the list exactly. This is while the user is looking at it. A query that ends in a separator has said where that word stops: `100%` asks for the token `100`. Prefix-matching there will return every `100x` and `1000` too — turning the character the user typed to be literal into the wildcard it resembles.
+The last term gets a prefix match **only when the query ends mid-word**. This backs an as-you-type search box, where the last word is usually half-typed and requiring it whole empties the list exactly. This is while the user is looking at it. A query that ends in a separator has said where that word stops: `100%` asks for the token `100`. Prefix-matching there will return every `100x` and `1000` too — turning the character the user typed to be literal into the wildcard it resembles.
 
 ### The substring fallback
 
-When neither half matches, the search falls back to a literal `LIKE` scan and reports `ModeSubstring`. FTS5 structurally cannot answer shapes of query: a fragment inside a word (`rep` is inside `grep` but is not a token of it) and a query made entirely of punctuation, which tokenizes to nothing. Without the fallback the index will be strictly worse than a plain substring search for both.
+When neither half matches, the search falls back to a literal `LIKE` scan and reports `ModeSubstring`. FTS5 structurally cannot answer shapes of query: a fragment inside a word (`rep` is inside `grep` but is not a token of it) and a query made fully of punctuation, which tokenizes to nothing. Without the fallback the index will be strictly worse than a plain substring search for both.
 
 ## Lag is reported, never hidden
 
@@ -95,7 +97,7 @@ The index is always slightly behind. Embedding needs a network call. As a result
 
 `Search` reports its `Mode` for the same reason. A semantic hit may share no word with the query at all, and a result list that does not say which kind it is reads. This is as a bug.
 
-Nothing is ever marked permanently failed. A message that cannot be embedded today is picked up by the next pass, however many passes that takes. The reason is in `Status.LastError` rather than buried in a counter that ran out.
+Nothing is ever marked permanently failed. The next pass cannot embed a message that, however many passes that takes. The reason is in `Status.LastError` rather than buried in a counter that ran out.
 
 ## The embedder seam is asymmetric
 
@@ -108,7 +110,7 @@ type Embedder interface {
 
 Methods, not one, because retrieval is asymmetric in most modern embedding models: a stored passage and the question that must find. It are embedded differently. The model is told which it is being given.
 
-Nomic's text models are the plain example. The card for `nomic-embed-text-v1.5` says the prompt *"must include a task instruction prefix"*, and the two that matter are `search_document: ` and `search_query: `. The E5 and BGE families have their own conventions. Nothing about this shows up at runtime: with the wrong prefix every call succeeds, every vector is well-formed, and the results are quietly worse. A single symmetric `Embed` method makes that mistake both the default and invisible, which is why there is not one. For a symmetric model, `EmbedQuery` is a one-line call through to `EmbedDocuments`.
+Nomic's text models are the plain example. The card for `nomic-embed-text-v1.5` says the prompt *"must include a task instruction prefix"*, and the two that matter are `search_document: ` and `search_query: `. The E5 and BGE families have their own conventions. Nothing about this shows up at runtime: with the incorrect prefix every call succeeds, every vector is well-formed, and the results are quietly worse. A single symmetric `Embed` method makes that mistake both the default and invisible, which is why there is not one. For a symmetric model, `EmbedQuery` is a one-line call through to `EmbedDocuments`.
 
 `HTTPEmbedder` takes the prefixes as configuration:
 
@@ -136,7 +138,9 @@ if errors.As(err, &httpErr) && httpErr.Status == http.StatusBadRequest {
 }
 ```
 
-The status is the only thing that separates very different failures. A provider 400s a chat model sent to `/v1/embeddings` — a permanent verdict about that model. It 429s or 502s a model it will happily serve — a fact about the attempt, not the model. A host that offers a picker of "models that actually embed" has to tell those apart. Probing is the only way to know at all. Nothing an OpenAI-compatible `/v1/models` reports says which of its entries embed. A model's name is a guess that is wrong for every endpoint whose operator named things differently.
+The status is the only thing that separates very different failures. A provider 400s a chat model sent to `/v1/embeddings` — a permanent verdict about that model. It 429s or 502s a model it will happily serve — a fact about the try, not the model. A host that offers a picker of "models that actually embed" has to tell those apart. Probing is the only way to know at all. Nothing an OpenAI-compatible `/v1/models` reports says which of its entries embed.
+
+A model's name is a guess that is incorrect for every endpoint whose operator named things differently.
 
 Without the status as a field, that caller is left parsing a sentence back apart. So `Error()` still renders exactly `search: embeddings: status %d: %s`, unchanged from when this was a `fmt.Errorf` — that text reaches users through the index's own last-error report. The status is readable beside it.
 
@@ -152,6 +156,6 @@ A message's chunks never span requests, which is what lets `embed_status` be tru
 
 ## Scoping
 
-`Conversation.Owner` is carried onto every indexed row, and `Query.Owner` must match it exactly. There is deliberately no wildcard — a host that gets the value wrong returns nothing rather than everything. A single-user host leaves it empty on both sides.
+`Conversation.Owner` is carried onto every indexed row, and `Query.Owner` must match it exactly. There is deliberately no wildcard — a host that gets the value incorrect returns nothing rather than everything. A single-user host leaves it empty on both sides.
 
 `hydrate` re-checks the owner even though both halves already scoped by it: the halves fuse into a list of bare ids. A list of ids is exactly the shape that loses its scope on the next edit to that file.

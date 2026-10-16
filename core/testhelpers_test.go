@@ -114,8 +114,8 @@ func assistantComp(content string, calls ...ToolCall) *Completion {
 }
 
 // recordingServer decodes the request body into out and answers with a minimal
-// stream, so a test can check what a dialect BUILT rather than what it did
-// with the answer.
+// stream. A test can check what a dialect BUILT rather than what it did with
+// the answer.
 func recordingServer(t *testing.T, out *map[string]any) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

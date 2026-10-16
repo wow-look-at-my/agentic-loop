@@ -34,7 +34,7 @@ func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
 }
 
 // resolveServedWindow fills Config.ContextWindow from the model list's entry for the model a response names,
-// when the host left the window unset and the requested name resolved nothing. An endpoint that serves an alias
+// when the host left the window unset. The requested name resolved nothing. An endpoint that serves an alias
 // lists the model it served, not the alias. Each served name is asked once per run.
 func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) {
 	if req.AutoCompact <= 0 || cfg.ContextWindow > 0 || comp == nil {
@@ -66,7 +66,7 @@ func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Co
 // fraction, returning the replacement and whether it replaced anything. A failure
 // is non-fatal: the run continues on the transcript it already had.
 //
-// The host's stored row id lands on the summary message, so the next assistant row
+// The host's stored row id lands on the summary message. The next assistant row
 // hangs off the summary instead of detaching from the conversation tree.
 func compactHere(ctx context.Context, cfg *Config, req Request, transcript []Message,
 	last *Completion, res *Result, deduper *OutputDeduper) ([]Message, bool) {

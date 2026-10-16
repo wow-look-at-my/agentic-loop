@@ -194,12 +194,11 @@ func TestTestTokenNeverFallsBackToAnonymous(t *testing.T) {
 	assert.Equal(t, []string{"Bearer bad-token"}, authSeen, "exactly one request, with exactly the given token")
 }
 
-// --- organization enumeration
-// -----------------------------------------------
+// organization enumeration -----------------------------------------------
 //
-// "list every repo you can see" has to mean every ORG you can see too: a
+// "list every repo you can see" has to mean every ORG you can see too. A
 // fine-grained PAT scoped to read/write all of an org's contents can still
-// fail to self-report that org membership via /user/orgs, and /user/repos'
+// fail to self-report that org membership. Via /user/orgs. /user/repos'
 // organization_member affiliation is membership-based, not grant-based. These
 // prove the org sweep runs and plugs that gap, rather than trusting
 // /user/repos to have caught everything.
@@ -237,9 +236,9 @@ func TestTestTokenListsOrganizationsDiscoveredViaUserOrgs(t *testing.T) {
 }
 
 // The exact gap this feature exists to close: /user/orgs fails outright (the
-// common case for a fine-grained PAT scoped only to repository contents), but
-// the org still gets swept because an Organization-type repo owner from the
-// flat listing names it.
+// common case for a fine-grained PAT scoped only to repository contents).
+// However, the org still gets swept because an Organization-type repo owner
+// from the flat listing names it.
 func TestTestTokenFallsBackToRepoOwnersWhenUserOrgsFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

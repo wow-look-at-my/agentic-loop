@@ -84,9 +84,9 @@ func requestDoc(t *testing.T, text string) []byte {
 	return data
 }
 
-// serve carries both surfaces, and both answer the same document -- the
-// HTTP body and the unix socket are ways to the server, not
-// servers that happen to agree.
+// serve carries both surfaces, and both answer the same document. The
+// HTTP body and the unix socket are ways to the server, not servers
+// that happen to agree.
 func TestServeAnswersOnHTTPAndTheUnixSocket(t *testing.T) {
 	up, bodies := upstream(t, "hello there")
 	addr := freeAddr(t)

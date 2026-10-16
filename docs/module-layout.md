@@ -19,7 +19,7 @@ cmd/cai      main for cai
 todo/driver  main for the task-list launch check
 ```
 
-Optional tool families are sibling packages that return `agentic.Tools` values a host appends itself: `vfs`, `repo`, `subagent`, `webfetch`, `todo`, `resources`.
+Optional tool families sibl packages that return `agentic.Tools` values a host appends itself: `vfs`, `repo`, `subagent`, `webfetch`, `todo`, `resources`.
 
 Every `main` sits under `<area>/<binary>/` or `cmd/<binary>/`. That is not taste: go-toolchain names a binary after the MODULE when the main package is one level down, so `cli`. `todo/driver` will both resolve to the module root and collide. A couple of levels down, the leaf directory is the name.
 
@@ -29,7 +29,9 @@ The compiler still enforces the layering: `core` cannot reach for a policy that 
 
 It was several modules, in a repository of its own, and the cost was not theoretical.
 
-**A module cannot honestly pin its siblings.** `client` requires `core` at a pseudo-version. That line is written *before* the commit that publishes them both exists — so it necessarily names an earlier one. At the first publish it names a commit with no such module in it at all. A consumer gets `missing go.mod at revision <hash>`. A relative `replace` hides this inside the repository and nowhere else, because a replace applies to the main module only. So every build was green and every consumer was broken, which is the worst shape a failure can take.
+**A module cannot honestly pin its siblings.** `client` requires `core` at a pseudo-version. That line is written *before* the commit that publishes them both exists — so it necessarily names an earlier one. At the first publish it names a commit with no such module in it at all. A consumer gets `missing go.mod at revision <hash>`. A relative `replace` hides this inside the repository and nowhere else, because a replace applies to the main module only.
+
+So every build was green and every consumer was broken, which is the worst shape a failure can take.
 
 **Adding a module took merges.** Merge, run the toolchain so the pins move onto a commit that has the module, merge again. Only then can anything outside build against it.
 
@@ -37,7 +39,7 @@ It was several modules, in a repository of its own, and the cost was not theoret
 
 One `go.mod` has none of that: no sibling pins to rot, no replaces, no cross-repo ordering, one CI job, and `go-toolchain` from one directory.
 
-The argument that bought the split was dependency weight — a program that only converts a document must not acquire cobra. That is real and it is small. Cobra reaches only `cli/`, Go builds only the packages you import, and a binary that never imports `cli/` never links it. `go.sum` grows. Nothing else does. That was not worth a broken bootstrap and a two-merge dance.
+The argument that bought the split was dependency weight — a program that only converts a document must not get cobra. That is real and it is small. Cobra reaches only `cli/`, Go builds only the packages you import, and a binary that never imports `cli/` never links it. `go.sum` grows. Nothing else does. That was not worth a broken bootstrap and a two-merge dance.
 
 **Do not split it back up.**
 

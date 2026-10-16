@@ -82,7 +82,7 @@ func TestDecodeModelListNamesTheDialectFromTheSamePass(t *testing.T) {
 		"detection never returns DialectResponses")
 }
 
-// A block with no cache rates still prices a call: the cache terms fall back to
+// A block with no cache rates still prices a call. The cache terms fall back to
 // the prompt rate, which is what those tokens could otherwise have cost.
 func TestAMissingCacheRateFallsBackToThePromptRate(t *testing.T) {
 	r := decoded(t, openRouterModelList).Prices["openai/gpt-5"]
@@ -240,7 +240,7 @@ const anthropicModelList = `{
 }`
 
 // The Anthropic model list names its dialect and prices nothing, and BOTH of
-// those are the answer rather than a failure: a host prices the call from
+// those are the answer rather than a failure. A host prices the call from
 // config and renders an em dash when there is none.
 func TestTheAnthropicModelListNamesItsDialectAndPricesNothing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

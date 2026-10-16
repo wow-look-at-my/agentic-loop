@@ -10,7 +10,7 @@ import (
 // that goes stale when a dialect is added.
 //
 // Reading a dialect off an endpoint is FetchModelList's job -- see
-// modellist_test.go, which covers both envelopes, both bare-item forms, and
+// modellist_test.go. This covers both envelopes, both bare-item forms, and
 // what a document of neither shape answers.
 func TestDialectVocabulary(t *testing.T) {
 	assert.Equal(t, []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}, Dialects())
