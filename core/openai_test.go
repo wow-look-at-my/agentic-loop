@@ -320,9 +320,9 @@ func TestOpenAIReasoningDetailsStream(t *testing.T) {
 // TestOpenAIReplayReasoningDetails is the regression test for the bug. A
 // gateway fronting a Responses-only reasoning model needs the exact
 // reasoning_details array echoed back on the next turn to pair a
-// function_call. This holds with its output. Replaying only the flattened
-// text drops the item ids and the gateway 400s with "No tool output found for
-// function call X" on the next turn after a tool call.
+// function_call with its output; replaying only the flattened text drops the
+// item ids and the gateway 400s with "No tool output found for function call
+// X" on the next turn after a tool call.
 func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	details := []oaReasoningDetail{
 		{Type: "reasoning.text", Text: "step one", ID: "rs_1", Format: "openai-responses-v1"},

@@ -9,7 +9,7 @@ A model list identifies its SERVER (`DecodeModelList`), and for a long time that
           "type":"invalid_request_error","code":"unsupported_model"}}
 ```
 
-That is the endpoint naming the protocol for that model, in its own words. It is the same kind of fact as the model list's envelope, arriving on a different request, so it is read the same way. This is established, not guessed. Nothing here looks at a model NAME. A caller that mapped `o1-*` or `claude-*` onto a dialect will encodes today's model lineup into code. It will be incorrect for the next model and for every gateway that renames one.
+That is the endpoint naming the protocol for that model, in its own words. It is the same kind of fact as the model list's envelope, arriving on a different request, so it is read the same way. This is established, not guessed. Nothing here looks at a model NAME. A caller that mapped `o1-*` or `claude-*` onto a dialect will be encoding today's model lineup into code. It will be wrong for the next model and for every gateway that renames one.
 
 ## What it reads
 

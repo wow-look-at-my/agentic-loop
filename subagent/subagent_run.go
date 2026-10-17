@@ -172,7 +172,8 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
 	cfg.Events = &agentic.Events{}
-	// Store them on a struct that lives as long as cfg.
+	// event.Event holds weak pointers, so the callbacks must outlive the
+	// augmentConfig call. Store them on a struct that lives as long as cfg.
 	type cbs struct {
 		toolCall   func(agentic.ToolCallEvent) error
 		toolResult func(agentic.ToolResultEvent) error
@@ -286,10 +287,9 @@ func (e *subagentTool) parentContext() []agentic.Message {
 // buildContextBlock renders the parent-conversation context the orchestrator
 // chose to share (share_context). It returns the rendered block (possibly
 // empty when there is nothing to share) or a non-empty errMsg describing a
-// misuse the model should fix. The summary mode makes bounded model call. The
-// summary mode returns its Completion so the briefing's cost travels with the
-// run that asked for it. It includes when the call failed after spending
-// tokens.
+// misuse the model should fix. The summary mode makes bounded model call,
+// and returns its Completion so the briefing's cost travels with the run that
+// asked for it -- including when the call failed after spending tokens.
 func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (block string, comp *agentic.Completion, errMsg string) {
 	switch strings.ToLower(strings.TrimSpace(in.ShareContext)) {
 	case "", "none":
