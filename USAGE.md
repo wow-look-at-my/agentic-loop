@@ -522,8 +522,7 @@ This is why `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
 ```go
 res, err := agentic.Run(ctx, agentic.Config{
-	Provider:      provider,
-	ContextWindow: 200_000, // the model's context window, in tokens
+	Provider: provider, // the window comes from its model list
 }, agentic.Request{
 	Model:       "your-model-id",
 	AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
@@ -531,7 +530,18 @@ res, err := agentic.Run(ctx, agentic.Config{
 })
 ```
 
-`Request.AutoCompact` is the fraction (0..1) of `Config.ContextWindow` at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
+**The window comes from the server. A host cannot set it by accident.** The loop reads it from the provider's model list. That host is by the requested model and then by the model a response names. No field sets it outright:
+
+| Host setting | Server reports a window `W` | Server reports none |
+|---|---|---|
+| neither | `W` | no window, no compaction, `Err` on the event |
+| `ContextWindowFallback: F` | `W`, and `F` is ignored | `F`, with a `Warning` |
+| `ContextWindowOverride: O` | `O` when `O <= W`; the run fails with `ErrContextWindowConfig` when `O > W` | `O`, with a `Warning` that nothing checked it |
+| both | the run fails with `ErrContextWindowConfig` before any call | the same |
+
+`Events.OnContextWindow` reports which row applied: `Reported`, `FromModelList`, `FromFallback`, `Overridden`, `Warning`. A served model whose list entry arrives later replaces a fallback, and fails the run when an override exceeds it.
+
+`Request.AutoCompact` is the fraction (0..1) of the window at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
 
 **It fires at the turn boundary, not inside one.** The check runs at the top of the next turn, after the turn's tool calls ran and their results are recorded. As a result, no call is summarized away while the model is still owed an answer for it. Firing it mid-turn dropped the calls the model asked for and left a host storing an assistant row nothing ever answered. This every later turn then replayed, and which an OpenAI-dialect endpoint rejects. It also runs *before* the message queue drains, so a message queued while the model talks is delivered after the summary.
 
@@ -543,7 +553,7 @@ This is not folded into it.
 
 **Persisting it is the host's job, and skipping it is expensive.** The loop's transcript is in-memory and lives for one `Run`. A host that rebuilds the next turn's thread from durable storage, without recording the compaction, is back over the threshold immediately and compacts again. This is every turn, forever, each one paying a full-context summarization call. Store the summary and start the model's next thread from it.
 
-`AutoCompact` lives on `Request` because a session IS a stored request. The fraction is a property of the conversation, not of the model call, and it persists with the session document. `ContextWindow` lives on `Config` because it is a property of the model the host chose, not of the conversation. A server that reports no usage never triggers compaction: without a token count the loop cannot know the context is full. A compaction failure (the model returned an empty summary) is non-fatal — the loop continues with the un-compacted transcript.
+`AutoCompact` lives on `Request` because a session IS a stored request. The fraction is a property of the conversation, not of the model call, and it persists with the session document. The window settings live on `Config` because the window is a property of the model the host chose, not of the conversation. A server that reports no usage never triggers compaction: without a token count the loop cannot know the context is full. A compaction failure (the model returned an empty summary) is non-fatal — the loop continues with the un-compacted transcript.
 
 ### Telling the model what time it is, and how much has passed
 

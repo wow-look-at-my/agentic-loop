@@ -126,6 +126,7 @@ const Version = loop.Version
 var DefaultRetry = loop.DefaultRetry
 var ErrStuck = loop.ErrStuck
 var ErrStateLost = loop.ErrStateLost
+var ErrContextWindowConfig = loop.ErrContextWindowConfig
 
 var Anomalous = loop.Anomalous
 var Compact = loop.Compact

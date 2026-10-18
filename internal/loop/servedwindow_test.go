@@ -52,7 +52,7 @@ func TestRunResolvesTheWindowFromTheModelTheResponseNames(t *testing.T) {
 	assert.Equal(t, []string{"auto-alias", "vendor/served"}, provider.asked, "the alias first, then the model the response named, once")
 	require.Len(t, *windows, 2)
 	assert.Error(t, (*windows)[0].Err, "the alias publishes no window")
-	assert.Equal(t, ContextWindowEvent{Window: 10000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
+	assert.Equal(t, ContextWindowEvent{Window: 10000, Reported: 10000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
 	assert.True(t, compacted, "8000 prompt tokens is 80% of the served model's 10000")
 }
 

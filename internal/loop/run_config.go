@@ -67,8 +67,14 @@ type Config struct {
 	// DisableOutputDedup opts out of collapsing byte-identical read-only results.
 	DisableOutputDedup bool
 
-	// ContextWindow is the model's context window size.
-	ContextWindow int
+	// ContextWindowFallback is the window when the server reports none. A reported window always wins.
+	ContextWindowFallback int
+	// ContextWindowOverride caps the window: it must not exceed a window the server reports.
+	ContextWindowOverride int
+
+	// window is the run's resolved window; windowReported says the server supplied it.
+	window         int
+	windowReported bool
 
 	// ElapsedTime, when set, states how long has passed since the request on every call.
 	ElapsedTime *ElapsedTime

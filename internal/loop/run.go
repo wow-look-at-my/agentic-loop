@@ -17,7 +17,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		cfg.Events = &Events{}
 	}
 	advertised := cfg.Tools.Decls()
-	resolveContextWindow(ctx, &cfg, req)
+	if err := checkWindowConfig(cfg); err != nil {
+		return nil, err
+	}
+	if err := resolveContextWindow(ctx, &cfg, req); err != nil {
+		return nil, err
+	}
 
 	// Output dedup: deduper for the whole run collapses unchanged read-only results.
 	var deduper *OutputDeduper
@@ -200,7 +205,14 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		}
 		calls := assistant.ToolCalls
 		lastComp = comp
-		resolveServedWindow(ctx, &cfg, req, comp, &servedAsked)
+		if werr := resolveServedWindow(ctx, &cfg, req, comp, &servedAsked); werr != nil {
+			stopped := assistant
+			stopped.ToolCalls = nil
+			transcript = append(transcript, stopped)
+			res.Messages, res.Final = transcript, stopped
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: stopped, Status: "error"})
+			return res, werr
+		}
 
 		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {

@@ -2,65 +2,7 @@ package loop
 
 import (
 	"context"
-	"errors"
-	"fmt"
 )
-
-// resolveContextWindow fills Config.ContextWindow from the provider's model list when the host left it unset, and
-// reports the window the run will compact against. A run that does not auto-compact asks nothing.
-func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
-	if req.AutoCompact <= 0 {
-		return
-	}
-	if cfg.ContextWindow > 0 {
-		cfg.Events.emitContextWindow(ContextWindowEvent{Window: cfg.ContextWindow})
-		return
-	}
-	l, ok, err := ModelLimitsOf(ctx, cfg.Provider, req.Model)
-	switch {
-	case !ok:
-		err = errors.New("agentic: no Config.ContextWindow, and the provider has no model list to read one from")
-	case err != nil:
-		err = fmt.Errorf("agentic: reading the context window for %q: %w", req.Model, err)
-	case l.ContextWindow <= 0:
-		err = fmt.Errorf("agentic: the model list publishes no context window for %q", req.Model)
-	}
-	if err != nil {
-		cfg.Events.emitContextWindow(ContextWindowEvent{Err: err})
-		return
-	}
-	cfg.ContextWindow = l.ContextWindow
-	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true})
-}
-
-// resolveServedWindow fills Config.ContextWindow from the model list's entry for the model a response names,
-// when the host left the window unset. The requested name resolved nothing. An endpoint that serves an alias
-// lists the model it served, not the alias. Each served name is asked once per run.
-func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) {
-	if req.AutoCompact <= 0 || cfg.ContextWindow > 0 || comp == nil {
-		return
-	}
-	served := comp.Model
-	if served == "" || served == req.Model || served == *asked {
-		return
-	}
-	*asked = served
-	l, ok, err := ModelLimitsOf(ctx, cfg.Provider, served)
-	switch {
-	case !ok:
-		return
-	case err != nil:
-		err = fmt.Errorf("agentic: reading the context window for %q, the model the response named: %w", served, err)
-	case l.ContextWindow <= 0:
-		err = fmt.Errorf("agentic: the model list publishes no context window for %q, the model the response named", served)
-	}
-	if err != nil {
-		cfg.Events.emitContextWindow(ContextWindowEvent{Served: served, Err: err})
-		return
-	}
-	cfg.ContextWindow = l.ContextWindow
-	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true, Served: served})
-}
 
 // compactHere summarizes the transcript when the last turn reached the AutoCompact
 // fraction, returning the replacement and whether it replaced anything. A failure
@@ -96,14 +38,14 @@ func compactHere(ctx context.Context, cfg *Config, req Request, transcript []Mes
 	return next, true
 }
 
-// shouldCompact auto-compacts when prompt tokens reach AutoCompact * ContextWindow.
+// shouldCompact auto-compacts when prompt tokens reach AutoCompact times the run's window.
 func shouldCompact(req Request, cfg Config, comp *Completion) bool {
-	if req.AutoCompact <= 0 || cfg.ContextWindow <= 0 || comp == nil {
+	if req.AutoCompact <= 0 || cfg.window <= 0 || comp == nil {
 		return false
 	}
 	if !comp.UsageReported {
 		return false
 	}
-	threshold := int(req.AutoCompact * float64(cfg.ContextWindow))
+	threshold := int(req.AutoCompact * float64(cfg.window))
 	return comp.Usage.PromptTokens >= threshold
 }
