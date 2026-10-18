@@ -7,9 +7,9 @@ import (
 
 // oaChunk is SSE delta from a streaming chat completion.
 type oaChunk struct {
-	Choices []oaChoice `json:"choices"`
-	Usage   *oaUsage   `json:"usage,omitempty"`
-	Model   string     `json:"model,omitempty"`
+	Choices     []oaChoice     `json:"choices"`
+	Usage       *oaUsage       `json:"usage,omitempty"`
+	Model       string         `json:"model,omitempty"`
 	ExtraFields *oaExtraFields `json:"extra_fields,omitempty"`
 	// Timings is a llama.cpp/ollama timing snapshot; each replaces the (last wins).
 	Timings *Timings `json:"timings,omitempty"`

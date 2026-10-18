@@ -11,7 +11,7 @@ type oaNonStream struct {
 		Message      oaNonStreamMessage `json:"message"`
 		FinishReason string             `json:"finish_reason"`
 	} `json:"choices"`
-	Usage json.RawMessage `json:"usage"`
+	Usage       json.RawMessage `json:"usage"`
 	Model       string          `json:"model"`
 	ExtraFields *oaExtraFields  `json:"extra_fields"`
 }
