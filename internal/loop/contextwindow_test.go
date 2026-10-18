@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,6 +85,45 @@ func TestFallbackAndOverrideTogetherFailWithoutAutoCompact(t *testing.T) {
 func TestNegativeWindowSettingsFail(t *testing.T) {
 	_, err := Run(context.Background(), Config{Provider: &scriptProvider{}, ContextWindowOverride: -1}, Request{Model: "m"})
 	require.ErrorIs(t, err, ErrContextWindowConfig)
+}
+
+// bigResultRun answers one tool call with a result of multiple chars, then answers.
+func bigResultRun(t *testing.T, cfg Config, autoCompact float64) (*Result, bool, error) {
+	t.Helper()
+	provider := &limitedProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{
+			{comp: usageComp("working", 1000, ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+			{comp: assistantComp("the summary")},
+			{comp: usageComp("done", 2000)},
+		}},
+		limits: Limits{ContextWindow: 10000},
+	}
+	exec := &fakeExec{
+		tools:   []ToolDecl{{Name: "alpha", Readonly: true}},
+		results: map[string]ToolResult{"alpha": {Content: strings.Repeat("x", 30000)}},
+	}
+	events := Events{}
+	var compacted bool
+	keep(t, &events.OnCompaction, func(CompactionEvent) error { compacted = true; return nil })
+	cfg.Provider, cfg.Events, cfg.Tools, cfg.Approver = provider, &events, exec.registry(), allowAll
+	res, err := Run(context.Background(), cfg, Request{Model: "m", AutoCompact: autoCompact, Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	return res, compacted, err
+}
+
+func TestARequestOverTheWindowIsCompactedFirst(t *testing.T) {
+	res, compacted, err := bigResultRun(t, Config{}, 0.8)
+	require.NoError(t, err)
+	assert.True(t, compacted)
+	assert.Equal(t, "done", res.Final.Content)
+}
+
+func TestARequestOverTheOverrideFailsWithoutAutoCompact(t *testing.T) {
+	res, compacted, err := bigResultRun(t, Config{ContextWindowOverride: 8000}, 0)
+	require.ErrorIs(t, err, ErrContextWindowExceeded)
+	assert.Contains(t, err.Error(), "the window is 8000")
+	assert.False(t, compacted)
+	require.NotNil(t, res)
+	assert.NotEmpty(t, res.Messages, "the transcript so far comes back with the error")
 }
 
 // servedProvider reports a window only for the model a response names.

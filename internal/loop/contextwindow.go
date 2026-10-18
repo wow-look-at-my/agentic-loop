@@ -72,9 +72,53 @@ func windowModel(served string) string {
 	return served
 }
 
-// resolveContextWindow sets the run's window before the first call. A run that does not auto-compact asks nothing.
+// ErrContextWindowExceeded ends a run whose next request would carry more than the run's window.
+var ErrContextWindowExceeded = errors.New("agentic: the next request exceeds the context window")
+
+// estimateCharsPerToken over-counts the tokens a transcript gains, so the cap compacts early rather than late.
+const estimateCharsPerToken = 3
+
+// nextPromptEstimate is the server's last prompt count plus the transcript the run appended since that call.
+// Zero means no evidence: no previous call, or one that reported no usage.
+func nextPromptEstimate(last *Completion, appended []Message) int {
+	if last == nil || !last.UsageReported {
+		return 0
+	}
+	chars := 0
+	for _, m := range appended {
+		chars += outputChars(m)
+	}
+	return last.Usage.PromptTokens + chars/estimateCharsPerToken
+}
+
+// capToWindow keeps the next request within the run's window. It compacts when auto-compaction is armed.
+// Otherwise, or when compaction fails, the run ends rather than send more than the window.
+func capToWindow(ctx context.Context, cfg *Config, req Request, transcript []Message, last *Completion,
+	sent int, res *Result, deduper *OutputDeduper) ([]Message, error) {
+	if cfg.window <= 0 || sent > len(transcript) {
+		return nil, nil
+	}
+	est := nextPromptEstimate(last, transcript[sent:])
+	if est < cfg.window {
+		return nil, nil
+	}
+	if req.AutoCompact > 0 {
+		if next, ok := compactNow(ctx, cfg, req, transcript, res, deduper); ok {
+			return next, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: the next request is about %d tokens, and the window is %d",
+		ErrContextWindowExceeded, est, cfg.window)
+}
+
+// wantsWindow reports whether the run needs a window: to compact, or to cap a request by a host setting.
+func wantsWindow(cfg *Config, req Request) bool {
+	return req.AutoCompact > 0 || cfg.ContextWindowOverride > 0 || cfg.ContextWindowFallback > 0
+}
+
+// resolveContextWindow sets the run's window before the first call. A run that needs none asks nothing.
 func resolveContextWindow(ctx context.Context, cfg *Config, req Request) error {
-	if req.AutoCompact <= 0 {
+	if !wantsWindow(cfg, req) {
 		return nil
 	}
 	reported, err := reportedWindow(ctx, cfg.Provider, req.Model)
@@ -84,7 +128,7 @@ func resolveContextWindow(ctx context.Context, cfg *Config, req Request) error {
 // resolveServedWindow asks again by the model a response names, while no server has reported a window.
 // An endpoint that serves an alias lists the model it served, not the alias. Each served name is asked once.
 func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) error {
-	if req.AutoCompact <= 0 || cfg.windowReported || comp == nil {
+	if !wantsWindow(cfg, req) || cfg.windowReported || comp == nil {
 		return nil
 	}
 	served := comp.Model

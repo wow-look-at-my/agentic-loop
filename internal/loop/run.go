@@ -50,6 +50,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	var lastComp *Completion
 	// states checks that each turn's output reached the next call.
 	var states stateCheck
+	// lastSent is how many transcript messages the newest call carried.
+	lastSent := 0
 	// servedAsked is the served model name the model list was last asked about, so an alias is resolved once.
 	var servedAsked string
 	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
@@ -148,6 +150,14 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript = append(transcript, noticeMsg)
 			}
 		}
+		if next, err := capToWindow(ctx, &cfg, req, transcript, lastComp, lastSent, res, deduper); err != nil {
+			res.Messages = transcript
+			return res, err
+		} else if next != nil {
+			transcript = next
+			lastComp = nil
+			states = stateCheck{}
+		}
 		if cfg.TurnHook != nil {
 			cfg.TurnHook(turn + 1)
 		}
@@ -168,6 +178,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Messages = transcript
 			return res, aerr
 		}
+		lastSent = len(transcript)
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res, elapsed)
 		if err != nil {
 			// A cancelled/timed-out call is never an "error"; a stopped stream finalizes cancelled.

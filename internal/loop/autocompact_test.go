@@ -86,10 +86,10 @@ func TestRunAutoCompactTriggersAndReplacesTranscript(t *testing.T) {
 	}
 	keep(t, &events.OnCompaction, compactionCb)
 	cfg := Config{
-		Provider:      provider,
-		Tools:         exec.registry(),
-		Approver:      allowAll,
-		Events:        &events,
+		Provider:              provider,
+		Tools:                 exec.registry(),
+		Approver:              allowAll,
+		Events:                &events,
 		ContextWindowFallback: 10000,
 	}
 	req := Request{
@@ -198,8 +198,8 @@ func TestRunAutoCompactBelowThresholdDoesNotCompact(t *testing.T) {
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
 	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
-		Provider:      provider,
-		Events:        &events,
+		Provider:              provider,
+		Events:                &events,
 		ContextWindowFallback: 10000,
 	}
 	req := Request{Model: "m", AutoCompact: 0.8,
@@ -220,8 +220,8 @@ func TestRunAutoCompactZeroDisables(t *testing.T) {
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
 	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
-		Provider:      provider,
-		Events:        &events,
+		Provider:              provider,
+		Events:                &events,
 		ContextWindowFallback: 10000,
 	}
 	req := Request{Model: "m", AutoCompact: 0, // disabled
@@ -247,10 +247,10 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	cb := func(ev CompactionEvent) error { compacted = true; return nil }
 	keep(t, &events.OnCompaction, cb)
 	cfg := Config{
-		Provider:      provider,
-		Tools:         exec.registry(),
-		Approver:      allowAll,
-		Events:        &events,
+		Provider:              provider,
+		Tools:                 exec.registry(),
+		Approver:              allowAll,
+		Events:                &events,
 		ContextWindowFallback: 10000,
 	}
 	req := Request{Model: "m", AutoCompact: 0.8,

@@ -541,6 +541,8 @@ res, err := agentic.Run(ctx, agentic.Config{
 
 `Events.OnContextWindow` reports which row applied: `Reported`, `FromModelList`, `FromFallback`, `Overridden`, `Warning`. A served model whose list entry arrives later replaces a fallback, and fails the run when an override exceeds it.
 
+**The window also caps each request.** Before each call the loop estimates the next prompt: the server's last prompt count plus the transcript appended since, at a few characters a token. When the estimate reaches the window, the loop compacts first if `AutoCompact` is armed. Otherwise, or when compaction fails, the run ends with `ErrContextWindowExceeded` and sends nothing.
+
 `Request.AutoCompact` is the fraction (0..1) of the window at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
 
 **It fires at the turn boundary, not inside one.** The check runs at the top of the next turn, after the turn's tool calls ran and their results are recorded. As a result, no call is summarized away while the model is still owed an answer for it. Firing it mid-turn dropped the calls the model asked for and left a host storing an assistant row nothing ever answered. This every later turn then replayed, and which an OpenAI-dialect endpoint rejects. It also runs *before* the message queue drains, so a message queued while the model talks is delivered after the summary.

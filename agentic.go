@@ -127,6 +127,7 @@ var DefaultRetry = loop.DefaultRetry
 var ErrStuck = loop.ErrStuck
 var ErrStateLost = loop.ErrStateLost
 var ErrContextWindowConfig = loop.ErrContextWindowConfig
+var ErrContextWindowExceeded = loop.ErrContextWindowExceeded
 
 var Anomalous = loop.Anomalous
 var Compact = loop.Compact

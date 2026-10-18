@@ -4,17 +4,20 @@ import (
 	"context"
 )
 
-// compactHere summarizes the transcript when the last turn reached the AutoCompact
-// fraction, returning the replacement and whether it replaced anything. A failure
-// is non-fatal: the run continues on the transcript it already had.
-//
-// The host's stored row id lands on the summary message. The next assistant row
-// hangs off the summary instead of detaching from the conversation tree.
+// compactHere compacts when the last turn reached the AutoCompact fraction of the window.
 func compactHere(ctx context.Context, cfg *Config, req Request, transcript []Message,
 	last *Completion, res *Result, deduper *OutputDeduper) ([]Message, bool) {
 	if !shouldCompact(req, *cfg, last) {
 		return nil, false
 	}
+	return compactNow(ctx, cfg, req, transcript, res, deduper)
+}
+
+// compactNow summarizes the transcript, returning the replacement and whether it replaced anything.
+// A failure is non-fatal: the run continues on the transcript it already had.
+// The host's stored row id lands on the summary message, so the next assistant row hangs off the summary.
+func compactNow(ctx context.Context, cfg *Config, req Request, transcript []Message,
+	res *Result, deduper *OutputDeduper) ([]Message, bool) {
 	cr, err := Compact(ctx, cfg.Provider, Request{Model: req.Model, System: req.System, Messages: transcript})
 	if err != nil {
 		return nil, false
