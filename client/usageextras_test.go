@@ -330,7 +330,7 @@ func TestOpenAIPromptCacheDefaultsOff(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Reasoning replay: on by default, OpenAIConfig.OmitReasoning turns it off
+// Reasoning replay: always on, with no switch to turn it off
 // ---------------------------------------------------------------------------
 
 func TestOpenAIReplayReasoning(t *testing.T) {
