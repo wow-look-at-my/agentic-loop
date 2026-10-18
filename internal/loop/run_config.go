@@ -36,6 +36,9 @@ const stuckNudgeInstruction = "You have now requested the same tool calls severa
 // ErrStuck ends a run whose model kept repeating a byte-identical tool-call batch.
 var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls")
 
+// ErrStateLost ends a run whose model call started without an earlier turn's output.
+var ErrStateLost = errors.New("agentic: the model lost state from the transcript")
+
 // Config wires Run: the Provider to call, the Tools advertised and
 // executed (empty runs tool-less), the Approver consulted for EVERY tool call
 // (nil allows a Readonly tool and denies anything else with DeniedMessage),
@@ -84,4 +87,6 @@ type Result struct {
 	Usages      []Usage
 	Turns       int
 	Undelivered []Message
+	// StateLosses lists each call that started without an earlier turn's output.
+	StateLosses []StateLossEvent
 }

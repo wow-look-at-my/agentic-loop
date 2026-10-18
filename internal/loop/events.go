@@ -132,6 +132,11 @@ type Events struct {
 	OnSystemMessage     event.Event[SystemMessageEvent]
 	OnCompaction        event.Event[CompactionEvent]
 	OnContextWindow     event.Event[ContextWindowEvent]
+	OnStateLoss         event.Event[StateLossEvent]
+}
+
+func (e *Events) emitStateLoss(ev StateLossEvent) {
+	_ = e.OnStateLoss.Invoke(ev)
 }
 
 func (e *Events) emitContextWindow(ev ContextWindowEvent) {

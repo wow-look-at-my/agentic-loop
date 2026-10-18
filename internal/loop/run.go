@@ -43,6 +43,8 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	repeats := 0
 	// lastComp is the newest completion, whose PromptTokens decide compaction.
 	var lastComp *Completion
+	// states checks that each turn's output reached the next call.
+	var states stateCheck
 	// servedAsked is the served model name the model list was last asked about, so an alias is resolved once.
 	var servedAsked string
 	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
@@ -92,6 +94,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if next, ok := compactHere(ctx, &cfg, req, transcript, lastComp, res, deduper); ok {
 			transcript = next
 			lastComp = nil
+			states = stateCheck{}
 		}
 		// Sub-agent delivery: deliver ready reports at the top of the turn so the model sees them.
 		if turn > 0 && cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
@@ -183,6 +186,21 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: status})
 			res.Messages = transcript
 			return res, err
+		}
+		// A model that lost its earlier output only looks busy: every later call is paid for nothing.
+		if loss := states.observe(turn+1, transcript, comp); loss != nil {
+			res.StateLosses = append(res.StateLosses, *loss)
+			cfg.Events.emitStateLoss(*loss)
+			lost := comp.Message
+			lost.ToolCalls = nil
+			if assistantID != "" {
+				lost.ID = string(assistantID)
+			}
+			transcript = append(transcript, lost)
+			res.Messages = transcript
+			res.Final = lost
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: lost, Status: "error"})
+			return res, fmt.Errorf("%w: turn %d: %s", ErrStateLost, loss.Turn, loss.Detail)
 		}
 		assistant := comp.Message
 		if assistantID != "" {
