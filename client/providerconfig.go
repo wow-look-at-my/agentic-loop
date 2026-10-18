@@ -74,9 +74,9 @@ type AnthropicConfig struct {
 // BaseURL.
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 	p, err := commonai.NewOpenAIProvider(commonai.OpenAIConfig{
-		ProviderConfig:  cfg.core(),
-		SelfHosted:      cfg.SelfHosted,
-		PromptCache:     cfg.PromptCache,
+		ProviderConfig: cfg.core(),
+		SelfHosted:     cfg.SelfHosted,
+		PromptCache:    cfg.PromptCache,
 	})
 	return finish(p, cfg.Retry, err)
 }

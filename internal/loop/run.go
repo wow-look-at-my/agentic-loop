@@ -187,20 +187,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Messages = transcript
 			return res, err
 		}
-		// A model that lost its earlier output only looks busy: every later call is paid for nothing.
 		if loss := states.observe(turn+1, transcript, comp); loss != nil {
-			res.StateLosses = append(res.StateLosses, *loss)
-			cfg.Events.emitStateLoss(*loss)
-			lost := comp.Message
-			lost.ToolCalls = nil
-			if assistantID != "" {
-				lost.ID = string(assistantID)
-			}
+			lost, lerr := recordStateLoss(&cfg, res, comp, assistantID, *loss)
 			transcript = append(transcript, lost)
-			res.Messages = transcript
-			res.Final = lost
+			res.Messages, res.Final = transcript, lost
 			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: lost, Status: "error"})
-			return res, fmt.Errorf("%w: turn %d: %s", ErrStateLost, loss.Turn, loss.Detail)
+			return res, lerr
 		}
 		assistant := comp.Message
 		if assistantID != "" {

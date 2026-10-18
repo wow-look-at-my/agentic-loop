@@ -75,6 +75,19 @@ func (s *stateCheck) observe(turn int, msgs []Message, comp *Completion) *StateL
 	}
 }
 
+// recordStateLoss reports a loss and builds the run's last message and error.
+// A model that lost its earlier output only looks busy, so the run ends.
+func recordStateLoss(cfg *Config, res *Result, comp *Completion, id MessageID, loss StateLossEvent) (Message, error) {
+	res.StateLosses = append(res.StateLosses, loss)
+	cfg.Events.emitStateLoss(loss)
+	lost := comp.Message
+	lost.ToolCalls = nil
+	if id != "" {
+		lost.ID = string(id)
+	}
+	return lost, fmt.Errorf("%w: turn %d: %s", ErrStateLost, loss.Turn, loss.Detail)
+}
+
 // outputChars is the length of what a turn recorded: reasoning, text and tool arguments.
 func outputChars(m Message) int {
 	n := len(m.Content)

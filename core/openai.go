@@ -15,11 +15,11 @@ import (
 
 // openaiProvider is an OpenAI-compatible provider; read-only fields make it concurrent-safe.
 type openaiProvider struct {
-	baseURL         string
-	apiKey          string
-	httpClient      *http.Client
-	userAgent       string
-	selfHosted      bool
+	baseURL     string
+	apiKey      string
+	httpClient  *http.Client
+	userAgent   string
+	selfHosted  bool
 	promptCache bool
 	headers     map[string]string
 	models      modelListCache
@@ -67,7 +67,7 @@ func refusesReasoning(err error) bool {
 // completeOnce retries without the default stream_options when a pre-stream names no parameter.
 func (o *openaiProvider) completeOnce(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	comp, err := o.complete(ctx, req, ev, true)
-	if comp != nil || err == nil || !o.shouldRetryWithoutStreamOptions(req, err) {
+	if comp != nil || err == nil || refusesReasoning(err) || !o.shouldRetryWithoutStreamOptions(req, err) {
 		return comp, err
 	}
 	return o.complete(ctx, req, ev, false)

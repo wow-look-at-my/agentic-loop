@@ -55,13 +55,13 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 		return nil, badRequestErr("commonai: OpenAIConfig.BaseURL is required")
 	}
 	return (&openaiProvider{
-		baseURL:         cfg.BaseURL,
-		apiKey:          cfg.APIKey,
-		httpClient:      cfg.HTTPClient,
-		userAgent:       cfg.UserAgent,
-		selfHosted:      cfg.SelfHosted,
-		promptCache:     cfg.PromptCache,
-		headers:         cfg.Headers,
+		baseURL:     cfg.BaseURL,
+		apiKey:      cfg.APIKey,
+		httpClient:  cfg.HTTPClient,
+		userAgent:   cfg.UserAgent,
+		selfHosted:  cfg.SelfHosted,
+		promptCache: cfg.PromptCache,
+		headers:     cfg.Headers,
 	}), nil
 }
 
