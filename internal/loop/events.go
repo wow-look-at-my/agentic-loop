@@ -105,6 +105,12 @@ type CompactionEvent struct {
 	ID         *MessageID
 }
 
+// CompactionFailedEvent is the param to OnCompactionFailed. The run keeps the window it had.
+type CompactionFailedEvent struct {
+	event.Args
+	Err error
+}
+
 // Window is zero exactly when Err says why there is none, and a run with no window never auto-compacts.
 type ContextWindowEvent struct {
 	event.Args
@@ -139,6 +145,7 @@ type Events struct {
 	OnResourceNotice    event.Event[ResourceNoticeEvent]
 	OnSystemMessage     event.Event[SystemMessageEvent]
 	OnCompaction        event.Event[CompactionEvent]
+	OnCompactionFailed  event.Event[CompactionFailedEvent]
 	OnContextWindow     event.Event[ContextWindowEvent]
 	OnStateLoss         event.Event[StateLossEvent]
 	// OnNode fires when a node joins the conversation and when one of its fields changes.
@@ -151,6 +158,10 @@ func (e *Events) emitNode(ev NodeEvent) {
 
 func (e *Events) emitStateLoss(ev StateLossEvent) {
 	_ = e.OnStateLoss.Invoke(ev)
+}
+
+func (e *Events) emitCompactionFailed(ev CompactionFailedEvent) {
+	_ = e.OnCompactionFailed.Invoke(ev)
 }
 
 func (e *Events) emitContextWindow(ev ContextWindowEvent) {

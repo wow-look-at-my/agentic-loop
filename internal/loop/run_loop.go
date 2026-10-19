@@ -56,6 +56,8 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 	lastSent := 0
 	// servedAsked is the served model name the model list was last asked about, so an alias is resolved once.
 	var servedAsked string
+	// overflowTurn is the turn whose call overflowed the window and was compacted once to retry it.
+	overflowTurn := -1
 	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
 	currentAssistantID := MessageID("")
 	finalizeAssistant := func(ev FinalizeAssistantEvent) {
@@ -186,6 +188,19 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 			status := "cancelled"
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				status = "error"
+			}
+			// A request larger than the window compacts and asks again, once per turn. Without this
+			// a stored transcript past the window fails every later run at its first call.
+			if IsContextOverflow(err) && req.AutoCompact > 0 && comp == nil && len(mc.nodes) == 0 && overflowTurn != turn {
+				overflowTurn = turn
+				if compactNow(ctx, &cfg, req, s, res, deduper) {
+					finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Status: "error"})
+					lastComp = nil
+					states = stateCheck{}
+					lastSent = 0
+					turn--
+					continue
+				}
 			}
 			// What streamed stays. A tool call that will never run gets an omitted result.
 			s.omitCalls(mc.nodes, "the call ended before this tool ran: "+err.Error())
