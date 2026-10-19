@@ -60,19 +60,17 @@ func TestSessionKeepsOneConversationAcrossSends(t *testing.T) {
 
 // A host that holds the queue before the turn starts gets its messages delivered, and a closed queue once the turn ends.
 func TestSessionUsesTheHostQueueForOneTurn(t *testing.T) {
-	provider := &scriptProvider{steps: []scriptStep{
-		{comp: assistantComp("first")},
-		{comp: assistantComp("second")},
-	}}
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("answer")}}}
 	q := &MessageQueue{}
 	require.True(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "queued early"}}))
 	s, err := NewSession(SessionConfig{Loop: Config{Provider: provider, Messages: q}, Request: Request{Model: "m"}})
 	require.NoError(t, err)
 
 	res := waitTurn(t, s.Send(context.Background(), Message{Role: RoleUser, Content: "go"}))
-	assert.Equal(t, "second", res.Final.Content, "the queued message took a turn of its own")
-	require.Len(t, provider.reqs, 2)
-	assert.Equal(t, "queued early", provider.reqs[1].Messages[len(provider.reqs[1].Messages)-1].Content)
+	assert.Equal(t, "answer", res.Final.Content)
+	require.Len(t, provider.reqs, 1)
+	sent := provider.reqs[0].Messages
+	assert.Equal(t, "queued early", sent[len(sent)-1].Content, "the turn drained the host queue")
 	assert.False(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "late"}}), "the turn closed the host queue")
 }
 
