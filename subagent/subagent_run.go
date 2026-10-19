@@ -136,7 +136,7 @@ func runChild(ctx context.Context, cfg agentic.SessionConfig, task string) (*age
 		return nil, err
 	}
 	turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: task})
-	err = turn.Wait(ctx)
+	err = turn.Wait(context.WithoutCancel(ctx))
 	return turn.Result(), err
 }
 

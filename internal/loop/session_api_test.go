@@ -58,6 +58,22 @@ func TestSessionKeepsOneConversationAcrossSends(t *testing.T) {
 	assert.Equal(t, "m", s.Config().Request.Model)
 }
 
+// A host that holds the queue before the turn starts gets its messages delivered, and a closed queue once the turn ends.
+func TestSessionUsesTheHostQueueForOneTurn(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("answer")}}}
+	q := &MessageQueue{}
+	require.True(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "queued early"}}))
+	s, err := NewSession(SessionConfig{Loop: Config{Provider: provider, Messages: q}, Request: Request{Model: "m"}})
+	require.NoError(t, err)
+
+	res := waitTurn(t, s.Send(context.Background(), Message{Role: RoleUser, Content: "go"}))
+	assert.Equal(t, "answer", res.Final.Content)
+	require.Len(t, provider.reqs, 1)
+	sent := provider.reqs[0].Messages
+	assert.Equal(t, "queued early", sent[len(sent)-1].Content, "the turn drained the host queue")
+	assert.False(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "late"}}), "the turn closed the host queue")
+}
+
 func TestSessionBranchesAndRefusesWhatItCannotDo(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("a")},
@@ -108,6 +124,38 @@ func TestSessionRefusesASecondSendWhileATurnRuns(t *testing.T) {
 	res := waitTurn(t, first)
 	assert.Equal(t, "late", res.Messages[len(res.Messages)-1].Content)
 	assert.Len(t, provider.reqs, 2, "the queued message took a second call")
+}
+
+type panicProvider struct{}
+
+func (panicProvider) Complete(context.Context, Request, *StreamEvents) (*Completion, error) {
+	panic("boom")
+}
+
+func TestSessionRaisesATurnPanicInWait(t *testing.T) {
+	s, err := NewSession(SessionConfig{Loop: Config{Provider: panicProvider{}}, Request: Request{Model: "m"}})
+	require.NoError(t, err)
+	turn := s.Send(context.Background(), Message{Role: RoleUser, Content: "go"})
+	assert.PanicsWithValue(t, "boom", func() { _ = turn.Wait(context.Background()) })
+	assert.ErrorContains(t, turn.Err(), "the turn panicked: boom")
+}
+
+// The host's row for the turn hangs off the id the host gave the newest message, not an id the tree made.
+func TestSessionAnnouncesTheHostIDAsTheParent(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("answer")}}}
+	events := &Events{}
+	var parents []MessageID
+	keep(t, &events.OnAssistantMessage, func(ev AssistantMessageEvent) error {
+		parents = append(parents, ev.ParentID)
+		return nil
+	})
+	s, err := NewSession(SessionConfig{Loop: Config{Provider: provider, Events: events}, Request: Request{Model: "m"}})
+	require.NoError(t, err)
+	waitTurn(t, s.Send(context.Background(),
+		Message{Role: RoleUser, ID: "u1", Content: "q"},
+		Message{Role: RoleAssistant, ID: "a1", Content: "text", Thinking: []ThinkingBlock{{Text: "why"}}},
+		Message{Role: RoleUser, ID: "u2", Content: "more"}))
+	assert.Equal(t, []MessageID{"u2"}, parents)
 }
 
 // gatedProvider holds its first call until release closes, then answers every call.
