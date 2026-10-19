@@ -2,9 +2,97 @@ package loop
 
 import (
 	"context"
+<<<<<<< HEAD
 )
 
 // compactHere compacts when the last turn reached the AutoCompact fraction of the window.
+=======
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+)
+
+// resolveContextWindow fills Config.ContextWindow from the provider's model list when the host left it unset, and
+// reports the window the run will compact against. A run that does not auto-compact asks nothing.
+func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
+	if req.AutoCompact <= 0 {
+		return
+	}
+	if cfg.ContextWindow > 0 {
+		cfg.Events.emitContextWindow(ContextWindowEvent{Window: cfg.ContextWindow})
+		return
+	}
+	l, ok, err := ModelLimitsOf(ctx, cfg.Provider, req.Model)
+	switch {
+	case !ok:
+		err = errors.New("agentic: no Config.ContextWindow, and the provider has no model list to read one from")
+	case err != nil:
+		err = fmt.Errorf("agentic: reading the context window for %q: %w", req.Model, err)
+	case l.ContextWindow <= 0:
+		err = fmt.Errorf("agentic: the model list publishes no context window for %q", req.Model)
+	}
+	if err != nil {
+		cfg.Events.emitContextWindow(ContextWindowEvent{Err: err})
+		return
+	}
+	cfg.ContextWindow = l.ContextWindow
+	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true})
+}
+
+// resolveServedWindow fills Config.ContextWindow from the model list's entry for the model a response names,
+// when the host left the window unset. The requested name resolved nothing. An endpoint that serves an alias
+// lists the model it served, not the alias. The list id a gateway routed to is asked before the body's model
+// name, and each set of names is asked once per run.
+func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) {
+	if req.AutoCompact <= 0 || cfg.ContextWindow > 0 || comp == nil {
+		return
+	}
+	names := servedNames(req.Model, comp)
+	key := strings.Join(names, "\n")
+	if len(names) == 0 || key == *asked {
+		return
+	}
+	*asked = key
+	var errs []error
+	for _, served := range names {
+		l, ok, err := ModelLimitsOf(ctx, cfg.Provider, served)
+		switch {
+		case !ok:
+			return
+		case err != nil:
+			err = fmt.Errorf("agentic: reading the context window for %q, the model the response named: %w", served, err)
+		case l.ContextWindow <= 0:
+			err = fmt.Errorf("agentic: the model list publishes no context window for %q, the model the response named", served)
+		}
+		if err == nil {
+			cfg.ContextWindow = l.ContextWindow
+			cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true, Served: served})
+			return
+		}
+		errs = append(errs, err)
+	}
+	cfg.Events.emitContextWindow(ContextWindowEvent{Served: names[0], Err: errors.Join(errs...)})
+}
+
+// servedNames is every name a response gives the model that answered, most exact first, without the requested name.
+func servedNames(requested string, comp *Completion) []string {
+	var names []string
+	for _, name := range []string{comp.Routed, comp.Model} {
+		if name != "" && name != requested && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// compactHere summarizes the transcript when the last turn reached the AutoCompact
+// fraction, returning the replacement and whether it replaced anything. A failure
+// is non-fatal: the run continues on the transcript it already had.
+//
+// The host's stored row id lands on the summary message. The next assistant row
+// hangs off the summary instead of detaching from the conversation tree.
+>>>>>>> origin/master
 func compactHere(ctx context.Context, cfg *Config, req Request, transcript []Message,
 	last *Completion, res *Result, deduper *OutputDeduper) ([]Message, bool) {
 	if !shouldCompact(req, *cfg, last) {
