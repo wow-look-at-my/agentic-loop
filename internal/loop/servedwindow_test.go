@@ -103,3 +103,77 @@ func TestAServedModelWithNoPublishedWindowIsReportedOnce(t *testing.T) {
 	assert.ErrorContains(t, (*windows)[1].Err, "vendor/unknown")
 	assert.Zero(t, (*windows)[1].Window)
 }
+
+func routedComp(content, served, routed string, calls ...ToolCall) *Completion {
+	comp := servedComp(content, served, calls...)
+	comp.Routed = routed
+	return comp
+}
+
+// The list id a gateway routed to is the exact entry, so it is asked before the body's model name.
+func TestTheRoutedListIDIsAskedBeforeTheBodyModel(t *testing.T) {
+	provider := &aliasProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{
+			{comp: routedComp("done", "upstream/model", "Gateway/hf:upstream/model")},
+		}},
+		limits: map[string]Limits{"Gateway/hf:upstream/model": {ContextWindow: 64000}},
+	}
+	events := Events{}
+	windows := windowEvents(t, &events)
+	cfg := Config{Provider: provider, Approver: allowAll, Events: &events}
+	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"auto-alias", "Gateway/hf:upstream/model"}, provider.asked)
+	require.Len(t, *windows, 2)
+	assert.Equal(t, ContextWindowEvent{Window: 64000, FromModelList: true, Served: "Gateway/hf:upstream/model"}, (*windows)[1])
+}
+
+// A routed entry with no window falls back to the body's model name. Both misses are reported together, once.
+func TestARoutedEntryWithNoWindowFallsBackToTheBodyModel(t *testing.T) {
+	provider := &aliasProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{
+			{comp: routedComp("one", "vendor/served", "Gateway/served", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+			{comp: routedComp("two", "vendor/served", "Gateway/served")},
+		}},
+		limits: map[string]Limits{"vendor/served": {ContextWindow: 20000}},
+	}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
+	events := Events{}
+	windows := windowEvents(t, &events)
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
+	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked)
+	require.Len(t, *windows, 2)
+	assert.Equal(t, ContextWindowEvent{Window: 20000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
+}
+
+func TestEveryServedNameMissingIsReportedOnce(t *testing.T) {
+	provider := &aliasProvider{
+		scriptProvider: &scriptProvider{steps: []scriptStep{
+			{comp: routedComp("one", "vendor/served", "Gateway/served", ToolCall{ID: "c1", Name: "alpha", Arguments: "{}"})},
+			{comp: routedComp("two", "vendor/served", "Gateway/served")},
+		}},
+		limits: map[string]Limits{},
+	}
+	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha", Readonly: true}}}
+	events := Events{}
+	windows := windowEvents(t, &events)
+	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
+	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
+
+	_, err := Run(context.Background(), cfg, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked, "each name once per run")
+	require.Len(t, *windows, 2)
+	assert.Equal(t, "Gateway/served", (*windows)[1].Served)
+	assert.ErrorContains(t, (*windows)[1].Err, "Gateway/served")
+	assert.ErrorContains(t, (*windows)[1].Err, "vendor/served")
+}
