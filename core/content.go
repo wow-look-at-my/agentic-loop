@@ -32,7 +32,9 @@ type ImageContent struct {
 	MediaType string
 	Src       string
 	Blob      *BlobRef
-	meta      Meta
+	// inline is base64 from a flat ImagePart, until the session moves it into the blob store.
+	inline string
+	meta   Meta
 }
 
 func (c *ImageContent) Meta() *Meta { return &c.meta }

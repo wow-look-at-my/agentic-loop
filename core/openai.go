@@ -133,7 +133,8 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return o.parseNonStream(body)
 	}
 
-	st := &oaStream{ev: ev, acc: newToolCallAccumulator(), reasoningDetails: newReasoningDetailAccumulator()}
+	sink := &Collector{Events: ev}
+	st := newOAStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("openai: %w", scanErr)
 		if st.sawData {
@@ -142,7 +143,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return nil, wrapped
 	}
 	comp := st.completion()
-	if err := st.emitRemaining(comp); err != nil {
+	if err := sink.Err(); err != nil {
 		return comp, err
 	}
 	return comp, nil
