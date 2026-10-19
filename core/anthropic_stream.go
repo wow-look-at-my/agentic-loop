@@ -284,9 +284,8 @@ func (st *anStream) currentUsage() Usage {
 func (st *anStream) completion() *Completion {
 	haveCall := false
 	for _, n := range st.nodes {
-		if !n.Final() {
-			st.out.Done(n)
-		}
+		// A block that never stopped keeps what it received but is not announced as finished.
+		FinishNode(n)
 		if _, ok := n.(*ToolCallMessage); ok {
 			haveCall = true
 		}

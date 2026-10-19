@@ -143,6 +143,7 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return nil, wrapped
 	}
 	comp := st.completion()
+	st.announceRemaining()
 	if err := sink.Err(); err != nil {
 		return comp, err
 	}

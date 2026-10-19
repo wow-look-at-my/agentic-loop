@@ -179,6 +179,7 @@ type oaStream struct {
 	text             *AssistantMessage
 	calls            map[int]*ToolCallMessage
 	nodes            []IMessage
+	announced        map[IMessage]bool
 	reasoningDetails *reasoningDetailAccumulator
 	finish           string
 	usages           []Usage
@@ -189,7 +190,8 @@ type oaStream struct {
 }
 
 func newOAStream(out CallSink) *oaStream {
-	return &oaStream{out: out, calls: map[int]*ToolCallMessage{}, reasoningDetails: newReasoningDetailAccumulator()}
+	return &oaStream{out: out, calls: map[int]*ToolCallMessage{}, announced: map[IMessage]bool{},
+		reasoningDetails: newReasoningDetailAccumulator()}
 }
 
 func (st *oaStream) start(n IMessage) {
@@ -197,14 +199,30 @@ func (st *oaStream) start(n IMessage) {
 	st.out.Start(n)
 }
 
+// done announces a node as finished, once.
+func (st *oaStream) done(n IMessage) {
+	if st.announced[n] {
+		return
+	}
+	st.announced[n] = true
+	st.out.Done(n)
+}
+
 // closeReasoning ends the reasoning node, which can no longer grow.
 func (st *oaStream) closeReasoning() {
 	if st.think != nil && !st.think.Final() {
-		st.out.Done(st.think)
+		st.done(st.think)
 	}
 }
 
-// finishNodes ends every node still open: the reasoning, the text and the tool calls.
+// announceRemaining announces the nodes that only end with the stream.
+func (st *oaStream) announceRemaining() {
+	for _, n := range st.nodes {
+		st.done(n)
+	}
+}
+
+// finishNodes ends every node still open, without announcing it.
 func (st *oaStream) finishNodes() {
 	if details := oaReasoningDetailsJSON(st.reasoningDetails.finish()); details != "" {
 		if st.think == nil {
@@ -215,9 +233,7 @@ func (st *oaStream) finishNodes() {
 		st.think.Details = ReasoningDetails(details)
 	}
 	for _, n := range st.nodes {
-		if !n.Final() {
-			st.out.Done(n)
-		}
+		FinishNode(n)
 	}
 }
 
