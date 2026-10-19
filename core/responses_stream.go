@@ -65,14 +65,31 @@ func (st *respStream) nodeFor(itemID string, item *respItem, kind string) IMessa
 		if n := st.byItem[itemID]; n != nil && respKindMatches(n, kind) {
 			return n
 		}
-	} else {
-		for i := len(st.nodes) - 1; i >= 0; i-- {
-			if n := st.nodes[i]; !n.Final() && respKindMatches(n, kind) {
-				return n
+	}
+	// An id the stream has not used adopts the newest open node of its kind that has no id yet.
+	for i := len(st.nodes) - 1; i >= 0; i-- {
+		n := st.nodes[i]
+		if n.Final() || !respKindMatches(n, kind) || (itemID != "" && st.keyed(n)) {
+			continue
+		}
+		if itemID != "" {
+			st.byItem[itemID] = n
+			if t, ok := n.(*ThinkingMessage); ok {
+				t.ItemID = ResponsesItemID(itemID)
 			}
 		}
+		return n
 	}
 	return st.makeNode(itemID, item, kind)
+}
+
+func (st *respStream) keyed(n IMessage) bool {
+	for _, m := range st.byItem {
+		if m == n {
+			return true
+		}
+	}
+	return false
 }
 
 // makeNode starts a new node for an item.

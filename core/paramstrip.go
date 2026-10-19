@@ -63,8 +63,17 @@ func NewParamStripper(p Provider) Provider {
 
 // Complete implements Provider.
 func (s *paramStripper) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return s.do(req, func(r Request) (*Completion, error) { return s.inner.Complete(ctx, r, ev) }, nil)
+}
+
+// Stream implements Streamer.
+func (s *paramStripper) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
+	return s.do(req, func(r Request) (*Completion, error) { return StreamCall(ctx, s.inner, r, out) }, out)
+}
+
+func (s *paramStripper) do(req Request, send func(Request) (*Completion, error), out CallSink) (*Completion, error) {
 	req.Extra = s.withoutStripped(req.Extra)
-	comp, err := s.inner.Complete(ctx, req, ev)
+	comp, err := send(req)
 	// A non-nil completion means the call already streamed (see Provider), so
 	// it is too late to strip anything and re-send.
 	if err == nil || errors.Is(err, context.Canceled) || comp != nil {
@@ -85,7 +94,10 @@ func (s *paramStripper) Complete(ctx context.Context, req Request, ev *StreamEve
 		next[k] = v
 	}
 	req.Extra = next
-	return s.inner.Complete(ctx, req, ev)
+	if out != nil {
+		out.Retry(RetryAttempt{Attempt: 1, Of: 2, Err: err})
+	}
+	return send(req)
 }
 
 // withoutStripped returns extra with every remembered key removed, copying
