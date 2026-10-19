@@ -67,6 +67,79 @@ func ThinkingFromBlock(text, blob, id string, d Dialect) *ThinkingMessage {
 	return t
 }
 
+// CompactionHandoffPrefix heads a compaction summary on the wire. A summary is never sent as a live
+// instruction: a model reading one as the newest ask answers with another summary.
+const CompactionHandoffPrefix = "The conversation so far exceeded the context window and was summarized. " +
+	"This summary replaces the earlier messages; treat it as what you already know, not as a request. " +
+	"Continue the work it describes.\n\n"
+
+// MessagesFromPath is a window path as flat messages. Consecutive model-output nodes of one call form
+// one assistant message. A host's own node types are skipped: no dialect knows their wire shape.
+func MessagesFromPath(path []IMessage) []Message {
+	var out []Message
+	var group []IMessage
+	var groupCall *CallRecord
+	flush := func() {
+		if len(group) == 0 {
+			return
+		}
+		m := MessageFromNodes(group)
+		m.ID = group[0].Base().id
+		out = append(out, m)
+		group, groupCall = nil, nil
+	}
+	for _, n := range path {
+		switch v := n.(type) {
+		case *ThinkingMessage, *AssistantMessage, *ToolCallMessage, *RawBlockMessage:
+			if len(group) > 0 && (n.Base().call != groupCall || groupCall == nil) {
+				flush()
+			}
+			group = append(group, n)
+			groupCall = n.Base().call
+		case *UserMessage:
+			flush()
+			out = append(out, flatContent(RoleUser, v.Base(), v.Content))
+		case *SystemMessage:
+			flush()
+			out = append(out, flatContent(RoleUser, v.Base(), v.Content))
+		case *ToolResultMessage:
+			flush()
+			m := flatContent(RoleTool, v.Base(), v.Content)
+			if v.Call != nil {
+				m.ToolCallID = string(v.Call.CallID)
+			}
+			m.ToolIsError = v.IsError
+			out = append(out, m)
+		case *CompactionMessage:
+			flush()
+			out = append(out, Message{Role: RoleUser, ID: v.id, Kind: v.kind, Content: CompactionHandoffPrefix + v.Summary.String()})
+		}
+	}
+	flush()
+	return out
+}
+
+func flatContent(role Role, b *MessageBase, content []IContent) Message {
+	var parts []Part
+	for _, c := range content {
+		switch v := c.(type) {
+		case *TextContent:
+			parts = append(parts, TextPart{Text: v.Text})
+		case *ImageContent:
+			p := ImagePart{MediaType: v.MediaType, Src: v.Src, Data: v.inline}
+			if v.Blob != nil && p.Data == "" {
+				if b64, err := v.Blob.Base64(); err == nil {
+					p.Data = b64
+				}
+			}
+			parts = append(parts, p)
+		}
+	}
+	m := Message{Role: role, ID: b.id, Kind: b.kind, Parts: parts}
+	m.SyncViews()
+	return m
+}
+
 // NodesFromMessage is a flat message as nodes, its opaque blobs placed as dialect d reads them.
 func NodesFromMessage(m Message, d Dialect) []IMessage {
 	var out []IMessage
@@ -103,6 +176,13 @@ func NodesFromMessage(m Message, d Dialect) []IMessage {
 		}
 		add(&ToolResultMessage{Call: call, Content: content, IsError: m.ToolIsError})
 	case RoleAssistant:
+		// One record for the turn keeps its parts one wire message.
+		rec := &CallRecord{Status: CallDone}
+		defer func() {
+			for _, n := range out {
+				n.Base().call = rec
+			}
+		}()
 		for _, p := range m.EffectiveParts() {
 			switch v := p.(type) {
 			case ThinkingPart:
