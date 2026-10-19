@@ -30,8 +30,17 @@ func NewThinkingSignatureRepair(p Provider) Provider {
 
 // Complete implements Provider.
 func (r *thinkingSignatureRepair) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return r.do(req, func(q Request) (*Completion, error) { return r.inner.Complete(ctx, q, ev) }, nil)
+}
+
+// Stream implements Streamer.
+func (r *thinkingSignatureRepair) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
+	return r.do(req, func(q Request) (*Completion, error) { return StreamCall(ctx, r.inner, q, out) }, out)
+}
+
+func (r *thinkingSignatureRepair) do(req Request, send func(Request) (*Completion, error), out CallSink) (*Completion, error) {
 	req.Messages = r.withoutBadSignatures(req.Messages)
-	comp, err := r.inner.Complete(ctx, req, ev)
+	comp, err := send(req)
 	// A non-nil completion means the call already streamed (see Provider), so
 	// it is too late to strip anything and re-send.
 	if err == nil || errors.Is(err, context.Canceled) || comp != nil {
@@ -45,7 +54,10 @@ func (r *thinkingSignatureRepair) Complete(ctx context.Context, req Request, ev 
 	r.bad.Add(sig)
 	r.mu.Unlock()
 	req.Messages = r.withoutBadSignatures(req.Messages)
-	return r.inner.Complete(ctx, req, ev)
+	if out != nil {
+		out.Retry(RetryAttempt{Attempt: 1, Of: 2, Err: err})
+	}
+	return send(req)
 }
 
 // withoutBadSignatures returns a copy of msgs with every thinking block

@@ -141,6 +141,12 @@ type Events struct {
 	OnCompaction        event.Event[CompactionEvent]
 	OnContextWindow     event.Event[ContextWindowEvent]
 	OnStateLoss         event.Event[StateLossEvent]
+	// OnNode fires when a node joins the conversation and when one of its fields changes.
+	OnNode event.Event[NodeEvent]
+}
+
+func (e *Events) emitNode(ev NodeEvent) {
+	_ = e.OnNode.Invoke(ev)
 }
 
 func (e *Events) emitStateLoss(ev StateLossEvent) {

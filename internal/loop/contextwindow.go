@@ -95,21 +95,21 @@ func nextPromptEstimate(last *Completion, appended []Message) int {
 
 // capToWindow keeps the next request within the run's window. It compacts when auto-compaction is armed.
 // Otherwise, or when compaction fails, the run ends rather than send more than the window.
-func capToWindow(ctx context.Context, cfg *Config, req Request, transcript []Message, last *Completion,
-	sent int, res *Result, deduper *OutputDeduper) ([]Message, error) {
+// sent is how many window messages the last call carried. It reports whether it compacted.
+func capToWindow(ctx context.Context, cfg *Config, req Request, s *session, last *Completion,
+	sent int, res *Result, deduper *OutputDeduper) (bool, error) {
+	transcript := s.messages()
 	if cfg.window <= 0 || sent > len(transcript) {
-		return nil, nil
+		return false, nil
 	}
 	est := nextPromptEstimate(last, transcript[sent:])
 	if est < cfg.window {
-		return nil, nil
+		return false, nil
 	}
-	if req.AutoCompact > 0 {
-		if next, ok := compactNow(ctx, cfg, req, transcript, res, deduper); ok {
-			return next, nil
-		}
+	if req.AutoCompact > 0 && compactNow(ctx, cfg, req, s, res, deduper) {
+		return true, nil
 	}
-	return nil, fmt.Errorf("%w: the next request is about %d tokens, and the window is %d",
+	return false, fmt.Errorf("%w: the next request is about %d tokens, and the window is %d",
 		ErrContextWindowExceeded, est, cfg.window)
 }
 

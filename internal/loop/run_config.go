@@ -95,4 +95,20 @@ type Result struct {
 	Undelivered []Message
 	// StateLosses lists each call that started without an earlier turn's output.
 	StateLosses []StateLossEvent
+	session     *session
 }
+
+// Tree is the whole conversation the run built, compactions and superseded nodes included.
+func (r *Result) Tree() []IMessage {
+	if r == nil || r.session == nil {
+		return nil
+	}
+	return r.session.path()
+}
+
+// The kinds of note the loop writes into a conversation.
+const (
+	StopNudgeKind      = "stop_nudge"
+	WrapUpKind         = "wrap_up"
+	ResourceNoticeKind = "resource_notice"
+)

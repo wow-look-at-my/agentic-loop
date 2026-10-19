@@ -34,7 +34,12 @@ var ErrReasoningRefused = errors.New("openai: the endpoint rejected the replayed
 
 // Complete sends the call. A rejection of the replayed reasoning is permanent and names ErrReasoningRefused.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
-	comp, err := o.completeOnce(ctx, req, ev)
+	return o.Stream(ctx, req, &Collector{Events: ev})
+}
+
+// Stream sends the call and writes its nodes into out as they stream.
+func (o *openaiProvider) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
+	comp, err := o.completeOnce(ctx, req, out)
 	if comp == nil && err != nil && carriesReasoning(req.Messages) && refusesReasoning(err) {
 		return nil, fmt.Errorf("%w: %w", ErrReasoningRefused, err)
 	}
@@ -65,12 +70,12 @@ func refusesReasoning(err error) bool {
 }
 
 // completeOnce retries without the default stream_options when a pre-stream names no parameter.
-func (o *openaiProvider) completeOnce(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
-	comp, err := o.complete(ctx, req, ev, true)
+func (o *openaiProvider) completeOnce(ctx context.Context, req Request, out CallSink) (*Completion, error) {
+	comp, err := o.complete(ctx, req, out, true)
 	if comp != nil || err == nil || refusesReasoning(err) || !o.shouldRetryWithoutStreamOptions(req, err) {
 		return comp, err
 	}
-	return o.complete(ctx, req, ev, false)
+	return o.complete(ctx, req, out, false)
 }
 
 // shouldRetryWithoutStreamOptions: true when a pre-stream names no parameter and carried the default.
@@ -90,7 +95,7 @@ func (o *openaiProvider) shouldRetryWithoutStreamOptions(req Request, err error)
 // includeDefaultStreamOptions gates the {"include_usage":true} default (see
 // buildBody); Complete calls this only when a attempt with it set
 // is rejected outright.
-func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEvents, includeDefaultStreamOptions bool) (*Completion, error) {
+func (o *openaiProvider) complete(ctx context.Context, req Request, out CallSink, includeDefaultStreamOptions bool) (*Completion, error) {
 	body, err := o.buildBody(req, includeDefaultStreamOptions)
 	if err != nil {
 		return nil, err
@@ -130,10 +135,11 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		if rerr != nil {
 			return nil, badRequestErr("openai: read non-streaming response: " + rerr.Error())
 		}
-		return o.parseNonStream(body)
+		return completionIntoSink(o.parseNonStream(body))(out, DialectOpenAI)
 	}
 
-	st := &oaStream{ev: ev, acc: newToolCallAccumulator(), reasoningDetails: newReasoningDetailAccumulator()}
+	sink := out
+	st := newOAStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("openai: %w", scanErr)
 		if st.sawData {
@@ -142,7 +148,8 @@ func (o *openaiProvider) complete(ctx context.Context, req Request, ev *StreamEv
 		return nil, wrapped
 	}
 	comp := st.completion()
-	if err := st.emitRemaining(comp); err != nil {
+	st.announceRemaining()
+	if err := sink.Err(); err != nil {
 		return comp, err
 	}
 	return comp, nil
