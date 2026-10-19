@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // resolveContextWindow fills Config.ContextWindow from the provider's model list when the host left it unset, and
@@ -35,31 +37,48 @@ func resolveContextWindow(ctx context.Context, cfg *Config, req Request) {
 
 // resolveServedWindow fills Config.ContextWindow from the model list's entry for the model a response names,
 // when the host left the window unset. The requested name resolved nothing. An endpoint that serves an alias
-// lists the model it served, not the alias. Each served name is asked once per run.
+// lists the model it served, not the alias. The list id a gateway routed to is asked before the body's model
+// name, and each set of names is asked once per run.
 func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) {
 	if req.AutoCompact <= 0 || cfg.ContextWindow > 0 || comp == nil {
 		return
 	}
-	served := comp.Model
-	if served == "" || served == req.Model || served == *asked {
+	names := servedNames(req.Model, comp)
+	key := strings.Join(names, "\n")
+	if len(names) == 0 || key == *asked {
 		return
 	}
-	*asked = served
-	l, ok, err := ModelLimitsOf(ctx, cfg.Provider, served)
-	switch {
-	case !ok:
-		return
-	case err != nil:
-		err = fmt.Errorf("agentic: reading the context window for %q, the model the response named: %w", served, err)
-	case l.ContextWindow <= 0:
-		err = fmt.Errorf("agentic: the model list publishes no context window for %q, the model the response named", served)
+	*asked = key
+	var errs []error
+	for _, served := range names {
+		l, ok, err := ModelLimitsOf(ctx, cfg.Provider, served)
+		switch {
+		case !ok:
+			return
+		case err != nil:
+			err = fmt.Errorf("agentic: reading the context window for %q, the model the response named: %w", served, err)
+		case l.ContextWindow <= 0:
+			err = fmt.Errorf("agentic: the model list publishes no context window for %q, the model the response named", served)
+		}
+		if err == nil {
+			cfg.ContextWindow = l.ContextWindow
+			cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true, Served: served})
+			return
+		}
+		errs = append(errs, err)
 	}
-	if err != nil {
-		cfg.Events.emitContextWindow(ContextWindowEvent{Served: served, Err: err})
-		return
+	cfg.Events.emitContextWindow(ContextWindowEvent{Served: names[0], Err: errors.Join(errs...)})
+}
+
+// servedNames is every name a response gives the model that answered, most exact first, without the requested name.
+func servedNames(requested string, comp *Completion) []string {
+	var names []string
+	for _, name := range []string{comp.Routed, comp.Model} {
+		if name != "" && name != requested && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
 	}
-	cfg.ContextWindow = l.ContextWindow
-	cfg.Events.emitContextWindow(ContextWindowEvent{Window: l.ContextWindow, FromModelList: true, Served: served})
+	return names
 }
 
 // compactHere summarizes the transcript when the last turn reached the AutoCompact
