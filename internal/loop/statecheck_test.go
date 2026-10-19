@@ -37,7 +37,7 @@ func runStateCheck(t *testing.T, second *Completion) (*Result, []StateLossEvent,
 	var seen []StateLossEvent
 	events := Events{}
 	keep(t, &events.OnStateLoss, func(ev StateLossEvent) error { seen = append(seen, ev); return nil })
-	res, err := Run(context.Background(), Config{
+	res, err := runTurn(context.Background(), Config{
 		Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	return res, seen, err

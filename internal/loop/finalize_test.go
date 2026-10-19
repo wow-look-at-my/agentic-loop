@@ -45,7 +45,7 @@ func TestRunWrapUpAnswerFinalizesTheMintedRow(t *testing.T) {
 	}}
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	m := newMintingEvents()
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &m.events},
+	res, err := runTurn(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &m.events},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}}})
 	require.NoError(t, err)
 
@@ -77,7 +77,7 @@ func TestRunWrapUpAnswerAsksTheStopHook(t *testing.T) {
 		return nil
 	}
 	keep(t, &m.events.OnStop, stopCb)
-	res, err := Run(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &m.events, Messages: q},
+	res, err := runTurn(context.Background(), Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &m.events, Messages: q},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}}})
 	require.NoError(t, err)
 
@@ -110,7 +110,7 @@ func TestRunReasoningOnlyAnswerAsksTheStopHook(t *testing.T) {
 		return nil
 	}
 	keep(t, &m.events.OnStop, stopCb)
-	res, err := Run(context.Background(), Config{Provider: provider, Events: &m.events, Messages: q}, Request{Model: "m"})
+	res, err := runTurn(context.Background(), Config{Provider: provider, Events: &m.events, Messages: q}, Request{Model: "m"})
 	require.NoError(t, err)
 
 	assert.Equal(t, 2, asked)
@@ -138,7 +138,7 @@ func TestRunCappedFinalTurnRecordsTheAnswerOnce(t *testing.T) {
 			runs.Complete("call_a", "no defects found", false, nil)
 			runs.Launch("call_b", "audit db", "look")
 			m := newMintingEvents()
-			res, err := Run(context.Background(), Config{Provider: provider, Subagents: runs, MaxTurns: 1, Events: &m.events}, Request{Model: "m"})
+			res, err := runTurn(context.Background(), Config{Provider: provider, Subagents: runs, MaxTurns: 1, Events: &m.events}, Request{Model: "m"})
 			require.NoError(t, err)
 
 			require.Len(t, m.finalized, 1, "the row is finalized once, whatever the answer was")
@@ -179,7 +179,7 @@ func TestRunMessageQueuedDuringWrapUpIsDelivered(t *testing.T) {
 	exec := &fakeExec{tools: []ToolDecl{{Name: "alpha"}}}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res, err := Run(ctx, Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Messages: q}, Request{Model: "m"})
+	res, err := runTurn(ctx, Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Messages: q}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Empty(t, res.Undelivered)
 	assert.Equal(t, "tests checked", res.Final.Content)

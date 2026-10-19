@@ -23,7 +23,7 @@ func TestQueuedMessageIsDeliveredAtTheNextTurn(t *testing.T) {
 		assert.True(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "actually, stop"}}))
 		return ToolResult{Content: "ran"}, nil
 	}
-	res, err := Run(context.Background(), Config{
+	res, err := runTurn(context.Background(), Config{
 		Provider: provider,
 		Tools:    exec.registry(),
 		Messages: q,
@@ -51,7 +51,7 @@ func TestQueuedMessageStartsAnotherTurnEveryTime(t *testing.T) {
 			assert.True(t, q.Queue(SystemMessage{Message{Role: RoleUser, Kind: "ci_status_change", Content: "CI went red"}}))
 		}
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "third", res.Final.Content)
 	assert.Equal(t, 3, res.Turns, "each queued notice takes another turn")
@@ -65,7 +65,7 @@ func TestQueuedSystemMessagesPrecedeUserMessages(t *testing.T) {
 	require.True(t, q.Queue(UserMessage{Message{Role: RoleUser, Content: "from the user"}}))
 	require.True(t, q.Queue(SystemMessage{Message{Role: RoleUser, Content: "from the watcher"}}))
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("ok")}}}
-	res, err := Run(context.Background(), Config{
+	res, err := runTurn(context.Background(), Config{
 		Provider: provider, Messages: q,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestQueuedMessageContinuesAStalledTurn(t *testing.T) {
 			assert.True(t, q.Queue(SystemMessage{Message{Role: RoleUser, Content: "CI went red"}}))
 		}
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "answered", res.Final.Content)
 	assert.Contains(t, contents(res.Messages), "CI went red")
@@ -100,7 +100,7 @@ func TestQueuedMessageContinuesAStalledTurn(t *testing.T) {
 func TestQueueAfterTheRunEndsIsRefused(t *testing.T) {
 	q := &MessageQueue{}
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("done")}}}
-	_, err := Run(context.Background(), Config{
+	_, err := runTurn(context.Background(), Config{
 		Provider: provider, Messages: q,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestUndeliveredMessagesComeBackWhenTheRunFails(t *testing.T) {
 		},
 		err: boom,
 	}}}
-	res, err := Run(context.Background(), Config{
+	res, err := runTurn(context.Background(), Config{
 		Provider: provider, Messages: q,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.ErrorIs(t, err, boom)
@@ -140,7 +140,7 @@ func TestQueuedMessageDoesNotOutrunAHostCap(t *testing.T) {
 	cfg.TurnHook = func(int) {
 		assert.True(t, q.Queue(SystemMessage{Message{Role: RoleUser, Content: "CI went red"}}))
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "capped answer", res.Final.Content)
 	assert.Equal(t, 1, res.Turns)

@@ -207,7 +207,7 @@ func TestRunDeliversAnOutstandingSubagentReport(t *testing.T) {
 		runs.Complete("call_a", "no defects found", false, nil)
 	}()
 
-	res, err := Run(context.Background(), Config{Provider: provider, Subagents: runs}, Request{Model: "m"})
+	res, err := runTurn(context.Background(), Config{Provider: provider, Subagents: runs}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "the auth middleware is fine", res.Final.Content)
 	assert.Equal(t, 2, res.Turns, "the delivery must earn the model another turn")

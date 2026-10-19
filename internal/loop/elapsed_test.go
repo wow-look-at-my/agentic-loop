@@ -60,7 +60,7 @@ func TestFormatElapsedNoticeStatesTheTimeAloneWithNothingToMeasure(t *testing.T)
 
 func TestRunWithoutElapsedTimeSaysNothing(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("done")}}}
-	res, err := Run(context.Background(), Config{Provider: provider},
+	res, err := runTurn(context.Background(), Config{Provider: provider},
 		Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 1)
@@ -83,7 +83,7 @@ func TestRunElapsedNoticeRidesEveryCall(t *testing.T) {
 			Now:   stepClock(noon, noon.Add(30*time.Second)),
 		},
 	}
-	res, err := Run(context.Background(), cfg, Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, provider.reqs, 2)
@@ -120,7 +120,7 @@ func TestRunElapsedStatesTheTimeOnAnUnseededFirstCall(t *testing.T) {
 		Approver:    allowAll,
 		ElapsedTime: &ElapsedTime{Now: stepClock(noon, noon.Add(5*time.Second))},
 	}
-	_, err := Run(context.Background(), cfg, Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	_, err := runTurn(context.Background(), cfg, Request{Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, provider.reqs, 2)

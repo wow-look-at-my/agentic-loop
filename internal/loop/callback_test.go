@@ -34,7 +34,7 @@ func TestRunCallbackErrorSingleRequestAndPartialResult(t *testing.T) {
 			OnText: func(string) error { return errSink },
 		}},
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
 	assert.Equal(t, int32(1), hits.Load(), "a failing first callback still blocks the re-attempt")
@@ -70,7 +70,7 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 	}
 	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
 	assert.False(t, IsTransient(err))
@@ -97,7 +97,7 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	toolResultCb := func(ev ToolResultEvent) error { return errSink }
 	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
 	require.NotNil(t, res)
@@ -130,7 +130,7 @@ func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
 	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: approver, Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, exec.executed, 1)
@@ -163,7 +163,7 @@ func TestRunOnToolBatchReplacesWhatTheTurnRecords(t *testing.T) {
 	})
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, exec.executed, 2)
@@ -191,7 +191,7 @@ func TestRunOnToolBatchRefusesACallNoResultCanAnswer(t *testing.T) {
 			keep(t, &events.OnToolBatch, func(ev ToolBatchEvent) error { *ev.Calls = batch; return nil })
 			cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 
-			res, err := Run(context.Background(), cfg, Request{Model: "m"})
+			res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 			require.Error(t, err)
 			assert.Empty(t, exec.executed)
 			assert.Nil(t, res.Final.ToolCalls, "no call nothing answers survives into the transcript")
@@ -213,7 +213,7 @@ func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
 	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "c1", res.Messages[0].ToolCalls[0].ID)
 	assert.Equal(t, "c1", res.Messages[1].ToolCallID)
@@ -243,7 +243,7 @@ func TestRunOnToolResultCarriesTheRecordedMessage(t *testing.T) {
 	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 
 	require.Len(t, results, 2)
@@ -281,7 +281,7 @@ func TestRunOnToolResultCarriesADeniedMessage(t *testing.T) {
 	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
-	_, err := Run(context.Background(), cfg, Request{Model: "m"})
+	_, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, recorded, 1)
 	assert.Equal(t, DeniedMessage, recorded[0].Content)

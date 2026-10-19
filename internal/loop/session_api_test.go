@@ -95,7 +95,7 @@ func TestSessionBranchesAndRefusesWhatItCannotDo(t *testing.T) {
 
 func TestSessionRefusesASecondSendWhileATurnRuns(t *testing.T) {
 	release := make(chan struct{})
-	provider := &blockingProvider{release: release, started: make(chan struct{})}
+	provider := &gatedProvider{release: release, started: make(chan struct{})}
 	s, err := NewSession(SessionConfig{Loop: Config{Provider: provider}, Request: Request{Model: "m"}})
 	require.NoError(t, err)
 	first := s.Send(context.Background(), Message{Role: RoleUser, Content: "q"})
@@ -110,14 +110,14 @@ func TestSessionRefusesASecondSendWhileATurnRuns(t *testing.T) {
 	assert.Len(t, provider.reqs, 2, "the queued message took a second call")
 }
 
-// blockingProvider holds its first call until release closes, then answers every call.
-type blockingProvider struct {
+// gatedProvider holds its first call until release closes, then answers every call.
+type gatedProvider struct {
 	release chan struct{}
 	started chan struct{}
 	reqs    []Request
 }
 
-func (p *blockingProvider) Complete(_ context.Context, req Request, _ *StreamEvents) (*Completion, error) {
+func (p *gatedProvider) Complete(_ context.Context, req Request, _ *StreamEvents) (*Completion, error) {
 	p.reqs = append(p.reqs, req)
 	if len(p.reqs) == 1 {
 		close(p.started)

@@ -10,20 +10,8 @@ import (
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 )
 
-// Run drives the agentic tool loop: call the provider, execute tools, feed
-// results back, stop on an answer.
-func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
-	if cfg.Events == nil {
-		cfg.Events = &Events{}
-	}
-	s := newSession(cfg.Events)
-	for _, m := range req.Messages {
-		s.appendFlat(m)
-	}
-	return runOn(ctx, cfg, req, s)
-}
-
-// runOn runs the loop on s, from its leaf. req is the request template; its Messages are ignored.
+// runOn is a session's turn: call the provider, execute tools, feed results back, stop on an answer.
+// It runs from s's leaf. req is the request template; its Messages are ignored.
 func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, error) {
 	if cfg.Provider == nil {
 		return nil, badRequestErr("agentic: Config.Provider is required")

@@ -110,13 +110,15 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 	}
 	task := composeSubagentTask(block, in.Prompt)
 
-	res, runErr := agentic.Run(ctx, e.runConfig(agentic.ToolCallID(ctx), subTools, granted), agentic.Request{
-		Model:     e.cfg.Model,
-		System:    e.system,
-		Messages:  []agentic.Message{{Role: agentic.RoleUser, Content: task}},
-		MaxTokens: e.cfg.MaxTokens,
-		Extra:     e.cfg.Extra,
-	})
+	res, runErr := runChild(ctx, agentic.SessionConfig{
+		Loop: e.runConfig(agentic.ToolCallID(ctx), subTools, granted),
+		Request: agentic.Request{
+			Model:     e.cfg.Model,
+			System:    e.system,
+			MaxTokens: e.cfg.MaxTokens,
+			Extra:     e.cfg.Extra,
+		},
+	}, task)
 	if res != nil {
 		spent = append(spent, res.Usages...)
 	}
@@ -125,6 +127,17 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 	}
 	// Not the final text: a run that ended by emitting a tool-call envelope never answered.
 	return subagentReport(res.Final.Content), spent
+}
+
+// runChild runs the sub-agent as its own session, one turn on task.
+func runChild(ctx context.Context, cfg agentic.SessionConfig, task string) (*agentic.Result, error) {
+	s, err := agentic.NewSession(cfg)
+	if err != nil {
+		return nil, err
+	}
+	turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: task})
+	err = turn.Wait(ctx)
+	return turn.Result(), err
 }
 
 // unavailableTool tells a sub-agent why a tool it named is not offered this run.
