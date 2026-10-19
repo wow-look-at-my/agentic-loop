@@ -55,6 +55,8 @@ type Result = loop.Result
 type RetryAttempt = loop.RetryAttempt
 type RetryPolicy = loop.RetryPolicy
 type Role = loop.Role
+type ReplayProbe = loop.ReplayProbe
+type StateLossEvent = loop.StateLossEvent
 type StopEvent = loop.StopEvent
 type StreamEvents = loop.StreamEvents
 type SubagentReport = loop.SubagentReport
@@ -123,6 +125,9 @@ const Version = loop.Version
 
 var DefaultRetry = loop.DefaultRetry
 var ErrStuck = loop.ErrStuck
+var ErrStateLost = loop.ErrStateLost
+var ErrContextWindowConfig = loop.ErrContextWindowConfig
+var ErrContextWindowExceeded = loop.ErrContextWindowExceeded
 
 var Anomalous = loop.Anomalous
 var Compact = loop.Compact
@@ -137,6 +142,8 @@ var FetchModelList = loop.FetchModelList
 var ModelLimitsOf = loop.ModelLimitsOf
 var ForwardModelLimits = loop.ForwardModelLimits
 var ErrNoModelList = loop.ErrNoModelList
+var ErrReasoningRefused = loop.ErrReasoningRefused
+var ProbeReasoningReplay = loop.ProbeReasoningReplay
 var FormatElapsed = loop.FormatElapsed
 var FormatElapsedNotice = loop.FormatElapsedNotice
 var FormatResourceNotice = loop.FormatResourceNotice

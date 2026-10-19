@@ -127,6 +127,9 @@ func ForwardModelLimits(ctx context.Context, inner Provider, model string) (Limi
 // ErrNoModelList is what a decorator answers when the provider it wraps has no model list.
 var ErrNoModelList = client.ErrNoModelList
 
+// ErrReasoningRefused is the OnRetry cause when an endpoint rejects replayed reasoning.
+var ErrReasoningRefused = client.ErrReasoningRefused
+
 // FetchModelList reads an endpoint's model list; unpriced models are ABSENT from Prices.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
 	return client.FetchModelList(ctx, cfg)

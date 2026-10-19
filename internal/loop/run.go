@@ -17,7 +17,12 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		cfg.Events = &Events{}
 	}
 	advertised := cfg.Tools.Decls()
-	resolveContextWindow(ctx, &cfg, req)
+	if err := checkWindowConfig(cfg); err != nil {
+		return nil, err
+	}
+	if err := resolveContextWindow(ctx, &cfg, req); err != nil {
+		return nil, err
+	}
 
 	// Output dedup: deduper for the whole run collapses unchanged read-only results.
 	var deduper *OutputDeduper
@@ -43,6 +48,10 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 	repeats := 0
 	// lastComp is the newest completion, whose PromptTokens decide compaction.
 	var lastComp *Completion
+	// states checks that each turn's output reached the next call.
+	var states stateCheck
+	// lastSent is how many transcript messages the newest call carried.
+	lastSent := 0
 	// servedAsked is the served model name the model list was last asked about, so an alias is resolved once.
 	var servedAsked string
 	// currentAssistantID tracks the in-flight assistant turn so panic recovery can finalize it.
@@ -92,6 +101,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 		if next, ok := compactHere(ctx, &cfg, req, transcript, lastComp, res, deduper); ok {
 			transcript = next
 			lastComp = nil
+			states = stateCheck{}
 		}
 		// Sub-agent delivery: deliver ready reports at the top of the turn so the model sees them.
 		if turn > 0 && cfg.Subagents != nil && cfg.Subagents.Pending() > 0 {
@@ -140,6 +150,14 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 				transcript = append(transcript, noticeMsg)
 			}
 		}
+		if next, err := capToWindow(ctx, &cfg, req, transcript, lastComp, lastSent, res, deduper); err != nil {
+			res.Messages = transcript
+			return res, err
+		} else if next != nil {
+			transcript = next
+			lastComp = nil
+			states = stateCheck{}
+		}
 		if cfg.TurnHook != nil {
 			cfg.TurnHook(turn + 1)
 		}
@@ -160,6 +178,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Messages = transcript
 			return res, aerr
 		}
+		lastSent = len(transcript)
 		comp, err := runModelCall(ctx, &cfg, req, turn+1, transcript, turnTools, res, elapsed)
 		if err != nil {
 			// A cancelled/timed-out call is never an "error"; a stopped stream finalizes cancelled.
@@ -184,13 +203,27 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			res.Messages = transcript
 			return res, err
 		}
+		if loss := states.observe(turn+1, transcript, comp); loss != nil {
+			lost, lerr := recordStateLoss(&cfg, res, comp, assistantID, *loss)
+			transcript = append(transcript, lost)
+			res.Messages, res.Final = transcript, lost
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: lost, Status: "error"})
+			return res, lerr
+		}
 		assistant := comp.Message
 		if assistantID != "" {
 			assistant.ID = string(assistantID)
 		}
 		calls := assistant.ToolCalls
 		lastComp = comp
-		resolveServedWindow(ctx, &cfg, req, comp, &servedAsked)
+		if werr := resolveServedWindow(ctx, &cfg, req, comp, &servedAsked); werr != nil {
+			stopped := assistant
+			stopped.ToolCalls = nil
+			transcript = append(transcript, stopped)
+			res.Messages, res.Final = transcript, stopped
+			finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: stopped, Status: "error"})
+			return res, werr
+		}
 
 		// Keep looping while the model requests tools: replay the tool-call message and results.
 		if len(calls) > 0 && (cfg.MaxTurns <= 0 || turn < cfg.MaxTurns-1) {
