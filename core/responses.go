@@ -30,6 +30,11 @@ var respReserved = set.Of("input", "instructions", "model", "stream", "tools")
 
 // Complete implements Provider over a streaming response.
 func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return o.Stream(ctx, req, &Collector{Events: ev})
+}
+
+// Stream sends the call and writes its nodes into out as they stream.
+func (o *responsesProvider) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
 	body, err := o.buildBody(req)
 	if err != nil {
 		return nil, err
@@ -69,10 +74,11 @@ func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *Strea
 		if rerr != nil {
 			return nil, badRequestErr("responses: read non-streaming response: " + rerr.Error())
 		}
-		return parseResponsesObject(raw)
+		return completionIntoSink(parseResponsesObject(raw))(out, DialectResponses)
 	}
 
-	st := &respStream{ev: ev}
+	sink := out
+	st := newRespStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("responses: %w", scanErr)
 		if st.sawData {
@@ -168,179 +174,6 @@ type respResponse struct {
 // respIncomplete says why a response stopped short.
 type respIncomplete struct {
 	Reason string `json:"reason"`
-}
-
-// The streamed event types this dialect acts on. Everything else -- the
-// added/done lifecycle chatter around parts, the per-item bookkeeping -- is
-// ignored. This is because the deltas plus the final Response carry the whole
-// result.
-const (
-	respEvOutputTextDelta = "response.output_text.delta"
-	respEvSummaryDelta    = "response.reasoning_summary_text.delta"
-	respEvItemDone        = "response.output_item.done"
-	respEvCompleted       = "response.completed"
-	respEvIncomplete      = "response.incomplete"
-	respEvFailed          = "response.failed"
-	respEvError           = "error"
-)
-
-// respStream accumulates streamed response.
-type respStream struct {
-	ev      *StreamEvents
-	content strings.Builder
-	reason  strings.Builder
-	// parts is output items in emitted order; itemText keeps deltas for a stream cut short.
-	parts    []Part
-	itemText strings.Builder
-	haveCall bool
-	usages   []Usage
-
-	stop    string
-	failure error
-	sawData bool
-}
-
-// onData decodes SSE payload. Unparseable payloads are tolerated silently
-// (keep-alive noise), matching the chat-completions dialect. State is
-// accumulated BEFORE each emit, so a callback error yields a partial completion
-// including the failing delta.
-//
-// Completed items are read from response.output_item.done rather than
-// reassembled from argument fragments. This API sends each item whole when it
-// finishes, so there is no accumulator to get wrong. The argument-delta events
-// are therefore not decoded at all -- a fragment stream nobody needs is a
-// source of truth for the same bytes.
-func (st *respStream) onData(data []byte) error {
-	var e respEvent
-	if err := json.Unmarshal(data, &e); err != nil {
-		return nil
-	}
-	switch e.Type {
-	case respEvOutputTextDelta:
-		if e.Delta == "" {
-			return nil
-		}
-		st.sawData = true
-		st.content.WriteString(e.Delta)
-		return st.ev.EmitText(e.Delta)
-
-	case respEvSummaryDelta:
-		if e.Delta == "" {
-			return nil
-		}
-		st.sawData = true
-		st.reason.WriteString(e.Delta)
-		return st.ev.EmitReasoning(e.Delta)
-
-	case respEvItemDone:
-		if e.Item != nil {
-			st.sawData = true
-			before := len(st.parts)
-			st.addItem(*e.Item)
-			// An item is done, which on this dialect is a finished content part, reasoning included.
-			return st.ev.EmitParts(st.parts[before:])
-		}
-		return nil
-
-	case respEvCompleted, respEvIncomplete:
-		if e.Response == nil {
-			return nil
-		}
-		st.sawData = true
-		return st.finishResponse(data, *e.Response)
-
-	case respEvFailed:
-		st.failure = respFailure(e.Response)
-		return nil
-
-	case respEvError:
-		st.failure = respEventFailure(e.Error)
-		return nil
-	}
-	return nil
-}
-
-// addItem records a finished output item, in the position the API gave it. A
-// completed message item carries its own text, so that -- not the delta
-// accumulator -- is what lands in the parts. Taking it from both would double
-// the content.
-func (st *respStream) addItem(item respItem) {
-	switch item.Type {
-	case respItemMessage:
-		for _, c := range item.Content {
-			if c.Text == "" {
-				continue
-			}
-			st.parts = append(st.parts, TextPart{Text: c.Text})
-			st.itemText.WriteString(c.Text)
-		}
-	case respItemFuncCall:
-		st.parts = append(st.parts, ToolCallPart{ID: item.CallID, Name: item.Name, Arguments: toolArgs(item.Arguments)})
-		st.haveCall = true
-	case respItemReasoning:
-		tb := respThinkingBlock(item)
-		st.parts = append(st.parts, ThinkingPart{Text: tb.Text, Signature: tb.Signature, ID: tb.ID})
-	}
-}
-
-// finishResponse reads the terminal Response object: the usage snapshot with
-// its verbatim wire form, and the stop reason. Items are NOT re-read from
-// response.output -- each already arrived as an output_item.done, and taking
-// them would duplicate every tool call.
-func (st *respStream) finishResponse(raw []byte, r respResponse) error {
-	st.stop = respStopReason(r, st.haveCall)
-	if r.Usage == nil {
-		return nil
-	}
-	u := r.Usage.toUsage()
-	var envelope struct {
-		Response struct {
-			Usage json.RawMessage `json:"usage"`
-		} `json:"response"`
-	}
-	if err := json.Unmarshal(raw, &envelope); err == nil {
-		u.Raw = envelope.Response.Usage
-	}
-	u.ReasoningTokens = r.Usage.reasoningTokens()
-	st.usages = append(st.usages, u)
-	return st.ev.EmitUsage(u)
-}
-
-// completion assembles the final (or partial) result.
-func (st *respStream) completion() *Completion {
-	parts := st.parts
-	// Deltas the message item never got to confirm: a stream cut mid-message
-	// still delivered them. Dropping them would discard output the caller
-	// already watched arrive.
-	if got, seen := st.content.String(), st.itemText.String(); strings.HasPrefix(got, seen) && len(got) > len(seen) {
-		parts = append(parts, TextPart{Text: got[len(seen):]})
-	}
-	if reason := st.reason.String(); reason != "" && !hasThinking(parts) {
-		// Summary text with no replayable item behind it is kept, since losing the reasoning is worse.
-		parts = append([]Part{ThinkingPart{Text: reason}}, parts...)
-	}
-	msg := Message{Role: RoleAssistant, Parts: parts}
-	msg.SyncViews()
-	stop := st.stop
-	if stop == "" {
-		stop = respStopFromShape(st.haveCall)
-	}
-	return &Completion{
-		Message:    msg,
-		Usages:     st.usages,
-		Streamed:   true,
-		StopReason: stop,
-	}
-}
-
-// hasThinking reports whether the parts already carry reasoning.
-func hasThinking(parts []Part) bool {
-	for _, p := range parts {
-		if p.Kind() == PartKindThinking || p.Kind() == PartKindRedactedThinking {
-			return true
-		}
-	}
-	return false
 }
 
 // respThinkingBlock maps a reasoning item onto a ThinkingBlock: the summary

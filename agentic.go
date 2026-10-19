@@ -161,7 +161,6 @@ var NewTool = loop.NewTool
 var OneShot = loop.OneShot
 var Plural = loop.Plural
 var ReadCapped = loop.ReadCapped
-var Run = loop.Run
 var ToolCallID = loop.ToolCallID
 var TruncateRunes = loop.TruncateRunes
 var UnifiedDiff = loop.UnifiedDiff

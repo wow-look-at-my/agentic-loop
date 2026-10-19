@@ -46,7 +46,7 @@ func TestRunResolvesTheWindowFromTheModelTheResponseNames(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "vendor/served"}, provider.asked, "the alias first, then the model the response named, once")
@@ -71,7 +71,7 @@ func TestARequestedModelTheResponseEchoesIsNotLookedUpTwice(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"m"}, provider.asked)
@@ -94,7 +94,7 @@ func TestAServedModelWithNoPublishedWindowIsReportedOnce(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "vendor/unknown"}, provider.asked)
@@ -123,7 +123,7 @@ func TestTheRoutedListIDIsAskedBeforeTheBodyModel(t *testing.T) {
 	cfg := Config{Provider: provider, Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/hf:upstream/model"}, provider.asked)
@@ -146,7 +146,7 @@ func TestARoutedEntryWithNoWindowFallsBackToTheBodyModel(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked)
@@ -168,7 +168,7 @@ func TestEveryServedNameMissingIsReportedOnce(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked, "each name once per run")

@@ -30,7 +30,7 @@ func TestRunOnStopInjectsAndContinues(t *testing.T) {
 		Events:   &events,
 		Messages: q,
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, "second", res.Final.Content)
 	assert.Equal(t, 2, res.Turns)
@@ -62,7 +62,7 @@ func TestRunOnStopIsAskedAtEveryBoundary(t *testing.T) {
 	}
 	keep(t, &events.OnStop, stopCb)
 	cfg := Config{Provider: provider, Events: &events, Messages: q}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	assert.Equal(t, 3, asked)
 	assert.Equal(t, "third", res.Final.Content)
@@ -70,7 +70,7 @@ func TestRunOnStopIsAskedAtEveryBoundary(t *testing.T) {
 
 func TestRunOnStopAbsentFinishesNormally(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("done")}}}
-	res, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m"})
+	res, err := runTurn(context.Background(), Config{Provider: provider}, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
 	assert.Equal(t, 1, res.Turns)

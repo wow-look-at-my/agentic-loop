@@ -37,7 +37,7 @@ func runStateCheck(t *testing.T, second *Completion) (*Result, []StateLossEvent,
 	var seen []StateLossEvent
 	events := Events{}
 	keep(t, &events.OnStateLoss, func(ev StateLossEvent) error { seen = append(seen, ev); return nil })
-	res, err := Run(context.Background(), Config{
+	res, err := runTurn(context.Background(), Config{
 		Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events,
 	}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	return res, seen, err
@@ -54,9 +54,10 @@ func TestStateCheckFaithfulReplayIsQuiet(t *testing.T) {
 func TestStateCheckCatchesEndpointThatDropsReasoning(t *testing.T) {
 	// The prompt grew by the tool result only: the endpoint never saw the reasoning.
 	res, seen, err := runStateCheck(t, answerComp(1010))
-	require.ErrorIs(t, err, ErrStateLost, "a state loss ends the run by default")
-	assert.Contains(t, err.Error(), "did not reach the model")
+	require.NoError(t, err, "a state loss is reported loudly, but the run goes on: it can still recover")
+	assert.Equal(t, "done", res.Final.Content)
 	require.Len(t, seen, 1)
+	assert.Equal(t, SeverityNotice, seen[0].Severity, "one loss is a notice")
 	ev := seen[0]
 	assert.False(t, ev.Local)
 	assert.Equal(t, 2, ev.Turn)

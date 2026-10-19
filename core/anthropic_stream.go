@@ -3,7 +3,6 @@ package commonai
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 )
 
 // anEvent is decoded Messages API stream event; the payload's type field
@@ -91,42 +90,12 @@ func anthropicErrorStatus(errType string) int {
 	return 500
 }
 
-// anBlock accumulates content block across start/delta/stop events.
-type anBlock struct {
-	typ       string
-	id        string
-	name      string
-	text      strings.Builder
-	json      strings.Builder
-	thinking  strings.Builder
-	signature strings.Builder
-	data      string
-}
-
-// part renders content block as the part it is, or nil when the block
-// carried nothing worth keeping.
-func (b *anBlock) part() Part {
-	switch b.typ {
-	case "text":
-		if s := b.text.String(); s != "" {
-			return TextPart{Text: s}
-		}
-	case "tool_use":
-		return ToolCallPart{ID: b.id, Name: b.name, Arguments: toolArgs(b.json.String())}
-	case "thinking":
-		return ThinkingPart{Text: b.thinking.String(), Signature: b.signature.String()}
-	case "redacted_thinking":
-		return RedactedThinkingPart{Data: b.data}
-	}
-	return nil
-}
-
-// anStream accumulates streamed Messages API response.
+// anStream writes a streamed Messages API response into a CallSink, one node per content block.
 type anStream struct {
-	ev *StreamEvents
-	// blocks+order preserve the content-block sequence; a mid-stream cut still yields its partial.
-	blocks map[int]*anBlock
-	order  []int
+	out CallSink
+	// blocks maps a content-block index to its node; nodes keeps the order the blocks began.
+	blocks map[int]IMessage
+	nodes  []IMessage
 	stop   string
 
 	inputTokens  int
@@ -139,15 +108,57 @@ type anStream struct {
 	sawData bool
 }
 
-// blockFor opens the block at index if none announced; a blockless delta's text is still kept.
-func (st *anStream) blockFor(index int, typ string) *anBlock {
-	if b := st.blocks[index]; b != nil {
-		return b
+func newANStream(out CallSink) *anStream {
+	return &anStream{out: out, blocks: map[int]IMessage{}}
+}
+
+func (st *anStream) start(index int, n IMessage) {
+	st.blocks[index] = n
+	st.nodes = append(st.nodes, n)
+	st.out.Start(n)
+}
+
+// blockFor is the node at index. A delta for a block that was never announced still keeps its text.
+func (st *anStream) blockFor(index int, mk func() IMessage) IMessage {
+	if n := st.blocks[index]; n != nil {
+		return n
 	}
-	b := &anBlock{typ: typ}
-	st.blocks[index] = b
-	st.order = append(st.order, index)
-	return b
+	n := mk()
+	st.start(index, n)
+	return n
+}
+
+// startBlock makes the node a content_block_start announces.
+func (st *anStream) startBlock(index int, cb *anContentBlock, data []byte) {
+	if old := st.blocks[index]; old != nil && !old.Final() {
+		st.out.Done(old)
+	}
+	switch cb.Type {
+	case "text":
+		n := NewAssistant()
+		st.start(index, n)
+		if cb.Text != "" {
+			st.out.Delta(n, FieldText, cb.Text)
+		}
+	case "tool_use":
+		st.start(index, NewToolCall(CallID(cb.ID), cb.Name))
+	case "thinking":
+		n := NewThinking(DialectAnthropic)
+		n.Signature = NewEncryptedReasoning(cb.Signature)
+		st.start(index, n)
+		if cb.Thinking != "" {
+			st.out.Delta(n, FieldText, cb.Thinking)
+		}
+	case "redacted_thinking":
+		n := &ThinkingMessage{Text: FinishedString(""), Redacted: NewEncryptedReasoning(cb.Data), Dialect: DialectAnthropic}
+		st.start(index, n)
+	default:
+		var raw struct {
+			ContentBlock json.RawMessage `json:"content_block"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		st.start(index, &RawBlockMessage{Type: cb.Type, JSON: raw.ContentBlock, Dialect: DialectAnthropic})
+	}
 }
 
 // onData decodes stream payload. Unparseable payloads are tolerated
@@ -173,26 +184,16 @@ func (st *anStream) onData(data []byte) error {
 			if u.OutputTokens != nil {
 				st.outputTokens = *u.OutputTokens
 			}
-			return st.ev.EmitUsage(st.currentUsage())
+			st.out.Usage(st.currentUsage())
+			return st.out.Err()
 		}
 	case "content_block_start":
 		st.sawData = true
 		if msg.ContentBlock == nil {
 			return nil
 		}
-		b := &anBlock{
-			typ:  msg.ContentBlock.Type,
-			id:   msg.ContentBlock.ID,
-			name: msg.ContentBlock.Name,
-			data: msg.ContentBlock.Data,
-		}
-		b.thinking.WriteString(msg.ContentBlock.Thinking)
-		b.signature.WriteString(msg.ContentBlock.Signature)
-		b.text.WriteString(msg.ContentBlock.Text)
-		if _, seen := st.blocks[msg.Index]; !seen {
-			st.order = append(st.order, msg.Index)
-		}
-		st.blocks[msg.Index] = b
+		st.startBlock(msg.Index, msg.ContentBlock, data)
+		return st.out.Err()
 	case "content_block_delta":
 		st.sawData = true
 		if msg.Delta == nil {
@@ -200,28 +201,29 @@ func (st *anStream) onData(data []byte) error {
 		}
 		switch msg.Delta.Type {
 		case "text_delta":
-			st.blockFor(msg.Index, "text").text.WriteString(msg.Delta.Text)
-			return st.ev.EmitText(msg.Delta.Text)
+			n := st.blockFor(msg.Index, func() IMessage { return NewAssistant() })
+			st.out.Delta(n, FieldText, msg.Delta.Text)
 		case "thinking_delta":
-			st.blockFor(msg.Index, "thinking").thinking.WriteString(msg.Delta.Thinking)
-			return st.ev.EmitReasoning(msg.Delta.Thinking)
+			n := st.blockFor(msg.Index, func() IMessage { return NewThinking(DialectAnthropic) })
+			st.out.Delta(n, FieldText, msg.Delta.Thinking)
 		case "signature_delta":
-			if b := st.blocks[msg.Index]; b != nil {
-				b.signature.WriteString(msg.Delta.Signature)
+			// signature_delta carries the whole signature: it assigns, never appends.
+			if t, ok := st.blocks[msg.Index].(*ThinkingMessage); ok && msg.Delta.Signature != "" {
+				t.Signature = NewEncryptedReasoning(msg.Delta.Signature)
 			}
 		case "input_json_delta":
-			if b := st.blocks[msg.Index]; b != nil {
-				b.json.WriteString(msg.Delta.PartialJSON)
+			if tc, ok := st.blocks[msg.Index].(*ToolCallMessage); ok {
+				st.out.Delta(tc, FieldArguments, msg.Delta.PartialJSON)
 			}
 		}
+		return st.out.Err()
 	case "content_block_stop":
 		st.sawData = true
-		// The finished block is the only with everything; a thinking signature arrives after its text.
-		if b := st.blocks[msg.Index]; b != nil {
-			if p := b.part(); p != nil {
-				return st.ev.EmitPart(p)
-			}
+		// The finished block has everything: a thinking signature arrives after its text.
+		if n := st.blocks[msg.Index]; n != nil && !n.Final() {
+			st.out.Done(n)
 		}
+		return st.out.Err()
 	case "message_delta":
 		st.sawData = true
 		if msg.Delta != nil && msg.Delta.StopReason != "" {
@@ -231,7 +233,8 @@ func (st *anStream) onData(data []byte) error {
 			// Cumulative snapshot: overwrite, never sum.
 			st.haveUsage = true
 			st.outputTokens = *msg.Usage.OutputTokens
-			return st.ev.EmitUsage(st.currentUsage())
+			st.out.Usage(st.currentUsage())
+			return st.out.Err()
 		}
 	case "message_stop":
 		st.sawData = true
@@ -279,18 +282,12 @@ func (st *anStream) currentUsage() Usage {
 // Completion.Timings stays nil on this layer -- the Messages API has no
 // timings equivalent.
 func (st *anStream) completion() *Completion {
-	var parts []Part
 	haveCall := false
-	for _, idx := range st.order {
-		b := st.blocks[idx]
-		if b == nil {
-			continue
-		}
-		if p := b.part(); p != nil {
-			parts = append(parts, p)
-			if p.Kind() == PartKindToolCall {
-				haveCall = true
-			}
+	for _, n := range st.nodes {
+		// A block that never stopped keeps what it received but is not announced as finished.
+		FinishNode(n)
+		if _, ok := n.(*ToolCallMessage); ok {
+			haveCall = true
 		}
 	}
 	stop := st.stop
@@ -301,9 +298,7 @@ func (st *anStream) completion() *Completion {
 			stop = StopEndTurn
 		}
 	}
-	msg := Message{Role: RoleAssistant, Parts: parts}
-	msg.SyncViews()
-	comp := &Completion{Message: msg, StopReason: stop, Streamed: true, Model: st.model}
+	comp := &Completion{Message: MessageFromNodes(st.nodes), StopReason: stop, Streamed: true, Model: st.model}
 	if st.haveUsage {
 		// Usage fragments (input+cache at start, output at delta) join into; Raw is the wire shape.
 		u := st.currentUsage()
