@@ -128,7 +128,7 @@ func TestTheRoutedListIDIsAskedBeforeTheBodyModel(t *testing.T) {
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/hf:upstream/model"}, provider.asked)
 	require.Len(t, *windows, 2)
-	assert.Equal(t, ContextWindowEvent{Window: 64000, FromModelList: true, Served: "Gateway/hf:upstream/model"}, (*windows)[1])
+	assert.Equal(t, ContextWindowEvent{Window: 64000, Reported: 64000, FromModelList: true, Served: "Gateway/hf:upstream/model"}, (*windows)[1])
 }
 
 // A routed entry with no window falls back to the body's model name. Both misses are reported together, once.
@@ -151,7 +151,7 @@ func TestARoutedEntryWithNoWindowFallsBackToTheBodyModel(t *testing.T) {
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked)
 	require.Len(t, *windows, 2)
-	assert.Equal(t, ContextWindowEvent{Window: 20000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
+	assert.Equal(t, ContextWindowEvent{Window: 20000, Reported: 20000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
 }
 
 func TestEveryServedNameMissingIsReportedOnce(t *testing.T) {

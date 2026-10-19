@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // ErrContextWindowConfig ends a run whose context-window settings contradict each other or the server.
@@ -126,24 +128,43 @@ func resolveContextWindow(ctx context.Context, cfg *Config, req Request) error {
 }
 
 // resolveServedWindow asks again by the model a response names, while no server has reported a window.
-// An endpoint that serves an alias lists the model it served, not the alias. Each served name is asked once.
+// An endpoint that serves an alias lists the model it served, not the alias. The list id a gateway routed to
+// is asked before the body's model name, and each set of names is asked once.
 func resolveServedWindow(ctx context.Context, cfg *Config, req Request, comp *Completion, asked *string) error {
 	if !wantsWindow(cfg, req) || cfg.windowReported || comp == nil {
 		return nil
 	}
-	served := comp.Model
-	if served == "" || served == req.Model || served == *asked {
+	names := servedNames(req.Model, comp)
+	key := strings.Join(names, "\n")
+	if len(names) == 0 || key == *asked {
 		return nil
 	}
-	*asked = served
-	reported, err := reportedWindow(ctx, cfg.Provider, served)
-	if reported == 0 {
-		// Nothing new is known: keep the window the run has, and stay quiet when there is no list to ask.
-		if cfg.window > 0 || errors.Is(err, errNoWindowList) {
+	*asked = key
+	var errs []error
+	for _, served := range names {
+		reported, err := reportedWindow(ctx, cfg.Provider, served)
+		if reported > 0 {
+			return applyWindow(cfg, reported, nil, served)
+		}
+		if errors.Is(err, errNoWindowList) {
 			return nil
 		}
-		cfg.Events.emitContextWindow(ContextWindowEvent{Served: served, Err: err})
-		return nil
+		errs = append(errs, err)
 	}
-	return applyWindow(cfg, reported, nil, served)
+	// Nothing new is known: keep the window the run has.
+	if cfg.window == 0 {
+		cfg.Events.emitContextWindow(ContextWindowEvent{Served: names[0], Err: errors.Join(errs...)})
+	}
+	return nil
+}
+
+// servedNames is every name a response gives the model that answered, most exact first, without the requested name.
+func servedNames(requested string, comp *Completion) []string {
+	var names []string
+	for _, name := range []string{comp.Routed, comp.Model} {
+		if name != "" && name != requested && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names
 }
