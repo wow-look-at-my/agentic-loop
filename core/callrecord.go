@@ -35,6 +35,9 @@ type CallRecord struct {
 	Transforms   []Transform
 }
 
+// SetCallOf links a node this side wrote to an existing call, so it goes out in that call's assistant message.
+func SetCallOf(n IMessage, rec *CallRecord) { n.Base().call = rec }
+
 // encCache is a node's encoded wire fragment per dialect, kept once the node is final.
 type encCache struct {
 	mu sync.Mutex

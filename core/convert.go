@@ -89,6 +89,9 @@ func MessagesFromPath(path []IMessage) []Message {
 		group, groupCall = nil, nil
 	}
 	for _, n := range path {
+		if n.Base().superseded {
+			continue
+		}
 		switch v := n.(type) {
 		case *ThinkingMessage, *AssistantMessage, *ToolCallMessage, *RawBlockMessage:
 			if len(group) > 0 && (n.Base().call != groupCall || groupCall == nil) {
@@ -144,7 +147,11 @@ func flatContent(role Role, b *MessageBase, content []IContent) Message {
 func NodesFromMessage(m Message, d Dialect) []IMessage {
 	var out []IMessage
 	add := func(n IMessage) {
-		n.Base().id, n.Base().kind = m.ID, m.Kind
+		// The first node takes the message's id; the rest get their own.
+		if len(out) == 0 {
+			n.Base().id = m.ID
+		}
+		n.Base().kind = m.Kind
 		out = append(out, n)
 	}
 	switch m.Role {

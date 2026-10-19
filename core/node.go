@@ -34,7 +34,15 @@ type MessageBase struct {
 	producer Producer
 	meta     Meta
 	enc      encCache
+	// superseded marks a node a later one replaced, such as a tool call a host rewrote.
+	superseded bool
 }
+
+// Superseded reports whether a later node replaced this on the wire.
+func (b *MessageBase) Superseded() bool { return b.superseded }
+
+// MarkSuperseded leaves the node out of later requests. It stays in the tree.
+func (b *MessageBase) MarkSuperseded() { b.superseded = true }
 
 func (b *MessageBase) Base() *MessageBase { return b }
 

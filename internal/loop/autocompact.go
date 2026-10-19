@@ -5,22 +5,22 @@ import (
 )
 
 // compactHere compacts when the last turn reached the AutoCompact fraction of the window.
-func compactHere(ctx context.Context, cfg *Config, req Request, transcript []Message,
-	last *Completion, res *Result, deduper *OutputDeduper) ([]Message, bool) {
+func compactHere(ctx context.Context, cfg *Config, req Request, s *session,
+	last *Completion, res *Result, deduper *OutputDeduper) bool {
 	if !shouldCompact(req, *cfg, last) {
-		return nil, false
+		return false
 	}
-	return compactNow(ctx, cfg, req, transcript, res, deduper)
+	return compactNow(ctx, cfg, req, s, res, deduper)
 }
 
-// compactNow summarizes the transcript, returning the replacement and whether it replaced anything.
-// A failure is non-fatal: the run continues on the transcript it already had.
-// The host's stored row id lands on the summary message, so the next assistant row hangs off the summary.
-func compactNow(ctx context.Context, cfg *Config, req Request, transcript []Message,
-	res *Result, deduper *OutputDeduper) ([]Message, bool) {
-	cr, err := Compact(ctx, cfg.Provider, Request{Model: req.Model, System: req.System, Messages: transcript})
+// compactNow summarizes the window and appends the summary, which starts the window from then on.
+// Nothing before it leaves the tree. A failure is non-fatal: the run continues on the window it had.
+// The host's stored row id lands on the summary, so the next assistant row hangs off it.
+func compactNow(ctx context.Context, cfg *Config, req Request, s *session,
+	res *Result, deduper *OutputDeduper) bool {
+	cr, err := Compact(ctx, cfg.Provider, Request{Model: req.Model, System: req.System, Messages: s.messages()})
 	if err != nil {
-		return nil, false
+		return false
 	}
 	if cr.Completion != nil {
 		res.Usages = append(res.Usages, cr.Completion.Usage)
@@ -33,12 +33,9 @@ func compactNow(ctx context.Context, cfg *Config, req Request, transcript []Mess
 		Messages:   cr.Messages,
 		Completion: cr.Completion,
 	})
-	next := cr.Messages
-	if hostID != "" && len(next) > 0 {
-		next[len(next)-1].ID = string(hostID)
-	}
-	res.Messages = next
-	return next, true
+	s.compact(cr.Summary, string(hostID))
+	res.Messages = s.messages()
+	return true
 }
 
 // shouldCompact auto-compacts when prompt tokens reach AutoCompact times the run's window.

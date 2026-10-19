@@ -3,6 +3,7 @@ package loop
 import (
 	"fmt"
 
+	commonai "github.com/wow-look-at-my/agentic-loop/core"
 	"github.com/wow-look-at-my/go-containers/event"
 )
 
@@ -18,7 +19,12 @@ type StateLossEvent struct {
 	PromptTokens    int
 	MinPromptTokens int
 	Detail          string
+	// Severity is notice for a one-off loss and chronic for one that repeats turn after turn.
+	Severity Severity
 }
+
+// Severity is how loud a state loss is.
+type Severity = commonai.Severity
 
 // Thresholds for the provider-side check. A replay of N characters is at
 // least N/stateCharsPerToken tokens in every tokenizer in use.
@@ -73,19 +79,6 @@ func (s *stateCheck) observe(turn int, msgs []Message, comp *Completion) *StateL
 			"output and tool results is at least %d: about %d tokens of the transcript did not reach the model",
 			comp.Usage.PromptTokens, prev.Usage.PromptTokens, floor, missing),
 	}
-}
-
-// recordStateLoss reports a loss and builds the run's last message and error.
-// A model that lost its earlier output only looks busy, so the run ends.
-func recordStateLoss(cfg *Config, res *Result, comp *Completion, id MessageID, loss StateLossEvent) (Message, error) {
-	res.StateLosses = append(res.StateLosses, loss)
-	cfg.Events.emitStateLoss(loss)
-	lost := comp.Message
-	lost.ToolCalls = nil
-	if id != "" {
-		lost.ID = string(id)
-	}
-	return lost, fmt.Errorf("%w: turn %d: %s", ErrStateLost, loss.Turn, loss.Detail)
 }
 
 // outputChars is the length of what a turn recorded: reasoning, text and tool arguments.
