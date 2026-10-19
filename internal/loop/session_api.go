@@ -187,7 +187,11 @@ func (p *publicSession) Send(ctx context.Context, msgs ...Message) ITurn {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	f := newFuture[*Result](cancel)
-	q := &MessageQueue{}
+	// A host queue serves one turn: the turn closes it as it returns.
+	q := p.cfg.Loop.Messages
+	if q == nil {
+		q = &MessageQueue{}
+	}
 	for _, m := range p.pending {
 		q.Queue(m)
 	}
