@@ -171,16 +171,6 @@ type respIncomplete struct {
 	Reason string `json:"reason"`
 }
 
-// hasThinking reports whether the parts already carry reasoning.
-func hasThinking(parts []Part) bool {
-	for _, p := range parts {
-		if p.Kind() == PartKindThinking || p.Kind() == PartKindRedactedThinking {
-			return true
-		}
-	}
-	return false
-}
-
 // respThinkingBlock maps a reasoning item onto a ThinkingBlock: the summary
 // text, the item id, and the encrypted payload in Signature -- the field whose
 func respThinkingBlock(item respItem) ThinkingBlock {
