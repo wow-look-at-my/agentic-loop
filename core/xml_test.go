@@ -102,6 +102,22 @@ func TestPartOrderSurvives(t *testing.T) {
 	assert.Equal(t, "beforeafter", got.Messages[0].Content)
 }
 
+// The host's id and kind survive a store round trip. A stored conversation that loses them detaches its rows.
+func TestMessageIDAndKindSurvive(t *testing.T) {
+	req := Request{Model: "m", Messages: []Message{
+		{Role: RoleUser, ID: "row-1", Kind: "compaction", Content: "summary"},
+		{Role: RoleAssistant, ID: "row-2", Content: "reply"},
+		{Role: RoleUser, Content: "no id"},
+	}}
+	got := roundTripRequest(t, req)
+	require.Len(t, got.Messages, 3)
+	assert.Equal(t, "row-1", got.Messages[0].ID)
+	assert.Equal(t, "compaction", got.Messages[0].Kind)
+	assert.Equal(t, "row-2", got.Messages[1].ID)
+	assert.Empty(t, got.Messages[1].Kind)
+	assert.Empty(t, got.Messages[2].ID)
+}
+
 // A tool result can be arbitrary bytes. NUL has no literal spelling and no
 // standard character reference, so the writer emits &#; and our own parser
 // reads it back.

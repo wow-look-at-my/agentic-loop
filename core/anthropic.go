@@ -32,10 +32,13 @@ var anReserved = set.Of("model", "max_tokens", "stream", "system", "messages", "
 // cacheEphemeral is the prompt-cache marker; the API allows breakpoints max, this uses.
 var cacheEphemeral = map[string]string{"type": "ephemeral"}
 
-// Complete implements Provider over a streaming Messages API call. The
-// Messages API requires max_tokens on every request, so a Request without a
-// positive MaxTokens fails fast before any I/O.
+// Complete implements Provider over a streaming Messages API call.
 func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return a.Stream(ctx, req, &Collector{Events: ev})
+}
+
+// Stream sends the call and writes its nodes into out as they stream.
+func (a *anthropicProvider) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
 	if req.MaxTokens <= 0 {
 		return nil, badRequestErr("anthropic: Request.MaxTokens must be positive (the Messages API requires max_tokens)")
 	}
@@ -86,10 +89,11 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		if rerr != nil {
 			return nil, badRequestErr("anthropic: read non-streaming response: " + rerr.Error())
 		}
-		return parseAnthropicNonStream(body)
+		return completionIntoSink(parseAnthropicNonStream(body))(out, DialectAnthropic)
 	}
 
-	st := &anStream{ev: ev, blocks: map[int]*anBlock{}}
+	sink := out
+	st := newANStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("anthropic: %w", scanErr)
 		if st.sawData {
@@ -97,7 +101,8 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		}
 		return nil, wrapped
 	}
-	return st.completion(), nil
+	comp := st.completion()
+	return comp, sink.Err()
 }
 
 // buildBody assembles the Messages API request. Extra passthrough params are

@@ -19,20 +19,20 @@ type StopListener struct {
 	cb func(agentic.StopEvent) error
 }
 
-// Attach subscribes the listener to a run's stop boundary. ctx is the RUN's
-// context, which is what makes cancellation win.
-func (l *StopListener) Attach(ctx context.Context, events *agentic.Events, msgs *agentic.MessageQueue) {
+// Attach subscribes the listener to the session's stop boundary. ctx is the
+// RUN's context, which is what makes cancellation win.
+func (l *StopListener) Attach(ctx context.Context, s agentic.ISession) {
 	l.cb = func(agentic.StopEvent) error {
-		l.evaluate(ctx, msgs)
+		l.evaluate(ctx, s)
 		return nil
 	}
-	events.OnStop.Subscribe(&l.cb)
+	s.Config().Loop.Events.OnStop.Subscribe(&l.cb)
 }
 
 // evaluate runs the policy and queues the directive when the stop is refused.
 // It never fails the run: an error out of an OnStop listener loses the answer
 // the model wrote, and goal mode's failure direction is open.
-func (l *StopListener) evaluate(ctx context.Context, msgs *agentic.MessageQueue) {
+func (l *StopListener) evaluate(ctx context.Context, s agentic.ISession) {
 	if l.Evaluator == nil {
 		return
 	}
@@ -43,7 +43,7 @@ func (l *StopListener) evaluate(ctx context.Context, msgs *agentic.MessageQueue)
 	if v.Outcome != Blocked {
 		return
 	}
-	msgs.Queue(agentic.SystemMessage{Message: agentic.Message{
+	s.Queue(agentic.SystemMessage{Message: agentic.Message{
 		Role:    agentic.RoleUser,
 		Kind:    DirectiveKind,
 		Content: v.Directive,

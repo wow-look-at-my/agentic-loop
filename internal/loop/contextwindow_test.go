@@ -18,7 +18,7 @@ func windowRun(t *testing.T, reported int, cfg Config) (*Result, []ContextWindow
 	events := Events{}
 	windows := windowEvents(t, &events)
 	cfg.Provider, cfg.Events = provider, &events
-	res, err := Run(context.Background(), cfg, Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	return res, *windows, err
 }
 
@@ -76,14 +76,14 @@ func TestFallbackAndOverrideTogetherFail(t *testing.T) {
 }
 
 func TestFallbackAndOverrideTogetherFailWithoutAutoCompact(t *testing.T) {
-	_, err := Run(context.Background(), Config{
+	_, err := runTurn(context.Background(), Config{
 		Provider: &scriptProvider{}, ContextWindowFallback: 1, ContextWindowOverride: 1,
 	}, Request{Model: "m"})
 	require.ErrorIs(t, err, ErrContextWindowConfig)
 }
 
 func TestNegativeWindowSettingsFail(t *testing.T) {
-	_, err := Run(context.Background(), Config{Provider: &scriptProvider{}, ContextWindowOverride: -1}, Request{Model: "m"})
+	_, err := runTurn(context.Background(), Config{Provider: &scriptProvider{}, ContextWindowOverride: -1}, Request{Model: "m"})
 	require.ErrorIs(t, err, ErrContextWindowConfig)
 }
 
@@ -106,7 +106,7 @@ func bigResultRun(t *testing.T, cfg Config, autoCompact float64) (*Result, bool,
 	var compacted bool
 	keep(t, &events.OnCompaction, func(CompactionEvent) error { compacted = true; return nil })
 	cfg.Provider, cfg.Events, cfg.Tools, cfg.Approver = provider, &events, exec.registry(), allowAll
-	res, err := Run(context.Background(), cfg, Request{Model: "m", AutoCompact: autoCompact, Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", AutoCompact: autoCompact, Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	return res, compacted, err
 }
 
@@ -151,7 +151,7 @@ func servedRun(t *testing.T, window int, cfg Config) ([]ContextWindowEvent, erro
 	events := Events{}
 	windows := windowEvents(t, &events)
 	cfg.Provider, cfg.Events, cfg.Tools, cfg.Approver = provider, &events, exec.registry(), allowAll
-	_, err := Run(context.Background(), cfg, Request{Model: "alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	_, err := runTurn(context.Background(), cfg, Request{Model: "alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	return *windows, err
 }
 
