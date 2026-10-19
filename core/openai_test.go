@@ -335,7 +335,7 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}, ReplayReasoning: true})
+	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}})
 	req := Request{
 		Model: "m",
 		Messages: []Message{
@@ -357,36 +357,6 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	assert.Equal(t, "step one", assistant["reasoning"])
 	assert.JSONEq(t, string(raw), jsonMust(assistant["reasoning_details"]),
 		"the array replays byte-for-byte -- a gateway pairs a function_call by these item ids")
-}
-
-// TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server
-// default still sends neither field. A server that never advertised
-// reasoning_details must not see it because a captured block happens to
-// carry.
-func TestOpenAINoReasoningDetailsWithoutReplay(t *testing.T) {
-	details := []oaReasoningDetail{{Type: "reasoning.text", Text: "step one", ID: "rs_1"}}
-	raw, err := json.Marshal(details)
-	require.NoError(t, err)
-
-	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
-	srv := httptest.NewServer(h)
-	defer srv.Close()
-
-	p := oaProvider(t, srv.URL) // ReplayReasoning defaults false
-	req := Request{
-		Model: "m",
-		Messages: []Message{
-			{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "step one", Signature: string(raw)}}, Content: "hi"},
-		},
-	}
-	_, err = p.Complete(context.Background(), req, nil)
-	require.NoError(t, err)
-
-	assistant := bodyMap(t, h.body)["messages"].([]any)[0].(map[string]any)
-	_, hasReasoning := assistant["reasoning"]
-	_, hasDetails := assistant["reasoning_details"]
-	assert.False(t, hasReasoning)
-	assert.False(t, hasDetails)
 }
 
 func TestOpenAIStopReasonMapping(t *testing.T) {

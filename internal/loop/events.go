@@ -109,8 +109,16 @@ type CompactionEvent struct {
 type ContextWindowEvent struct {
 	event.Args
 	Window int
-	// FromModelList is true when Config.ContextWindow was unset and the provider's model list supplied Window.
+	// Reported is the window the server's model list gave, or zero.
+	Reported int
+	// FromModelList is true when Window is the reported window.
 	FromModelList bool
+	// FromFallback is true when the server reported none and Config.ContextWindowFallback supplied Window.
+	FromFallback bool
+	// Overridden is true when Config.ContextWindowOverride supplied Window.
+	Overridden bool
+	// Warning says why Window is a host setting that nothing checked against the server.
+	Warning string
 	// Served names the model the list was asked about.
 	Served string
 	Err    error
@@ -132,6 +140,11 @@ type Events struct {
 	OnSystemMessage     event.Event[SystemMessageEvent]
 	OnCompaction        event.Event[CompactionEvent]
 	OnContextWindow     event.Event[ContextWindowEvent]
+	OnStateLoss         event.Event[StateLossEvent]
+}
+
+func (e *Events) emitStateLoss(ev StateLossEvent) {
+	_ = e.OnStateLoss.Invoke(ev)
 }
 
 func (e *Events) emitContextWindow(ev ContextWindowEvent) {

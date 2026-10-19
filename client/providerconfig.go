@@ -47,8 +47,6 @@ type OpenAIConfig struct {
 	SelfHosted bool
 	// PromptCache emits ephemeral cache_control breakpoints in openai shape; default false, plain servers reject them.
 	PromptCache bool
-	// ReplayReasoning replays accumulated reasoning as message.reasoning; default false, strict servers reject it.
-	ReplayReasoning bool
 }
 
 // ResponsesConfig configures NewResponsesProvider: the shared ProviderConfig
@@ -76,10 +74,9 @@ type AnthropicConfig struct {
 // BaseURL.
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 	p, err := commonai.NewOpenAIProvider(commonai.OpenAIConfig{
-		ProviderConfig:  cfg.core(),
-		SelfHosted:      cfg.SelfHosted,
-		PromptCache:     cfg.PromptCache,
-		ReplayReasoning: cfg.ReplayReasoning,
+		ProviderConfig: cfg.core(),
+		SelfHosted:     cfg.SelfHosted,
+		PromptCache:    cfg.PromptCache,
 	})
 	return finish(p, cfg.Retry, err)
 }

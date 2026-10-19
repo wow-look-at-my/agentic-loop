@@ -148,9 +148,11 @@ A turn whose only output was a tool call is not empty, and is always replayed.
 
 Two of the dialects talk to the same OpenAI endpoints. They are not interchangeable, and exactly one thing separates them:
 
-**On chat completions, a reasoning model's chain of thought does not survive a tool call by default.** The reasoning arrives as deltas, and the standard request format has nowhere to put it back. So on the next turn the model re-derives what it already worked out, pays for those tokens again. The model loses the prompt cache at every reasoning boundary. In a long tool-using investigation that is the dominant cost.
+**On chat completions, the reasoning is always replayed.** The standard request format has no field for it, but the servers that stream it read it back: `reasoning_content` (DeepSeek, Kimi, GLM, vLLM, SGLang, llama.cpp) and `reasoning` (OpenRouter, Ollama). Each assistant message carries the reasoning under both names. A model that does not get its reasoning back starts every call from nothing. It re-derives what it already worked out, pays for it again, and loses the prompt cache. The run looks busy and gets nowhere.
 
-One gateway shape is the exception, and `ReplayReasoning` covers it. OpenRouter's chat-completions-compatible endpoint streams a structured `reasoning_details` array (fragments keyed by index, same shape as `tool_calls`) for a model it fronts with a Responses-only backend. The OpenAI dialect captures that array verbatim in the turn's `ThinkingBlock` (`Signature`), and replays it unchanged on the next request alongside the flattened `reasoning` text. Skipping it is not cosmetic. The gateway needs those item ids to pair a `function_call` with its output when it reconstructs the Responses-API request underneath, and a transcript missing. Them gets rejected with "No tool output found for function call `<id>`" on the very next turn after a tool call — with no clue, from this dialect's own wire shape, why.
+There is no switch to turn the replay off. An endpoint that rejects it fails the call with `ErrReasoningRefused`. The call is never sent again without the reasoning.
+
+The OpenAI dialect also captures one structured shape. OpenRouter's chat-completions-compatible endpoint streams a structured `reasoning_details` array (fragments keyed by index, same shape as `tool_calls`) for a model it fronts with a Responses-only backend. The OpenAI dialect captures that array verbatim in the turn's `ThinkingBlock` (`Signature`), and replays it unchanged on the next request alongside the flattened `reasoning` text. Skipping it is not cosmetic. The gateway needs those item ids to pair a `function_call` with its output when it reconstructs the Responses-API request underneath, and a transcript missing. Them gets rejected with "No tool output found for function call `<id>`" on the very next turn after a tool call — with no clue, from this dialect's own wire shape, why.
 
 **The Responses API models a turn as an ordered list of items**. A reasoning item can be sent back verbatim. This provider asks for `include: ["reasoning.encrypted_content"]`, keeps what comes back in `ThinkingBlock` (summary in `Text`, encrypted payload in `Signature`, item id in `ID`), and replays it — reasoning first, then the text. Then the tool calls, in the order the model emitted them. A block with no payload is dropped rather than half-replayed. A summary is prose *about* the reasoning, and sending it as though it were the reasoning hands the model a paraphrase of its own thinking.
 
@@ -361,6 +363,7 @@ The model-calling built-ins use the `Provider` you hand them exactly as given �
 `Run(ctx, cfg, req)` drives the turn loop: call the model, execute the requested tools, feed the results back, repeat. Key behaviors:
 
 - **Nothing caps the run unless you ask for it.** The loop runs until the model stops asking for tools. A counted cap cannot tell a model looping uselessly from one deep in a hard task, so a default one fires. This is at the worst possible moment: after the run spent every call gathering context and just. This is before the model writes any of it down. Bound a run with the mechanisms that judge the right thing — `ErrStuck` below (evidence the model stopped progressing) and your own `ctx` (wall-clock and spend, without discarding work in flight). `Config.MaxTurns` is there for a host that must bound a turn anyway (an interactive UI answering one request). It counts model calls. The last permitted call is made WITHOUT tools so the model answers instead of asking for a tool nothing will run.
+- **Lost state ends the run.** Before each call that continues a tool batch, the loop checks that the previous turn's output reached it. The recorded assistant message must keep all the reasoning and text the completion had. The provider's reported `PromptTokens` must grew by at least that output plus the tool results, at a floor of several characters per token. A shortfall of multiple tokens or more is a loss: an endpoint, gateway or host dropped part of the transcript. `Events.OnStateLoss` fires, `Result.StateLosses` keeps it, and the run ends with `ErrStateLost`. There is no opt-out. The check is skipped only without evidence. A call with no reported usage, or a turn boundary with a new user message, where chat templates legitimately drop older reasoning. `ProbeReasoningReplay(ctx, provider, model)` asks a live chat-completions endpoint the same question up front. It sends one transcript with and without a reasoning block, at one output token each, and compares the prompt tokens.
 - **A stuck model is caught, not waited out.** A turn whose tool calls are byte-identical to the previous turn's cannot learn anything new — the same calls return the same results. These produce the same turn again. The third same turn in a row (`StuckNudgeAt`) gets one nudge appended after its tool results. The sixth (`StuckFailAt`) ends the run with `ErrStuck` (match it with `errors.Is`) rather than letting it spin. The failing batch is never executed and its tool calls are cleared. As a result, the partial transcript stays replayable. Any change in what the model asks for clears the count. Call IDs are excluded from the comparison, since providers mint a fresh one per call.
 - **Tool failures never abort the loop.** An `Execute` error becomes a `tool execution failed: ...` error result. A refused call records the `Approval.Reason`, or exactly `DeniedMessage` ("The user denied permission to run this tool.") when the refusal gave none. A call to a name the run does not offer gets `unknown tool: ...`. In every case the loop continues so the model can react.
 - **One pass over every call, in a fixed order.** `OnToolCall(call *ToolCall)` observes and may REWRITE the call (its `Arguments`, in practice), then `Approver.Ask` decides on the rewritten call, then the tool executes it. The order is load-bearing: an approver judging the original while a hook rewrote the command will be a hole with a process around it. The transcript keeps recording what the MODEL asked for — what was requested and what ran are different facts, and a mutation that silently rewrote. History will be worse than no mutation at all, so a host that needs the executed version records it alongside. The tool result answers the model's own call id either way. A rewritten id is ignored, since a mismatch there is an orphan no upstream will replay.
@@ -519,8 +522,7 @@ This is why `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
 ```go
 res, err := agentic.Run(ctx, agentic.Config{
-	Provider:      provider,
-	ContextWindow: 200_000, // the model's context window, in tokens
+	Provider: provider, // the window comes from its model list
 }, agentic.Request{
 	Model:       "your-model-id",
 	AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
@@ -528,7 +530,20 @@ res, err := agentic.Run(ctx, agentic.Config{
 })
 ```
 
-`Request.AutoCompact` is the fraction (0..1) of `Config.ContextWindow` at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
+**The window comes from the server. A host cannot set it by accident.** The loop reads it from the provider's model list. That host is by the requested model and then by the model a response names. No field sets it outright:
+
+| Host setting | Server reports a window `W` | Server reports none |
+|---|---|---|
+| neither | `W` | no window, no compaction, `Err` on the event |
+| `ContextWindowFallback: F` | `W`, and `F` is ignored | `F`, with a `Warning` |
+| `ContextWindowOverride: O` | `O` when `O <= W`; the run fails with `ErrContextWindowConfig` when `O > W` | `O`, with a `Warning` that nothing checked it |
+| both | the run fails with `ErrContextWindowConfig` before any call | the same |
+
+`Events.OnContextWindow` reports which row applied: `Reported`, `FromModelList`, `FromFallback`, `Overridden`, `Warning`. A served model whose list entry arrives later replaces a fallback, and fails the run when an override exceeds it.
+
+**The window also caps each request.** Before each call the loop estimates the next prompt: the server's last prompt count plus the transcript appended since, at a few characters a token. When the estimate reaches the window, the loop compacts first if `AutoCompact` is armed. Otherwise, or when compaction fails, the run ends with `ErrContextWindowExceeded` and sends nothing.
+
+`Request.AutoCompact` is the fraction (0..1) of the window at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
 
 **It fires at the turn boundary, not inside one.** The check runs at the top of the next turn, after the turn's tool calls ran and their results are recorded. As a result, no call is summarized away while the model is still owed an answer for it. Firing it mid-turn dropped the calls the model asked for and left a host storing an assistant row nothing ever answered. This every later turn then replayed, and which an OpenAI-dialect endpoint rejects. It also runs *before* the message queue drains, so a message queued while the model talks is delivered after the summary.
 
@@ -540,7 +555,7 @@ This is not folded into it.
 
 **Persisting it is the host's job, and skipping it is expensive.** The loop's transcript is in-memory and lives for one `Run`. A host that rebuilds the next turn's thread from durable storage, without recording the compaction, is back over the threshold immediately and compacts again. This is every turn, forever, each one paying a full-context summarization call. Store the summary and start the model's next thread from it.
 
-`AutoCompact` lives on `Request` because a session IS a stored request. The fraction is a property of the conversation, not of the model call, and it persists with the session document. `ContextWindow` lives on `Config` because it is a property of the model the host chose, not of the conversation. A server that reports no usage never triggers compaction: without a token count the loop cannot know the context is full. A compaction failure (the model returned an empty summary) is non-fatal — the loop continues with the un-compacted transcript.
+`AutoCompact` lives on `Request` because a session IS a stored request. The fraction is a property of the conversation, not of the model call, and it persists with the session document. The window settings live on `Config` because the window is a property of the model the host chose, not of the conversation. A server that reports no usage never triggers compaction: without a token count the loop cannot know the context is full. A compaction failure (the model returned an empty summary) is non-fatal — the loop continues with the un-compacted transcript.
 
 ### Telling the model what time it is, and how much has passed
 

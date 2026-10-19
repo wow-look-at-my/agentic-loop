@@ -15,24 +15,59 @@ import (
 
 // openaiProvider is an OpenAI-compatible provider; read-only fields make it concurrent-safe.
 type openaiProvider struct {
-	baseURL         string
-	apiKey          string
-	httpClient      *http.Client
-	userAgent       string
-	selfHosted      bool
-	promptCache     bool
-	replayReasoning bool
-	headers         map[string]string
-	models          modelListCache
+	baseURL     string
+	apiKey      string
+	httpClient  *http.Client
+	userAgent   string
+	selfHosted  bool
+	promptCache bool
+	headers     map[string]string
+	models      modelListCache
 }
 
 // oaReserved are the Extra keys the typed core always overrides.
 var oaReserved = set.Of("messages", "model", "stream", "tools")
 
-// Complete retries without the default stream_options when a pre-stream names no parameter.
+// The call fails.
+var ErrReasoningRefused = errors.New("openai: the endpoint rejected the replayed reasoning; " +
+	"use an endpoint that accepts reasoning_content or reasoning on assistant messages")
+
+// Complete sends the call. A rejection of the replayed reasoning is permanent and names ErrReasoningRefused.
 func (o *openaiProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	comp, err := o.completeOnce(ctx, req, ev)
+	if comp == nil && err != nil && carriesReasoning(req.Messages) && refusesReasoning(err) {
+		return nil, fmt.Errorf("%w: %w", ErrReasoningRefused, err)
+	}
+	return comp, err
+}
+
+// carriesReasoning reports whether any assistant message has reasoning text to replay.
+func carriesReasoning(msgs []Message) bool {
+	for _, m := range msgs {
+		if m.Role == RoleAssistant && (reasoningText(m) != "" || oaReplayReasoningDetails(m) != nil) {
+			return true
+		}
+	}
+	return false
+}
+
+func refusesReasoning(err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) || (ae.Status != 400 && ae.Status != 422) || ae.ContextOverflow {
+		return false
+	}
+	body := strings.ToLower(ae.Body)
+	if strings.Contains(body, "reasoning_content") || strings.Contains(body, "reasoning_details") {
+		return true
+	}
+	name, named := rejectedParamName(ae.Body)
+	return named && strings.HasSuffix(normalizeParamName(name), "reasoning")
+}
+
+// completeOnce retries without the default stream_options when a pre-stream names no parameter.
+func (o *openaiProvider) completeOnce(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	comp, err := o.complete(ctx, req, ev, true)
-	if comp != nil || err == nil || !o.shouldRetryWithoutStreamOptions(req, err) {
+	if comp != nil || err == nil || refusesReasoning(err) || !o.shouldRetryWithoutStreamOptions(req, err) {
 		return comp, err
 	}
 	return o.complete(ctx, req, ev, false)
@@ -134,7 +169,7 @@ func (o *openaiProvider) buildBody(req Request, includeDefaultStreamOptions bool
 		body[k] = v
 	}
 	body["model"] = req.Model
-	msgs, err := oaWireMessages(req.System, req.Messages, o.replayReasoning)
+	msgs, err := oaWireMessages(req.System, req.Messages)
 	if err != nil {
 		return nil, err
 	}
