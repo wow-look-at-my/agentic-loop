@@ -256,11 +256,51 @@ func TestRunAutoCompactFailureIsNonFatal(t *testing.T) {
 	req := Request{Model: "m", AutoCompact: 0.8,
 		Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
+	var failed error
+	keep(t, &events.OnCompactionFailed, func(ev CompactionFailedEvent) error { failed = ev.Err; return nil })
+
 	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err, "compaction failure is non-fatal")
 	assert.False(t, compacted, "the compaction event did not fire")
+	require.Error(t, failed, "the failure is reported, never swallowed")
 	// The tool calls ran (compaction failed, so the loop fell through to normal execution).
 	assert.NotEmpty(t, exec.executed, "tools ran after compaction failed")
+}
+
+func TestRunCompactsAndRetriesWhenTheFirstCallOverflows(t *testing.T) {
+	// A stored transcript already past the window: no window is known.
+	overflow := &APIError{Status: 400, Body: "maximum context length", ContextOverflow: true}
+	provider := &scriptProvider{steps: []scriptStep{
+		{err: overflow},
+		{err: overflow},
+		{comp: assistantComp("older half")},
+		{comp: assistantComp("everything")},
+		{comp: assistantComp("answer")},
+	}}
+	events := Events{}
+	var summaries []string
+	keep(t, &events.OnCompaction, func(ev CompactionEvent) error { summaries = append(summaries, ev.Summary); return nil })
+	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{
+		{Role: RoleUser, Content: "one"}, {Role: RoleAssistant, Content: "a"},
+		{Role: RoleUser, Content: "two"}, {Role: RoleAssistant, Content: "b"},
+		{Role: RoleUser, Content: "three"},
+	}}
+	res, err := runTurn(context.Background(), Config{Provider: provider, Events: &events}, req)
+	require.NoError(t, err)
+	assert.Equal(t, "answer", res.Final.Content)
+	assert.Equal(t, []string{"everything"}, summaries, "one compaction reaches the host")
+	require.Len(t, provider.reqs, 5)
+	assert.Len(t, provider.reqs[2].Messages, 3, "the older half and the request text")
+	assert.Contains(t, provider.reqs[3].Messages[0].Content, "older half", "its summary stands in for that half")
+}
+
+func TestRunOverflowWithoutAutoCompactStillFails(t *testing.T) {
+	overflow := &APIError{Status: 400, Body: "maximum context length", ContextOverflow: true}
+	provider := &scriptProvider{steps: []scriptStep{{err: overflow}}}
+	_, err := runTurn(context.Background(), Config{Provider: provider},
+		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
+	require.Error(t, err)
+	assert.Len(t, provider.reqs, 1, "nothing compacts when the host did not arm it")
 }
 
 func TestRunAutoCompactWithoutContextWindowDoesNothing(t *testing.T) {

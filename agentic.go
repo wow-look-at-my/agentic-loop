@@ -24,6 +24,7 @@ type AssistantMessageEvent = loop.AssistantMessageEvent
 type CompactResult = loop.CompactResult
 type Completion = loop.Completion
 type CompactionEvent = loop.CompactionEvent
+type CompactionFailedEvent = loop.CompactionFailedEvent
 type Config = loop.Config
 type ContextWindowEvent = loop.ContextWindowEvent
 type Dialect = loop.Dialect
