@@ -48,17 +48,19 @@ type oaMessage struct {
 }
 
 // MarshalJSON always emits content so an empty tool result doesn't; assistant tool_calls may omit it.
+// Reasoning goes out under both names servers read it from: reasoning_content and reasoning.
 func (m oaMessage) MarshalJSON() ([]byte, error) {
 	type wire struct {
 		Role             string              `json:"role"`
 		Content          any                 `json:"content,omitempty"`
+		ReasoningContent string              `json:"reasoning_content,omitempty"`
 		Reasoning        string              `json:"reasoning,omitempty"`
 		ReasoningDetails []oaReasoningDetail `json:"reasoning_details,omitempty"`
 		ToolCalls        []oaToolCall        `json:"tool_calls,omitempty"`
 		ToolCallID       string              `json:"tool_call_id,omitempty"`
 	}
 	w := wire{
-		Role: m.Role, Reasoning: m.Reasoning, ReasoningDetails: m.ReasoningDetails,
+		Role: m.Role, ReasoningContent: m.Reasoning, Reasoning: m.Reasoning, ReasoningDetails: m.ReasoningDetails,
 		ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
 	}
 	if !(m.Role == "assistant" && m.Content == "" && len(m.ToolCalls) > 0) {
@@ -76,14 +78,11 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 // oaWireMessages maps the neutral transcript onto the OpenAI wire. The system
 // prompt (when non-empty) is prepended as a system message, assistant tool
 // calls are replayed as tool_calls. Tool results ride as role:"tool" messages
-// keyed by tool_call_id. Message.Thinking is not replayed on this dialect by
-// default (a strict OpenAI-compatible server rejects an unknown field), only
-// when replayReasoning is set, and then both the flattened text (reasoning)
-// and, when. Captured, the verbatim reasoning_details array go out. A gateway
-// requiring the latter for tool-call continuity (see
-// oaReplayReasoningDetails) ignores the former, and a server that only knows
-// the ignores the latter. Message.ToolIsError has no wire equivalent.
-func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMessage, error) {
+// keyed by tool_call_id. Message.Thinking is always replayed: the flattened
+// text and, when captured, the verbatim reasoning_details array. Without it
+// the model starts every call with no memory of what it reasoned.
+// Message.ToolIsError has no wire equivalent.
+func oaWireMessages(system string, msgs []Message) ([]oaMessage, error) {
 	out := make([]oaMessage, 0, len(msgs)+1)
 	if system != "" {
 		out = append(out, oaMessage{Role: string(RoleSystem), Content: system})
@@ -97,7 +96,7 @@ func oaWireMessages(system string, msgs []Message, replayReasoning bool) ([]oaMe
 		if blocks != nil {
 			wm.ContentBlocks = blocks
 		}
-		if replayReasoning && m.Role == RoleAssistant {
+		if m.Role == RoleAssistant {
 			wm.Reasoning = reasoningText(m)
 			wm.ReasoningDetails = oaReplayReasoningDetails(m)
 		}
