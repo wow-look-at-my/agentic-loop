@@ -77,9 +77,9 @@ func (m oaMessage) MarshalJSON() ([]byte, error) {
 // prompt (when non-empty) is prepended as a system message, assistant tool
 // calls are replayed as tool_calls. Tool results ride as role:"tool" messages
 // keyed by tool_call_id. Message.Thinking is not replayed on this dialect by
-// default (a strict OpenAI-compatible server rejects an unknown field), only
+// default (a strict OpenAI-compatible server rejects an unknown field) -- only
 // when replayReasoning is set, and then both the flattened text (reasoning)
-// and, when. Captured, the verbatim reasoning_details array go out. A gateway
+// and, when captured, the verbatim reasoning_details array go out -- a gateway
 // requiring the latter for tool-call continuity (see
 // oaReplayReasoningDetails) ignores the former, and a server that only knows
 // the ignores the latter. Message.ToolIsError has no wire equivalent.

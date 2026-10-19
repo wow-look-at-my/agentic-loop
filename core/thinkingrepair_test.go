@@ -88,7 +88,7 @@ func TestThinkingSignatureRepairSecondFailureSurfaces(t *testing.T) {
 
 // TestThinkingSignatureRepairOverAnthropicProvider proves the wrapper reads
 // the SAME index Anthropic's own error names off the real wire body, not a
-// hand-computed. This happens by driving the real dialect encoder end to end.
+// hand-computed, by driving the real dialect encoder end to end.
 func TestThinkingSignatureRepairOverAnthropicProvider(t *testing.T) {
 	hits := 0
 	var secondBody []byte
