@@ -168,7 +168,10 @@ func TestMetaIsTypedAndKeepsWhatItDoesNotKnow(t *testing.T) {
 	unregistered := MetaKey[int]{id: "nope"}
 	assert.Panics(t, func() { SetMeta(&m, unregistered, 1) })
 	assert.Panics(t, func() { _, _ = GetMeta(&m, unregistered) })
-	assert.Panics(t, func() { SetMeta(&m, metaSampleKey, metaSample{}); SetMeta(&m, MetaKey[func()]{id: metaSampleKey.ID()}, func() {}) })
+	assert.Panics(t, func() {
+		SetMeta(&m, metaSampleKey, metaSample{})
+		SetMeta(&m, MetaKey[func()]{id: metaSampleKey.ID()}, func() {})
+	})
 	assert.Panics(t, func() { RegisterMetaKey[int](metaSampleKey.ID(), "dup", "tests") })
 	assert.NotEmpty(t, RegisteredMetaKeys())
 }
