@@ -48,9 +48,9 @@ func sinkEvents(out CallSink) *StreamEvents {
 		OnReasoning: func(s string) error { return host.EmitReasoning(s) },
 		OnPart:      func(p Part) error { return host.EmitPart(p) },
 		OnUsage:     func(u Usage) error { out.Usage(u); return out.Err() },
-		OnProgress: func(p PromptProgress) error { out.Progress(p); return out.Err() },
-		OnTimings:  func(t Timings) error { out.Timings(t); return out.Err() },
-		OnRetry:    func(a RetryAttempt) error { out.Retry(a); return out.Err() },
+		OnProgress:  func(p PromptProgress) error { out.Progress(p); return out.Err() },
+		OnTimings:   func(t Timings) error { out.Timings(t); return out.Err() },
+		OnRetry:     func(a RetryAttempt) error { out.Retry(a); return out.Err() },
 	}
 }
 
