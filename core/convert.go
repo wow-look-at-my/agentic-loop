@@ -84,7 +84,7 @@ func MessagesFromPath(path []IMessage) []Message {
 			return
 		}
 		m := MessageFromNodes(group)
-		m.ID = group[0].Base().id
+		m.ID = group[0].Base().HostID()
 		out = append(out, m)
 		group, groupCall = nil, nil
 	}
@@ -115,7 +115,7 @@ func MessagesFromPath(path []IMessage) []Message {
 			out = append(out, m)
 		case *CompactionMessage:
 			flush()
-			out = append(out, Message{Role: RoleUser, ID: v.id, Kind: v.kind, Content: CompactionHandoffPrefix + v.Summary.String()})
+			out = append(out, Message{Role: RoleUser, ID: v.HostID(), Kind: v.kind, Content: CompactionHandoffPrefix + v.Summary.String()})
 		}
 	}
 	flush()
@@ -138,7 +138,15 @@ func flatContent(role Role, b *MessageBase, content []IContent) Message {
 			parts = append(parts, p)
 		}
 	}
-	m := Message{Role: role, ID: b.id, Kind: b.kind, Parts: parts}
+	m := Message{Role: role, ID: b.HostID(), Kind: b.kind}
+	// One text block is the plain Content a flat message carries; anything else keeps its parts.
+	if len(parts) == 1 {
+		if t, ok := parts[0].(TextPart); ok {
+			m.Content = t.Text
+			return m
+		}
+	}
+	m.Parts = parts
 	m.SyncViews()
 	return m
 }

@@ -78,9 +78,17 @@ func down(p Provider) commonai.Provider {
 }
 
 // Stream runs one call of p into out, the nodes arriving as they stream, and folds the result.
+// A caller's own provider is called as itself, so its Completion reaches the caller unchanged.
 func Stream(ctx context.Context, p Provider, req Request, out commonai.CallSink) (*Completion, error) {
-	comp, err := commonai.StreamCall(ctx, down(p), req, out)
-	return fold(comp), err
+	if a, ok := p.(*upAdapter); ok {
+		comp, err := commonai.StreamCall(ctx, a.inner, req, out)
+		return fold(comp), err
+	}
+	comp, err := p.Complete(ctx, req, commonai.SinkEvents(out))
+	if comp != nil {
+		commonai.AddTurn(out, comp.Message)
+	}
+	return comp, err
 }
 
 // Unwrap is the format-level Provider behind p, for a caller handing it to something speaking the format's Completion.

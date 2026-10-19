@@ -87,9 +87,9 @@ func TestRunWrapUpAnswerAsksTheStopHook(t *testing.T) {
 	require.Len(t, m.finalized, 2)
 	assert.Equal(t, "synthesized report", m.finalized[0].Msg.Content)
 	assert.Equal(t, "and the follow-up", m.finalized[1].Msg.Content)
-	// user, wrap-up instruction, answer, queued message, follow-up.
-	require.Len(t, res.Messages, 5)
-	assert.Equal(t, "not done yet", res.Messages[3].Content)
+	// user, stalled reasoning, wrap-up instruction, answer, queued message, follow-up.
+	require.Len(t, res.Messages, 6)
+	assert.Equal(t, "not done yet", res.Messages[4].Content)
 }
 
 // A turn that ends on reasoning alone (no tools to wrap up with) is still a

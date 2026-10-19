@@ -68,7 +68,7 @@ func (t *Tree) Add(msg, parent IMessage) error {
 		return fmt.Errorf("commonai: node %q already has a parent", b.id)
 	}
 	if b.id == "" {
-		b.id = NewID()
+		b.id, b.generatedID = NewID(), true
 	}
 	if _, dup := t.byID[b.id]; dup {
 		return fmt.Errorf("commonai: a node with id %q is already in the tree", b.id)

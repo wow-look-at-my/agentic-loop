@@ -26,6 +26,12 @@ type StateLossEvent struct {
 // Severity is how loud a state loss is.
 type Severity = commonai.Severity
 
+// SeverityNotice marks a one-off loss; SeverityChronic one that repeats turn after turn.
+const (
+	SeverityNotice  = commonai.SeverityNotice
+	SeverityChronic = commonai.SeverityChronic
+)
+
 // Thresholds for the provider-side check. A replay of N characters is at
 // least N/stateCharsPerToken tokens in every tokenizer in use.
 const (

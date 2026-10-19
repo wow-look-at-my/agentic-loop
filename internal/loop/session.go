@@ -8,6 +8,7 @@ import (
 	"github.com/wow-look-at-my/agentic-loop/client"
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
 	"github.com/wow-look-at-my/go-containers/event"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // IMessage is one node of the conversation tree.
@@ -133,14 +134,14 @@ func toolCalls(nodes []IMessage) []*commonai.ToolCallMessage {
 // omitCalls answers every call in nodes that has no result, so the path never holds a call no result
 // answers. The calls stay as the model made them.
 func (s *session) omitCalls(nodes []IMessage, reason string) {
-	answered := map[*commonai.ToolCallMessage]bool{}
+	answered := set.New[*commonai.ToolCallMessage]()
 	for _, n := range s.path() {
 		if r, ok := n.(*commonai.ToolResultMessage); ok && r.Call != nil {
-			answered[r.Call] = true
+			answered.Add(r.Call)
 		}
 	}
 	for _, tc := range toolCalls(nodes) {
-		if !answered[tc] {
+		if !answered.Contains(tc) {
 			s.toolResult(tc, reason, true, reason)
 		}
 	}
@@ -255,6 +256,9 @@ func (c *callSink) keep(err error) {
 		c.err = err
 	}
 }
+
+// HostEvents implements commonai.HostEventer.
+func (c *callSink) HostEvents() *commonai.StreamEvents { return &c.s.events.StreamEvents }
 
 func (c *callSink) Err() error {
 	c.mu.Lock()

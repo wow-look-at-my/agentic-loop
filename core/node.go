@@ -36,6 +36,16 @@ type MessageBase struct {
 	enc      encCache
 	// superseded marks a node a later one replaced, such as a tool call a host rewrote.
 	superseded bool
+	// generatedID marks an id the tree made because the node had none. A flat message shows it as "".
+	generatedID bool
+}
+
+// HostID is the id a host or a provider gave the node, or "" when the tree generated it.
+func (b *MessageBase) HostID() string {
+	if b.generatedID {
+		return ""
+	}
+	return b.id
 }
 
 // Superseded reports whether a later node replaced this on the wire.
@@ -67,7 +77,7 @@ func (b *MessageBase) Producer() Producer { return b.producer }
 func (b *MessageBase) Meta() *Meta        { return &b.meta }
 
 // SetID names a node before it joins a tree.
-func (b *MessageBase) SetID(id string) { b.id = id }
+func (b *MessageBase) SetID(id string) { b.id, b.generatedID = id, false }
 
 // SetKind classifies a node before it joins a tree.
 func (b *MessageBase) SetKind(kind string) { b.kind = kind }

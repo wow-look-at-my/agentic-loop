@@ -77,14 +77,15 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 	require.NotNil(t, res)
 	assert.Equal(t, 1, fails)
 
-	// alpha ran before the abort, but the batch is cleared: no orphan tool calls remain.
+	// The batch aborted: the calls stay, and each is answered as never run, so no orphan remains.
 	assert.Len(t, exec.executed, 1)
-	require.Len(t, res.Messages, 2)
-	final := res.Messages[1]
-	assert.Equal(t, "checking", final.Content)
-	assert.Equal(t, "hmm", final.Thinking[0].Text)
-	assert.Nil(t, final.ToolCalls)
-	assert.Equal(t, final, res.Final)
+	require.Len(t, res.Messages, 4)
+	turn := res.Messages[1]
+	assert.Equal(t, "checking", turn.Content)
+	assert.Equal(t, "hmm", turn.Thinking[0].Text)
+	require.Len(t, turn.ToolCalls, 2)
+	assertOmitted(t, res.Messages[2:], "c1", "c2")
+	assert.Nil(t, res.Final.ToolCalls)
 }
 
 func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
@@ -101,9 +102,9 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	assert.ErrorIs(t, err, errSink)
 	require.NotNil(t, res)
 	assert.Len(t, exec.executed, 1, "the tool DID run; only its delivery failed")
-	require.Len(t, res.Messages, 2, "the executed result is dropped so the transcript stays replayable")
-	assert.Nil(t, res.Messages[1].ToolCalls)
-	assert.Equal(t, RoleAssistant, res.Messages[1].Role)
+	require.Len(t, res.Messages, 3, "the call stays and is answered, so the transcript stays replayable")
+	require.Len(t, res.Messages[1].ToolCalls, 1)
+	assertOmitted(t, res.Messages[2:], "c1")
 }
 
 // A hook rewrites a call's arguments. The rewrite is what the Approver judges

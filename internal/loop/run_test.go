@@ -296,13 +296,15 @@ func TestRunApprovalAskError(t *testing.T) {
 	assert.ErrorIs(t, err, interrupted)
 	require.NotNil(t, res, "partial Result returned alongside the error")
 
-	// The call ran and its result was appended; the 's Ask failed and the batch was cleared.
-	require.Len(t, res.Messages, 2)
-	final := res.Messages[1]
-	assert.Equal(t, "let me check", final.Content)
-	assert.Equal(t, "hmm", final.Thinking[0].Text)
-	assert.Nil(t, final.ToolCalls, "tool calls cleared")
-	assert.Equal(t, final, res.Final)
+	// The Ask failed: the calls stay as the model made them, and each is answered as never run.
+	require.Len(t, res.Messages, 4)
+	turn := res.Messages[1]
+	assert.Equal(t, "let me check", turn.Content)
+	assert.Equal(t, "hmm", turn.Thinking[0].Text)
+	require.Len(t, turn.ToolCalls, 2)
+	assertOmitted(t, res.Messages[2:], "c1", "c2")
+	assert.Nil(t, res.Final.ToolCalls)
+	assert.Equal(t, "let me check", res.Final.Content)
 	assert.Len(t, exec.executed, 1, "the first call did run before the interruption")
 	assert.Equal(t, 1, res.Turns)
 }
@@ -339,12 +341,13 @@ func TestRunStallFallbackSynthesizes(t *testing.T) {
 	last := wrapReq.Messages[len(wrapReq.Messages)-1]
 	assert.Equal(t, RoleUser, last.Role)
 	assert.Equal(t, wrapUpInstruction, last.Content)
-	// The stalled assistant message is NOT in the wrap-up request.
-	require.Len(t, wrapReq.Messages, 2)
+	// The stalled turn's reasoning stays: the wrap-up request carries it.
+	require.Len(t, wrapReq.Messages, 3)
+	assert.Equal(t, "only thoughts", wrapReq.Messages[1].Thinking[0].Text)
 
 	assert.Equal(t, "synthesized report", res.Final.Content)
-	require.Len(t, res.Messages, 3, "user, wrap-up instruction, final answer")
-	assert.Equal(t, wrapUpInstruction, res.Messages[1].Content)
+	require.Len(t, res.Messages, 4, "user, stalled reasoning, wrap-up instruction, final answer")
+	assert.Equal(t, wrapUpInstruction, res.Messages[2].Content)
 	assert.Equal(t, 2, res.Turns)
 	assert.Len(t, res.Usages, 2)
 }
@@ -450,10 +453,12 @@ func TestRunNoRetryAfterPartialStream(t *testing.T) {
 	assert.ErrorIs(t, err, netErr)
 	require.NotNil(t, res)
 	require.Len(t, provider.reqs, 1, "no re-attempt once data streamed")
-	require.Len(t, res.Messages, 2)
+	require.Len(t, res.Messages, 3)
 	assert.Equal(t, "part", res.Messages[1].Content)
-	assert.Nil(t, res.Messages[1].ToolCalls, "assembled calls dropped on a broken turn")
+	require.Len(t, res.Messages[1].ToolCalls, 1, "what streamed stays, the call included")
+	assertOmitted(t, res.Messages[2:], "c")
 	assert.Equal(t, "part", res.Final.Content)
+	assert.Nil(t, res.Final.ToolCalls)
 	require.Len(t, res.Usages, 1, "the partial call's usage snapshot is kept")
 	assert.Equal(t, 4, res.Usages[0].TotalTokens)
 }
@@ -536,8 +541,28 @@ func TestRunStuckFailsAfterNudge(t *testing.T) {
 	assert.Contains(t, err.Error(), fmt.Sprintf("%d identical turns in a row", StuckFailAt))
 	assert.Equal(t, StuckFailAt, res.Turns, "the stuck detector ends the run, not a count")
 	assert.Len(t, exec.executed, StuckFailAt-1, "the failing batch is never executed")
-	assert.Nil(t, res.Final.ToolCalls, "no orphan tool call survives into the transcript")
-	assert.Equal(t, RoleAssistant, res.Messages[len(res.Messages)-1].Role)
+	assert.Nil(t, res.Final.ToolCalls)
+	last := res.Messages[len(res.Messages)-1]
+	assert.Equal(t, RoleTool, last.Role, "the call that never ran is answered, so no orphan call survives")
+	assertOmitted(t, []Message{last}, "c5")
+}
+
+// assertOmitted checks that msgs answer each call id with an error result that says the call never ran.
+func assertOmitted(t *testing.T, msgs []Message, ids ...string) {
+	t.Helper()
+	got := map[string]Message{}
+	for _, m := range msgs {
+		if m.Role == RoleTool {
+			got[m.ToolCallID] = m
+		}
+	}
+	for _, id := range ids {
+		m, ok := got[id]
+		if assert.True(t, ok, "call %s has no result", id) {
+			assert.True(t, m.ToolIsError, "call %s", id)
+			assert.NotEmpty(t, m.Content, "call %s says why it never ran", id)
+		}
+	}
 }
 
 func TestRunStuckCountResetsOnAnyChange(t *testing.T) {
