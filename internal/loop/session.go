@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	commonai "github.com/wow-look-at-my/agentic-loop/core"
 	"github.com/wow-look-at-my/agentic-loop/client"
+	commonai "github.com/wow-look-at-my/agentic-loop/core"
 	"github.com/wow-look-at-my/go-containers/event"
 )
 
@@ -270,7 +270,7 @@ func (c *callSink) produced() []IMessage {
 }
 
 // partOfNode is the flat part of one model-output node, for OnPart.
-func partOfNode(n IMessage) Part {
+func partOfNode(n IMessage) commonai.Part {
 	m := commonai.MessageFromNodes([]IMessage{n})
 	if ps := m.EffectiveParts(); len(ps) == 1 {
 		return ps[0]

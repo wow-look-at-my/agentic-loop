@@ -32,9 +32,7 @@ var anReserved = set.Of("model", "max_tokens", "stream", "system", "messages", "
 // cacheEphemeral is the prompt-cache marker; the API allows breakpoints max, this uses.
 var cacheEphemeral = map[string]string{"type": "ephemeral"}
 
-// Complete implements Provider over a streaming Messages API call. The
-// Messages API requires max_tokens on every request, so a Request without a
-// positive MaxTokens fails fast before any I/O.
+// Complete implements Provider over a streaming Messages API call.
 func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
 	return a.Stream(ctx, req, &Collector{Events: ev})
 }

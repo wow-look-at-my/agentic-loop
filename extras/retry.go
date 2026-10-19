@@ -102,14 +102,7 @@ func completionIsEmpty(comp *commonai.Completion) bool {
 // retryComplete runs model call with retry. conditions retry: the attempt
 // streamed nothing and the error is transient (a nil completion, per the
 // Provider contract -- a delta reached the caller's sink, re-sending would
-// duplicate it), or the attempt succeeded but came back genuinely empty (no
-// text, no tool call, no thinking). An empty completion is never mid-way
-// through anything, nothing was emitted to the caller's sink either.
-// Re-sending it is exactly as safe as re-sending a nothing-streamed error.
-//
-// Every retry is announced through StreamEvents.OnRetry BEFORE the backoff. A
-// waiting caller can show what failed and what is being waited on rather than
-// sitting silent through minutes of backoff.
+// duplicate it), or the attempt succeeded but came back genuinely empty.
 func retryComplete(ctx context.Context, p commonai.Provider, policy RetryPolicy, req commonai.Request, ev *commonai.StreamEvents) (*commonai.Completion, error) {
 	return retryWith(ctx, policy,
 		func() (*commonai.Completion, error) { return p.Complete(ctx, req, ev) },

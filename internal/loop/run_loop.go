@@ -259,7 +259,11 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 			// abortBatch ends the run mid-batch (approval/callback error). Every call no result
 			// answered gets an omitted one, so the tree keeps the calls and stays sendable.
 			abortBatch := func(cause error) (*Result, error) {
-				s.omitCalls(callNodes, "the batch was cancelled before this tool ran: "+cause.Error())
+				pending := make([]IMessage, len(callNodes))
+				for i, tc := range callNodes {
+					pending[i] = tc
+				}
+				s.omitCalls(pending, "the batch was cancelled before this tool ran: "+cause.Error())
 				cleared := withoutCalls(assistant, assistantID)
 				finalizeAssistant(FinalizeAssistantEvent{ID: assistantID, Msg: cleared, Status: "cancelled"})
 				return done(cleared, cause)
@@ -483,7 +487,7 @@ func Run(ctx context.Context, cfg Config, req Request) (*Result, error) {
 func withoutCalls(m Message, id MessageID) Message {
 	out := m
 	out.ToolCalls = nil
-	var parts []Part
+	var parts []commonai.Part
 	for _, p := range out.Parts {
 		if p.Kind() != commonai.PartKindToolCall {
 			parts = append(parts, p)
