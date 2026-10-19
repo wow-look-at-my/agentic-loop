@@ -36,17 +36,47 @@ func newRespStream(out CallSink) *respStream {
 }
 
 func (st *respStream) start(itemID string, n IMessage) IMessage {
-	st.byItem[itemID] = n
+	if itemID != "" {
+		st.byItem[itemID] = n
+	}
 	st.nodes = append(st.nodes, n)
 	st.out.Start(n)
 	return n
 }
 
-// nodeFor is the node of an item, made from the item when no added event announced it.
-func (st *respStream) nodeFor(itemID string, item *respItem, kind string) IMessage {
-	if n := st.byItem[itemID]; n != nil {
-		return n
+func respKindMatches(n IMessage, kind string) bool {
+	switch kind {
+	case respItemReasoning:
+		_, ok := n.(*ThinkingMessage)
+		return ok
+	case respItemFuncCall:
+		_, ok := n.(*ToolCallMessage)
+		return ok
+	default:
+		_, ok := n.(*AssistantMessage)
+		return ok
 	}
+}
+
+// nodeFor is the node of an item, made from the item when no added event announced it. An item
+// with no id is the newest open node of its kind.
+func (st *respStream) nodeFor(itemID string, item *respItem, kind string) IMessage {
+	if itemID != "" {
+		if n := st.byItem[itemID]; n != nil && respKindMatches(n, kind) {
+			return n
+		}
+	} else {
+		for i := len(st.nodes) - 1; i >= 0; i-- {
+			if n := st.nodes[i]; !n.Final() && respKindMatches(n, kind) {
+				return n
+			}
+		}
+	}
+	return st.makeNode(itemID, item, kind)
+}
+
+// makeNode starts a new node for an item.
+func (st *respStream) makeNode(itemID string, item *respItem, kind string) IMessage {
 	switch kind {
 	case respItemReasoning:
 		t := NewThinking(DialectResponses)
@@ -75,7 +105,10 @@ func (st *respStream) onData(data []byte) error {
 			return nil
 		}
 		st.sawData = true
-		st.nodeFor(e.Item.ID, e.Item, e.Item.Type)
+		switch e.Item.Type {
+		case respItemMessage, respItemReasoning, respItemFuncCall:
+			st.makeNode(e.Item.ID, e.Item, e.Item.Type)
+		}
 		return st.out.Err()
 
 	case respEvOutputTextDelta:

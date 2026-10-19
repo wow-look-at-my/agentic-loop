@@ -30,6 +30,11 @@ var respReserved = set.Of("input", "instructions", "model", "stream", "tools")
 
 // Complete implements Provider over a streaming response.
 func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return o.Stream(ctx, req, &Collector{Events: ev})
+}
+
+// Stream sends the call and writes its nodes into out as they stream.
+func (o *responsesProvider) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
 	body, err := o.buildBody(req)
 	if err != nil {
 		return nil, err
@@ -69,10 +74,10 @@ func (o *responsesProvider) Complete(ctx context.Context, req Request, ev *Strea
 		if rerr != nil {
 			return nil, badRequestErr("responses: read non-streaming response: " + rerr.Error())
 		}
-		return parseResponsesObject(raw)
+		return completionIntoSink(parseResponsesObject(raw))(out, DialectResponses)
 	}
 
-	sink := &Collector{Events: ev}
+	sink := out
 	st := newRespStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("responses: %w", scanErr)

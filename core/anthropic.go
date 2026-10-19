@@ -36,6 +36,11 @@ var cacheEphemeral = map[string]string{"type": "ephemeral"}
 // Messages API requires max_tokens on every request, so a Request without a
 // positive MaxTokens fails fast before any I/O.
 func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *StreamEvents) (*Completion, error) {
+	return a.Stream(ctx, req, &Collector{Events: ev})
+}
+
+// Stream sends the call and writes its nodes into out as they stream.
+func (a *anthropicProvider) Stream(ctx context.Context, req Request, out CallSink) (*Completion, error) {
 	if req.MaxTokens <= 0 {
 		return nil, badRequestErr("anthropic: Request.MaxTokens must be positive (the Messages API requires max_tokens)")
 	}
@@ -86,10 +91,10 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		if rerr != nil {
 			return nil, badRequestErr("anthropic: read non-streaming response: " + rerr.Error())
 		}
-		return parseAnthropicNonStream(body)
+		return completionIntoSink(parseAnthropicNonStream(body))(out, DialectAnthropic)
 	}
 
-	sink := &Collector{Events: ev}
+	sink := out
 	st := newANStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("anthropic: %w", scanErr)
