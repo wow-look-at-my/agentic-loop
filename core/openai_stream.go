@@ -2,7 +2,6 @@ package commonai
 
 import (
 	"encoding/json"
-	"strings"
 )
 
 // oaChunk is SSE delta from a streaming chat completion.

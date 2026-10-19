@@ -89,7 +89,8 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		return parseAnthropicNonStream(body)
 	}
 
-	st := &anStream{ev: ev, blocks: map[int]*anBlock{}}
+	sink := &Collector{Events: ev}
+	st := newANStream(sink)
 	if scanErr := scanSSE(resp.Body, st.onData); scanErr != nil {
 		wrapped := fmt.Errorf("anthropic: %w", scanErr)
 		if st.sawData {
@@ -97,7 +98,8 @@ func (a *anthropicProvider) Complete(ctx context.Context, req Request, ev *Strea
 		}
 		return nil, wrapped
 	}
-	return st.completion(), nil
+	comp := st.completion()
+	return comp, sink.Err()
 }
 
 // buildBody assembles the Messages API request. Extra passthrough params are
