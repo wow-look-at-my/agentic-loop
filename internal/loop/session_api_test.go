@@ -126,6 +126,38 @@ func TestSessionRefusesASecondSendWhileATurnRuns(t *testing.T) {
 	assert.Len(t, provider.reqs, 2, "the queued message took a second call")
 }
 
+type panicProvider struct{}
+
+func (panicProvider) Complete(context.Context, Request, *StreamEvents) (*Completion, error) {
+	panic("boom")
+}
+
+func TestSessionRaisesATurnPanicInWait(t *testing.T) {
+	s, err := NewSession(SessionConfig{Loop: Config{Provider: panicProvider{}}, Request: Request{Model: "m"}})
+	require.NoError(t, err)
+	turn := s.Send(context.Background(), Message{Role: RoleUser, Content: "go"})
+	assert.PanicsWithValue(t, "boom", func() { _ = turn.Wait(context.Background()) })
+	assert.ErrorContains(t, turn.Err(), "the turn panicked: boom")
+}
+
+// The host's row for the turn hangs off the id the host gave the newest message, not an id the tree made.
+func TestSessionAnnouncesTheHostIDAsTheParent(t *testing.T) {
+	provider := &scriptProvider{steps: []scriptStep{{comp: assistantComp("answer")}}}
+	events := &Events{}
+	var parents []MessageID
+	keep(t, &events.OnAssistantMessage, func(ev AssistantMessageEvent) error {
+		parents = append(parents, ev.ParentID)
+		return nil
+	})
+	s, err := NewSession(SessionConfig{Loop: Config{Provider: provider, Events: events}, Request: Request{Model: "m"}})
+	require.NoError(t, err)
+	waitTurn(t, s.Send(context.Background(),
+		Message{Role: RoleUser, ID: "u1", Content: "q"},
+		Message{Role: RoleAssistant, ID: "a1", Content: "text", Thinking: []ThinkingBlock{{Text: "why"}}},
+		Message{Role: RoleUser, ID: "u2", Content: "more"}))
+	assert.Equal(t, []MessageID{"u2"}, parents)
+}
+
 // gatedProvider holds its first call until release closes, then answers every call.
 type gatedProvider struct {
 	release chan struct{}

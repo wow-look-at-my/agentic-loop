@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	commonai "github.com/wow-look-at-my/agentic-loop/core"
@@ -85,11 +86,19 @@ type ITurn interface {
 	Result() *Result
 }
 
-type turnHandle struct{ f *future[*Result] }
+type turnHandle struct {
+	f *future[*Result]
+	// panicked holds a panic out of the turn; Wait raises it again on the caller's goroutine.
+	panicked *any
+}
 
 func (t turnHandle) Done() <-chan struct{} { return t.f.Done() }
 func (t turnHandle) Wait(ctx context.Context) error {
 	_, err := t.f.Wait(ctx)
+	// The turn is done only when Result says so; only then is panicked safe to read.
+	if _, _, done := t.f.Result(); done && t.panicked != nil && *t.panicked != nil {
+		panic(*t.panicked)
+	}
 	return err
 }
 func (t turnHandle) Err() error {
@@ -180,10 +189,10 @@ func (p *publicSession) Send(ctx context.Context, msgs ...Message) ITurn {
 	switch {
 	case p.closed:
 		p.mu.Unlock()
-		return turnHandle{settled[*Result](nil, ErrSessionClosed)}
+		return turnHandle{f: settled[*Result](nil, ErrSessionClosed)}
 	case p.running != nil:
 		p.mu.Unlock()
-		return turnHandle{settled[*Result](nil, ErrSessionBusy)}
+		return turnHandle{f: settled[*Result](nil, ErrSessionBusy)}
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	f := newFuture[*Result](cancel)
@@ -204,12 +213,14 @@ func (p *publicSession) Send(ctx context.Context, msgs ...Message) ITurn {
 	}
 	cfg := p.cfg.Loop
 	cfg.Messages = q
+	var panicked any
 	go func() {
 		var res *Result
 		var err error
 		defer func() {
 			if r := recover(); r != nil {
-				err = errors.Join(err, errors.New("agentic: the turn panicked"))
+				panicked = r
+				err = errors.Join(err, fmt.Errorf("agentic: the turn panicked: %v", r))
 			}
 			p.finish(res)
 			f.settle(res, err)
@@ -217,7 +228,7 @@ func (p *publicSession) Send(ctx context.Context, msgs ...Message) ITurn {
 		}()
 		res, err = runOn(runCtx, cfg, p.cfg.Request, p.s)
 	}()
-	return turnHandle{f}
+	return turnHandle{f: f, panicked: &panicked}
 }
 
 func (p *publicSession) finish(res *Result) {

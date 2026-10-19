@@ -165,7 +165,6 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 			turnTools = nil
 		}
 		// Ask the host to mint the durable row for this turn; "" means not persisting.
-		// The parent is the host's id for the newest message, never an id the tree generated.
 		parentID := ""
 		if msgs := s.messages(); len(msgs) > 0 {
 			parentID = msgs[len(msgs)-1].ID
