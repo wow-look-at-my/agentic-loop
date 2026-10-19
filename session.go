@@ -4,14 +4,14 @@ import "github.com/wow-look-at-my/agentic-loop/internal/loop"
 
 // The session API: a conversation owned as a tree. The node types live in the core package.
 type (
-	ISession             = loop.ISession
-	ITurn                = loop.ITurn
-	IFuture[T any]       = loop.IFuture[T]
-	IMessage             = loop.IMessage
-	SessionConfig        = loop.SessionConfig
-	SessionState         = loop.SessionState
-	NodeEvent            = loop.NodeEvent
-	Severity             = loop.Severity
+	ISession       = loop.ISession
+	ITurn          = loop.ITurn
+	IFuture[T any] = loop.IFuture[T]
+	IMessage       = loop.IMessage
+	SessionConfig  = loop.SessionConfig
+	SessionState   = loop.SessionState
+	NodeEvent      = loop.NodeEvent
+	Severity       = loop.Severity
 )
 
 // NewSession is an empty conversation.

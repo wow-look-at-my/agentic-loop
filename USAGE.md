@@ -24,7 +24,7 @@ import (
 )
 ```
 
-The loop is `agentic.Run`. Optional tools sibl packages: `vfs.NewFileTools`, `repo.NewRepoTools`, `subagent.NewSubagentTool`, `webfetch.NewWebFetchTool`, `todo.NewTodoTools`, `resources.NewResourceWatcher`.
+The loop runs inside a session: `agentic.NewSession`, then `Send`. Optional tools sibl packages: `vfs.NewFileTools`, `repo.NewRepoTools`, `subagent.NewSubagentTool`, `webfetch.NewWebFetchTool`, `todo.NewTodoTools`, `resources.NewResourceWatcher`.
 
 ## Quick start — OpenAI-compatible
 
@@ -37,24 +37,22 @@ provider, err := agentic.NewOpenAIProvider(agentic.OpenAIConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{
-	Provider: agentic.NewParamStripper(provider),
-	Tools:    myTools,   // an agentic.Tools slice; empty for tool-less
-	Events: agentic.Events{
-		StreamEvents: agentic.StreamEvents{
-			OnText: func(s string) error { fmt.Print(s); return nil },
-		},
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{
+		Provider: agentic.NewParamStripper(provider),
+		Tools:    myTools, // an agentic.Tools slice; empty for tool-less
 	},
-}, agentic.Request{
-	Model:  "your-model-id",
-	System: "You are a helpful assistant.",
-	Messages: []agentic.Message{
-		{Role: agentic.RoleUser, Content: "What changed in the last release?"},
+	Request: agentic.Request{
+		Model:  "your-model-id",
+		System: "You are a helpful assistant.",
+		Extra:  map[string]any{"reasoning_effort": "high"}, // verbatim passthrough
 	},
-	Extra: map[string]any{"reasoning_effort": "high"}, // verbatim passthrough
 })
-if err != nil { /* res may still carry the partial transcript */ }
-fmt.Println(res.Final.Content)
+if err != nil { /* misconfiguration */ }
+
+turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "What changed in the last release?"})
+if err := turn.Wait(ctx); err != nil { /* the session still holds the partial conversation */ }
+fmt.Println(turn.Result().Final.Content)
 ```
 
 ## Quick start — OpenAI Responses
@@ -72,13 +70,15 @@ provider, err := agentic.NewResponsesProvider(agentic.ResponsesConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
-	agentic.Request{
-		Model:    "your-model-id",
-		System:   "You are a helpful assistant.", // sent as `instructions`
-		Messages: []agentic.Message{{Role: agentic.RoleUser, Content: "Hi!"}},
-		Extra:    map[string]any{"reasoning": map[string]any{"effort": "high"}},
-	})
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{Provider: provider, Tools: myTools},
+	Request: agentic.Request{
+		Model:  "your-model-id",
+		System: "You are a helpful assistant.", // sent as `instructions`
+		Extra:  map[string]any{"reasoning": map[string]any{"effort": "high"}},
+	},
+})
+turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "Hi!"})
 ```
 
 ## Quick start — Anthropic
@@ -93,13 +93,15 @@ provider, err := agentic.NewAnthropicProvider(agentic.AnthropicConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
-	agentic.Request{
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{Provider: provider, Tools: myTools},
+	Request: agentic.Request{
 		Model:     "your-model-id",
 		System:    "You are a helpful assistant.",
-		Messages:  []agentic.Message{{Role: agentic.RoleUser, Content: "Hi!"}},
 		MaxTokens: 4096, // REQUIRED on this dialect — the call fails fast without it
-	})
+	},
+})
+turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "Hi!"})
 ```
 
 ## Layering — which layer owns what
@@ -377,23 +379,22 @@ The model-calling built-ins use the `Provider` you hand them exactly as given �
 
 #### Delivering a message into a running loop
 
-A run is not a closed box. One queue, `Config.Messages` (`*MessageQueue`, safe for concurrent producers), carries a message from anywhere in your program into the transcript the model works on. It holds kinds, told apart by the value's own type rather than by which field you set: `SystemMessage` for an automated notice (a CI status change, a stop-hook nudge, a sub-agent report) and `UserMessage`. This is for what the user typed while the model was busy. Both implement `QueuedMessage` and wrap a `Message`.
+A turn is not a closed box. `ISession.Queue` (safe for concurrent producers) carries a message from anywhere in your program into the conversation the model works on. It holds kinds, told apart by the value's own type. `SystemMessage` for an automated notice (a CI status change, a stop-hook nudge, a sub-agent report) and `UserMessage` for what the user typed while the model was busy. Both implement `QueuedMessage` and wrap a `Message`.
 
 ```go
-q := &agentic.MessageQueue{}
 go func() {
     notice := agentic.SystemMessage{Message: agentic.Message{Role: agentic.RoleUser,
         Kind: "ci_status_change", Content: "[CI status changed] checks went red on abc1234 ..."}}
-    if !q.Queue(notice) {
-        startANewRun(notice) // the run ended; nothing else will deliver it
+    if !s.Queue(notice) {
+        // the session is closed; nothing will deliver it
     }
 }()
-res, err := agentic.Run(ctx, agentic.Config{Provider: p, Messages: q, ...}, req)
+turn := s.Send(ctx, msg)
 ```
 
-- **A queued message always reaches the model.** The queue is drained at the top of every turn, system messages first, and a message queued when the model. There is nothing to poll and no window in which a notice is quietly dropped: a turn boundary is either coming or is created.
-- **`Queue` reports whether the queue took the message.** Run closes the queue as it returns, so `false` means the run ended and no other run will show that message to anyone. That is the signal to start a new run with it — the alternative, a hopeful `true`, is how a CI notice ends up sitting. This is in a queue nothing reads. The same logic closes a nil queue.
-- **`Result.Undelivered` is what the run never delivered**, system first. It is empty for a run that ended normally, and non-empty when the run ended first for another reason — a cancelled `ctx`. This is a model-call error, or a host `MaxTurns` cap that left no turn to deliver into. Re-deliver those into the next run rather than dropping them.
+- **A queued message always reaches the model.** A running turn drains it. At its next turn boundary, system messages first, and a message queued when the model will otherwise finish starts another turn. The next `Send` delivers a message queued while no turn runs.
+- **`Queue` reports whether the session took the message.** It returns `false` only once the session is closed.
+- **`Result.Undelivered` is what the turn never delivered**, system first. It is empty for a turn that ended normally, and non-empty when the turn ended first. This holds for another reason — a cancelled `ctx`, a model-call error, or a host `MaxTurns` cap that left no turn to deliver into. `SessionState.Undelivered` collects them across turns. Re-deliver those rather than dropping them.
 - **The host persists them**, through `Events.OnSystemMessage`: the loop hands over each message it is about to append. The loop takes back the durable id the host minted for it, so the stored thread and the transcript agree.
 - The `Kind` you set rides along untouched (`SubagentReportKind` is the loop's own), which is what lets a host render a CI notice differently from a nudge.
 
@@ -518,15 +519,15 @@ This is why `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
 ### Auto-compaction
 
-`Run` can compact the transcript automatically when the context window is almost full. As a result, a long conversation continues without the host measuring token counts or calling `Compact` itself. The trigger is a fraction of the model's context window, set on the session:
+The session can compact the conversation automatically when the context window is almost full. As a result, a long conversation continues without the host measuring token counts or calling `Compact` itself. The trigger is a fraction of the model's context window, set on the session:
 
 ```go
-res, err := agentic.Run(ctx, agentic.Config{
-	Provider: provider, // the window comes from its model list
-}, agentic.Request{
-	Model:       "your-model-id",
-	AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
-	Messages:    history,
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{Provider: provider}, // the window comes from its model list
+	Request: agentic.Request{
+		Model:       "your-model-id",
+		AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
+	},
 })
 ```
 
@@ -562,11 +563,14 @@ This is not folded into it.
 A model reads a transcript with no clock in it. It cannot tell what time it is. The turn it answers may arrived a few seconds. This is after the last one or a few days. This is after it, with nothing in the messages saying which. `Config.ElapsedTime` puts both facts in front of it on every model call:
 
 ```go
-res, err := agentic.Run(ctx, agentic.Config{
-	Provider: provider,
-	// Since seeds the first call: when this conversation last made a request.
-	ElapsedTime: &agentic.ElapsedTime{Since: conv.LastRequestAt},
-}, req)
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{
+		Provider: provider,
+		// Since seeds the first call: when this conversation last made a request.
+		ElapsedTime: &agentic.ElapsedTime{Since: conv.LastRequestAt},
+	},
+	Request: req,
+})
 ```
 
 Each call then carries one extra `RoleUser` message at the end, `Kind: ElapsedKind`, reading:
@@ -600,13 +604,12 @@ listener := &goal.StopListener{
     },
     Report: func(v goal.Verdicts) { recordNotice(v); persist(state) },
 }
-events := agentic.Events{}
-listener.Attach(ctx, &events, queue)
-
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Events: &events, Messages: queue, Tools: tools}, req)
+s, err := agentic.NewSession(agentic.SessionConfig{Loop: agentic.Config{Provider: provider, Tools: tools}, Request: req})
+listener.Attach(ctx, s)
+turn := s.Send(ctx, msg)
 ```
 
-- **`Attach` subscribes to `Events.OnStop`**, and a blocked stop queues the directive as a `SystemMessage` of `goal.DirectiveKind`, which takes the loop round again IN PLACE. A fresh run will replay the transcript from the top and pay for it. The model will read the directive as the opening of a new conversation rather than as the answer to the stop it just tried. `ctx` is the RUN's context, which is what makes cancellation win. `msgs` must be the queue the run was configured with.
+- **`Attach` subscribes to the session's `Events.OnStop`**, and a blocked stop queues the directive through `ISession.Queue` as a `SystemMessage` of `goal.DirectiveKind`. This takes the loop round again IN PLACE. A fresh turn will read the directive as a new request rather than as the answer to the stop it just tried. `ctx` is the RUN's context, which is what makes cancellation win.
 - **The verdict is one of five outcomes.** `Blocked` refuses the stop. `Met` and `Failed` clear the goal. `Permitted` and `Suspended` let the run end. `Report` hears every one of them, on the run's own goroutine, because a queued directive says only what the MODEL is told. The host still records the notice, persists the counters, clears a goal that is met, and bills the evaluator's own call (`Verdicts.Completion`).
 - **Goal mode fails open.** A provider that will not answer suspends the goal loudly and permits the stop. A cancelled run is permitted with no model call at all. Ending a run one iteration early is one keystroke from being resumed. The alternative is a wedged session.
 - **Three same reasons end the goal.** That is the evidence `ErrStuck` uses one layer down. It earns the same answer — a verdict, not a budget, so it clears rather than pauses.
