@@ -65,10 +65,9 @@ func TestOpenAINonStreamNamesTheListIDTheGatewayRoutedTo(t *testing.T) {
 }
 
 func TestOpenAIStreamNamesTheListIDTheGatewayRoutedTo(t *testing.T) {
-	ri := `"extra_fields": {"routing_info": {"provider": "Synthetic", "model": "hf:deepseek-ai/DeepSeek-V4.1-Flash"}}`
 	srv := sseServer(t,
-		`{"model": "deepseek-ai/DeepSeek-V4.1-Flash", "choices": [{"delta": {"content": "o"}}], `+ri+`}`,
-		`{"model": "deepseek-ai/DeepSeek-V4.1-Flash", "choices": [{"delta": {"content": "k"}, "finish_reason": "stop"}], `+ri+`}`,
+		`{"model": "deepseek-ai/DeepSeek-V4.1-Flash", "choices": [{"delta": {"content": "o"}}], "extra_fields": {"routing_info": {"provider": "Synthetic", "model": "hf:deepseek-ai/DeepSeek-V4.1-Flash"}}}`,
+		`{"model": "deepseek-ai/DeepSeek-V4.1-Flash", "choices": [{"delta": {"content": "k"}, "finish_reason": "stop"}], "extra_fields": {"routing_info": {"provider": "Synthetic", "model": "hf:deepseek-ai/DeepSeek-V4.1-Flash"}}}`,
 	)
 
 	comp, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{Model: "auto-pr-resolve"}, nil)
