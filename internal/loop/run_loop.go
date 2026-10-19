@@ -166,8 +166,8 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 		}
 		// Ask the host to mint the durable row for this turn; "" means not persisting.
 		parentID := ""
-		if leaf := s.Leaf(); leaf != nil {
-			parentID = leaf.Base().ID()
+		if msgs := s.messages(); len(msgs) > 0 {
+			parentID = msgs[len(msgs)-1].ID
 		}
 		assistantID, aerr := cfg.Events.emitAssistantMessage(AssistantMessageEvent{ParentID: MessageID(parentID)})
 		currentAssistantID = assistantID
