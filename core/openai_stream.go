@@ -7,9 +7,10 @@ import (
 
 // oaChunk is SSE delta from a streaming chat completion.
 type oaChunk struct {
-	Choices []oaChoice `json:"choices"`
-	Usage   *oaUsage   `json:"usage,omitempty"`
-	Model   string     `json:"model,omitempty"`
+	Choices     []oaChoice     `json:"choices"`
+	Usage       *oaUsage       `json:"usage,omitempty"`
+	Model       string         `json:"model,omitempty"`
+	ExtraFields *oaExtraFields `json:"extra_fields,omitempty"`
 	// Timings is a llama.cpp/ollama timing snapshot; each replaces the (last wins).
 	Timings *Timings `json:"timings,omitempty"`
 	// PromptProgress is a non-standard prefill-progress update emitted on a choices-less chunk.
@@ -228,6 +229,7 @@ type oaStream struct {
 	usages           []Usage
 	timings          []Timings
 	model            string
+	routed           string
 	sawData          bool
 	// sentParts counts parts already delivered via OnPart; the rest goes out at the end.
 	sentParts int
@@ -265,6 +267,9 @@ func (st *oaStream) onData(data []byte) error {
 	}
 	if chunk.Model != "" {
 		st.model = chunk.Model
+	}
+	if routed := chunk.ExtraFields.routed(); routed != "" {
+		st.routed = routed
 	}
 	if chunk.PromptProgress != nil {
 		st.sawData = true
@@ -356,5 +361,6 @@ func (st *oaStream) completion() *Completion {
 		Streamed:   true,
 		StopReason: normalizeStopReason(finish),
 		Model:      st.model,
+		Routed:     st.routed,
 	}
 }

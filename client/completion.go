@@ -19,6 +19,8 @@ type Completion struct {
 	StopReason      string
 	// Model is the model the response names; a gateway that resolves an alias names the model it served.
 	Model string
+	// Routed is the model-list id a routing gateway says it sent the request to, when the response states one.
+	Routed string
 }
 
 // fold turns what the provider SAID into the figure a caller bills against.
@@ -35,6 +37,7 @@ func fold(c *commonai.Completion) *Completion {
 		Streamed:   c.Streamed,
 		StopReason: c.StopReason,
 		Model:      c.Model,
+		Routed:     c.Routed,
 	}
 	if n := len(c.Timings); n > 0 {
 		t := c.Timings[n-1]
@@ -78,6 +81,7 @@ func unfold(c *Completion) *commonai.Completion {
 		Streamed:   c.Streamed,
 		StopReason: c.StopReason,
 		Model:      c.Model,
+		Routed:     c.Routed,
 	}
 	if hasUsage(c) {
 		u := c.Usage
