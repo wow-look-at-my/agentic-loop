@@ -202,6 +202,8 @@ func messageFrom(el *validator.Element) (Message, error) {
 		Role:        Role(attrOf(el, "role")),
 		ToolCallID:  attrOf(el, "tool-call-id"),
 		ToolIsError: attrOf(el, "tool-is-error") == "true",
+		ID:          attrOf(el, "id"),
+		Kind:        attrOf(el, "kind"),
 	}
 	parts, err := partsFrom(el)
 	if err != nil {

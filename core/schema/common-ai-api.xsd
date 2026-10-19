@@ -175,6 +175,9 @@
           <!-- Links a tool result to the call it answers. -->
           <xs:attribute name="tool-call-id" type="xs:string"/>
           <xs:attribute name="tool-is-error" type="xs:boolean"/>
+          <!-- The host's transcript identifier and classification. Never sent upstream. -->
+          <xs:attribute name="id" type="xs:string"/>
+          <xs:attribute name="kind" type="xs:string"/>
         </xs:extension>
       </xs:complexContent>
     </xs:complexType>
