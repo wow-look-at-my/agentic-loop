@@ -120,27 +120,13 @@ func (i *Index) reindex(ctx context.Context, c Conversation, msgs []Message) (er
 		if m.ID == "" {
 			return fmt.Errorf("search: conversation %q message %d has no id; an index keyed by nothing cannot hold vectors", c.ID, pos)
 		}
-		if _, err = tx.ExecContext(ctx,
-			`INSERT INTO indexed_messages
-			   (message_id, conversation_id, owner, role, content, position, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(message_id) DO UPDATE SET
-			   conversation_id = excluded.conversation_id,
-			   owner           = excluded.owner,
-			   role            = excluded.role,
-			   content         = excluded.content,
-			   position        = excluded.position,
-			   created_at      = excluded.created_at`,
+		if _, err = tx.ExecContext(ctx, upsertIndexedMessageSQL,
 			m.ID, c.ID, c.Owner, m.Role, m.Content, pos, m.CreatedAt,
 		); err != nil {
 			return fmt.Errorf("search: index message %q: %w", m.ID, err)
 		}
 	}
-	if _, err = tx.ExecContext(ctx,
-		`INSERT INTO indexed_conversations (conversation_id, owner, revision)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(conversation_id) DO UPDATE SET
-		   owner = excluded.owner, revision = excluded.revision`,
+	if _, err = tx.ExecContext(ctx, upsertIndexedConversationSQL,
 		c.ID, c.Owner, c.Revision,
 	); err != nil {
 		return fmt.Errorf("search: record revision for %q: %w", c.ID, err)

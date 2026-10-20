@@ -11,35 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// openRouterModelList is the shape an aggregator publishes: rates as STRINGS,
-// in USD per token, alongside the model list a host fetches anyway.
-const openRouterModelList = `{
-  "object": "list",
-  "data": [
-    {
-      "id": "anthropic/claude-opus-4-6",
-      "object": "model",
-      "pricing": {
-        "prompt": "0.000015",
-        "completion": "0.000075",
-        "input_cache_read": "0.0000015",
-        "input_cache_write": "0.00001875",
-        "input_cache_write_1h": "0.00003"
-      }
-    },
-    {
-      "id": "openai/gpt-5",
-      "pricing": {"prompt": "0.00000125", "completion": "0.00001"}
-    },
-    {
-      "id": "some/free-model",
-      "pricing": {"prompt": "0", "completion": "0"}
-    },
-    {"id": "local/llama", "pricing": {}},
-    {"id": "no-pricing-at-all"}
-  ]
-}`
-
 func decoded(t *testing.T, body string) *ModelList {
 	t.Helper()
 	list, err := DecodeModelList([]byte(body))
@@ -123,18 +94,6 @@ func TestAnUnusableRateLeavesTheModelUnpriced(t *testing.T) {
 	list = decoded(t, `{"object":"list","data":[{"id":"x","pricing":{"prompt":"-1"}}]}`)
 	assert.Empty(t, list.Prices, "a negative rate is a document nobody should bill from")
 }
-
-// crofAIModelList: crof.ai rates are strings, already USD per tokens, not per token.
-const crofAIModelList = `{
-  "object": "list",
-  "data": [
-    {
-      "id": "deepseek-v4-pro-0813",
-      "object": "model",
-      "pricing": {"prompt": "0.35", "completion": "0.80", "cache_prompt": "0.01"}
-    }
-  ]
-}`
 
 func TestDecodeModelListRescalesAnAlreadyPerMillionRate(t *testing.T) {
 	r, ok := decoded(t, crofAIModelList).Prices["deepseek-v4-pro-0813"]
@@ -224,21 +183,6 @@ func TestAnEndpointWithNoPricingIsNotAnError(t *testing.T) {
 	assert.Equal(t, DialectOpenAI, list.Dialect)
 }
 
-// anthropicModelList is what api.anthropic.com answers: type/id/
-// display_name/created_at, and no pricing anywhere. It is the endpoint a
-// host's cost column has to survive, since nothing it sends can price a call.
-const anthropicModelList = `{
-  "data": [
-    {"type": "model", "id": "claude-opus-4-6", "display_name": "Claude Opus 4.6",
-     "created_at": "2026-02-05T00:00:00Z"},
-    {"type": "model", "id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6",
-     "created_at": "2026-02-05T00:00:00Z"}
-  ],
-  "has_more": false,
-  "first_id": "claude-opus-4-6",
-  "last_id": "claude-sonnet-4-6"
-}`
-
 // The Anthropic model list names its dialect and prices nothing, and BOTH of
 // those are the answer rather than a failure. A host prices the call from
 // config and renders an em dash when there is none.
@@ -259,13 +203,7 @@ func TestTheAnthropicModelListNamesItsDialectAndPricesNothing(t *testing.T) {
 // rates — a gateway in front of the Messages API — is priced. Gating the price
 // parse on the openai envelope would silently unprice every such endpoint.
 func TestPricingIsReadWhateverEnvelopeCarriesIt(t *testing.T) {
-	list := decoded(t, `{
-	  "has_more": false,
-	  "data": [
-	    {"type": "model", "id": "claude-opus-4-6",
-	     "pricing": {"prompt": "0.000015", "completion": "0.000075"}}
-	  ]
-	}`)
+	list := decoded(t, anthropicPricedModelList)
 	assert.Equal(t, DialectAnthropic, list.Dialect)
 	r, ok := list.Prices["claude-opus-4-6"]
 	require.True(t, ok)

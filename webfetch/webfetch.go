@@ -3,6 +3,7 @@ package webfetch
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,21 +35,10 @@ const (
 )
 
 // webFetchSchema is the tool's parameter schema, ported verbatim.
-var webFetchSchema = json.RawMessage(`{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "url": {
-      "type": "string",
-      "description": "The http or https URL to fetch. Userinfo credentials are rejected."
-    },
-    "summary_prompt": {
-      "type": "string",
-      "description": "Optional instructions for a second call to the same model to summarize the cleaned content."
-    }
-  },
-  "required": ["url"]
-}`)
+var webFetchSchema = json.RawMessage(webFetchSchemaJSON)
+
+//go:embed schema/webfetch.json
+var webFetchSchemaJSON string
 
 // WebFetchConfig configures NewWebFetchTool.
 type WebFetchConfig struct {

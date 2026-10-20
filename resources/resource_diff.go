@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	agentic "github.com/wow-look-at-my/agentic-loop"
@@ -25,21 +26,10 @@ const (
 )
 
 // resourceDiffSchema is the tool's parameter schema.
-var resourceDiffSchema = json.RawMessage(`{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "change_id": {
-      "type": "string",
-      "description": "the change_id from the automated resource notice that announced this change"
-    },
-    "full": {
-      "type": "boolean",
-      "description": "return the resource's full captured content instead of a diff (default false)"
-    }
-  },
-  "required": ["change_id"]
-}`)
+var resourceDiffSchema = json.RawMessage(resourceDiffSchemaJSON)
+
+//go:embed schema/resource_diff.json
+var resourceDiffSchemaJSON string
 
 // resourceDiffArgs is the tool's argument payload.
 type resourceDiffArgs struct {

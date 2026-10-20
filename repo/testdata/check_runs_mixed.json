@@ -1,0 +1,6 @@
+{
+  "check_runs": [
+    {"name": "build", "status": "completed", "conclusion": "failure", "html_url": "https://example.com/run/1"},
+    {"name": "lint", "status": "in_progress", "conclusion": "", "html_url": "https://example.com/run/2"}
+  ]
+}
