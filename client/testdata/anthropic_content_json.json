@@ -1,0 +1,6 @@
+{"content":[
+  {"type":"thinking","thinking":"hmm","signature":"sig1"},
+  {"type":"text","text":"hello "},
+  {"type":"text","text":"world"},
+  {"type":"tool_use","id":"t1","name":"Glob","input":{"pattern":"*.go"}}
+],"stop_reason":"tool_use","usage":{"input_tokens":100,"output_tokens":25,"cache_read_input_tokens":40}}

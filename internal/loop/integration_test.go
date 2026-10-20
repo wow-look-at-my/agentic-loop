@@ -111,10 +111,7 @@ func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
 				`{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}` + "\n\n"))
 			return
 		}
-		_, _ = w.Write([]byte("event: content_block_delta\ndata: " +
-			`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"recovered"}}` + "\n\n" +
-			"event: message_delta\ndata: " +
-			`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n"))
+		_, _ = w.Write([]byte(recoveredStream))
 	}))
 	defer srv.Close()
 
