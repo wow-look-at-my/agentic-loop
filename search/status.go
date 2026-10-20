@@ -55,13 +55,11 @@ func (i *Index) Status(ctx context.Context, src Source, owner, model string) (St
 	}
 	s.Model = model
 
-	if err := i.sql.QueryRowContext(ctx, countEmbeddedSQL, owner, model,
-	).Scan(&s.EmbeddedMessages, &s.TruncatedMessages); err != nil {
+	if err := i.sql.QueryRowContext(ctx, countEmbeddedSQL, owner, model).Scan(&s.EmbeddedMessages, &s.TruncatedMessages); err != nil {
 		return s, fmt.Errorf("search: count embedded messages: %w", err)
 	}
 
-	if err := i.sql.QueryRowContext(ctx, countPendingEmbeddingsSQL, owner, model,
-	).Scan(&s.PendingEmbeddings); err != nil {
+	if err := i.sql.QueryRowContext(ctx, countPendingEmbeddingsSQL, owner, model).Scan(&s.PendingEmbeddings); err != nil {
 		return s, fmt.Errorf("search: count pending embeddings: %w", err)
 	}
 
