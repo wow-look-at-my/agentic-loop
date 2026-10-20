@@ -62,17 +62,7 @@ type pending struct {
 // time the covered half should be the half most likely to be searched. It
 // also means a caller who never lets it finish still has a useful index.
 func (i *Index) PendingForModel(ctx context.Context, owner, model string, limit int) ([]pending, error) {
-	rows, err := i.sql.QueryContext(ctx, `
-		SELECT m.message_id, m.content
-		FROM indexed_messages m
-		WHERE m.owner = ?
-		  AND m.content <> ''
-		  AND NOT EXISTS (
-		      SELECT 1 FROM embed_status s
-		      WHERE s.message_id = m.message_id AND s.model = ?
-		  )
-		ORDER BY m.created_at DESC
-		LIMIT ?`, owner, model, limit)
+	rows, err := i.sql.QueryContext(ctx, pendingUnembeddedSQL, owner, model, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search: list unembedded messages: %w", err)
 	}
@@ -183,22 +173,13 @@ func (i *Index) embedBatch(ctx context.Context, model string, e Embedder, b batc
 				err = fmt.Errorf("search: message %q chunk %d: %w", m.id, c, encErr)
 				return 0, err
 			}
-			if _, err = tx.ExecContext(ctx,
-				`INSERT INTO embeddings (message_id, chunk_index, model, dim, vector, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?)
-				 ON CONFLICT(message_id, chunk_index, model) DO UPDATE SET
-				   dim = excluded.dim, vector = excluded.vector, created_at = excluded.created_at`,
+			if _, err = tx.ExecContext(ctx, upsertEmbeddingSQL,
 				m.id, c, model, len(v), blob, now,
 			); err != nil {
 				return 0, fmt.Errorf("search: store vector for %q: %w", m.id, err)
 			}
 		}
-		if _, err = tx.ExecContext(ctx,
-			`INSERT INTO embed_status (message_id, model, chunks, chunks_total, created_at)
-			 VALUES (?, ?, ?, ?, ?)
-			 ON CONFLICT(message_id, model) DO UPDATE SET
-			   chunks = excluded.chunks, chunks_total = excluded.chunks_total,
-			   created_at = excluded.created_at`,
+		if _, err = tx.ExecContext(ctx, upsertEmbedStatusSQL,
 			m.id, model, m.chunks, m.total, now,
 		); err != nil {
 			return 0, fmt.Errorf("search: record embed status for %q: %w", m.id, err)

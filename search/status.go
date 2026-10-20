@@ -34,10 +34,7 @@ type Status struct {
 func (i *Index) Status(ctx context.Context, src Source, owner, model string) (Status, error) {
 	var s Status
 
-	if err := i.sql.QueryRowContext(ctx, `
-		SELECT
-			(SELECT COUNT(*) FROM indexed_conversations WHERE owner = ?),
-			(SELECT COUNT(*) FROM indexed_messages WHERE owner = ?)`,
+	if err := i.sql.QueryRowContext(ctx, countIndexedRowsSQL,
 		owner, owner,
 	).Scan(&s.IndexedConversations, &s.IndexedMessages); err != nil {
 		return s, fmt.Errorf("search: count indexed rows: %w", err)
@@ -58,26 +55,12 @@ func (i *Index) Status(ctx context.Context, src Source, owner, model string) (St
 	}
 	s.Model = model
 
-	if err := i.sql.QueryRowContext(ctx, `
-		SELECT
-			COUNT(*),
-			COALESCE(SUM(CASE WHEN st.chunks_total > st.chunks THEN 1 ELSE 0 END), 0)
-		FROM embed_status st
-		JOIN indexed_messages m ON m.message_id = st.message_id
-		WHERE m.owner = ? AND st.model = ?`, owner, model,
+	if err := i.sql.QueryRowContext(ctx, countEmbeddedSQL, owner, model,
 	).Scan(&s.EmbeddedMessages, &s.TruncatedMessages); err != nil {
 		return s, fmt.Errorf("search: count embedded messages: %w", err)
 	}
 
-	if err := i.sql.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM indexed_messages m
-		WHERE m.owner = ?
-		  AND m.content <> ''
-		  AND NOT EXISTS (
-		      SELECT 1 FROM embed_status s
-		      WHERE s.message_id = m.message_id AND s.model = ?
-		  )`, owner, model,
+	if err := i.sql.QueryRowContext(ctx, countPendingEmbeddingsSQL, owner, model,
 	).Scan(&s.PendingEmbeddings); err != nil {
 		return s, fmt.Errorf("search: count pending embeddings: %w", err)
 	}
