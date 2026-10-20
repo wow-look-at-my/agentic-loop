@@ -84,11 +84,7 @@ func TestOpenAIUsageExtrasTriStateAbsent(t *testing.T) {
 func TestOpenAIPlainJSONUsageExtras(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"choices": [{"message": {"role": "assistant", "content": "plain", "reasoning": "plain thinking"}, "finish_reason": "stop"}],
-			"usage": {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19,
-				"completion_tokens_details": {"reasoning_tokens": 2}, "cost": 0.0003, "extra": 1}
-		}`))
+		_, _ = w.Write([]byte(openAIPlainUsageBody))
 	}))
 	defer srv.Close()
 	comp, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{Model: "m"}, nil)
@@ -197,12 +193,7 @@ func TestOpenAINonStreamingContentTypeInsensitive(t *testing.T) {
 func TestAnthropicNonStreamingJSONFallback(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"content":[
-			{"type":"thinking","thinking":"hmm","signature":"sig1"},
-			{"type":"text","text":"hello "},
-			{"type":"text","text":"world"},
-			{"type":"tool_use","id":"t1","name":"Glob","input":{"pattern":"*.go"}}
-		],"stop_reason":"tool_use","usage":{"input_tokens":100,"output_tokens":25,"cache_read_input_tokens":40}}`))
+		_, _ = w.Write([]byte(anthropicContentJSONBody))
 	}))
 	defer srv.Close()
 

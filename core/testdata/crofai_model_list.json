@@ -1,0 +1,10 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "deepseek-v4-pro-0813",
+      "object": "model",
+      "pricing": {"prompt": "0.35", "completion": "0.80", "cache_prompt": "0.01"}
+    }
+  ]
+}

@@ -102,9 +102,7 @@ func TestThinkingSignatureRepairOverAnthropicProvider(t *testing.T) {
 		n, _ := r.Body.Read(buf)
 		secondBody = append([]byte(nil), buf[:n]...)
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(`event: content_block_delta` + "\n" +
-			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}` + "\n\n" +
-			`event: message_stop` + "\n" + `data: {"type":"message_stop"}` + "\n\n"))
+		_, _ = w.Write([]byte(thinkingRepairStream))
 	}))
 	defer srv.Close()
 
