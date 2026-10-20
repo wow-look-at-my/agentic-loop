@@ -32,6 +32,7 @@ type ElapsedTime = loop.ElapsedTime
 type Events = loop.Events
 type FinalizeAssistantEvent = loop.FinalizeAssistantEvent
 type Gate = loop.Gate
+type Inbox = loop.Inbox
 type Message = loop.Message
 type MessageID = loop.MessageID
 type MessageQueue = loop.MessageQueue

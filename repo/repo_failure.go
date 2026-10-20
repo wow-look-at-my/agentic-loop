@@ -73,7 +73,9 @@ func (rl rateLimit) waitAdvice() string {
 	return fmt.Sprintf("It clears in %s", rl.retryIn)
 }
 
-// failureRank scores a non-2xx response by how much it explains.
+// failureRank scores a non-2xx response by how much it explains, so
+// FetchURLOpts can report the most informative attempt instead of the last
+// one.
 func failureRank(res GHResponse) failureRankLevel {
 	if _, limited := classifyRateLimit(res, time.Now()); limited {
 		if res.authed {
