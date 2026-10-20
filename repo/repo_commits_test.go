@@ -15,10 +15,7 @@ func TestRepoCommitsListsAndScopes(t *testing.T) {
 		assert.Equal(t, "main", c.Query.Get("sha"))
 		assert.Equal(t, "docs/intro.md", c.Query.Get("path"))
 		assert.Equal(t, "10", c.Query.Get("per_page"))
-		return http.StatusOK, `[
-			{"sha":"0123456789abcdef","commit":{"message":"Add intro\n\nLonger body","author":{"name":"Alice","date":"2026-07-01T10:00:00Z"}}},
-			{"sha":"fedcba9876543210","commit":{"message":"Fix typo","author":{"name":"","date":"2026-06-30T09:00:00Z"}},"author":{"login":"bob"}}
-		]`
+		return http.StatusOK, fixtureCommitsList
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "commits", Org: "octo", Repo: "hello", Ref: "main", Path: "docs/intro.md"})
 	require.False(t, res.IsError, res.Content)

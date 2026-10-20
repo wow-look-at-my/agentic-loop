@@ -16,14 +16,7 @@ func TestRepoIssueListFiltersOutPullRequests(t *testing.T) {
 		assert.Equal(t, "/repos/octo/hello/issues", c.Path)
 		assert.Equal(t, "open", c.Query.Get("state"))
 		assert.Equal(t, "bug,ui", c.Query.Get("labels"))
-		return http.StatusOK, `[
-			{"number":11,"title":"Crash on load","state":"open","updated_at":"2026-07-01T10:00:00Z",
-			 "user":{"login":"alice"},"labels":[{"name":"bug"},{"name":"ui"}]},
-			{"number":12,"title":"A pull request","state":"open","updated_at":"2026-07-01T11:00:00Z",
-			 "user":{"login":"bob"},"pull_request":{"url":"https://api.github.com/repos/octo/hello/pulls/12"}},
-			{"number":13,"title":"Feature request","state":"open","updated_at":"2026-06-29T08:00:00Z",
-			 "user":{"login":"carol"},"labels":[]}
-		]`
+		return http.StatusOK, fixtureIssuesList
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "issues", Org: "octo", Repo: "hello", Labels: "bug,ui"})
 	require.False(t, res.IsError, res.Content)
@@ -54,9 +47,7 @@ func TestRepoIssueReadRendersBodyAndComments(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Cache: newMemCache()}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/issues/11":
-			return http.StatusOK, `{"number":11,"title":"Crash on load","state":"open","comments":40,
-				"body":"It crashes.","html_url":"https://github.com/octo/hello/issues/11",
-				"updated_at":"2026-07-01T10:00:00Z","user":{"login":"alice"},"labels":[{"name":"bug"}]}`
+			return http.StatusOK, fixtureIssueDetail
 		case "/repos/octo/hello/issues/11/comments":
 			assert.Equal(t, fmt.Sprint(repoIssueMaxComments), c.Query.Get("per_page"))
 			return http.StatusOK, jsontest.Must(jsontest.Arr{

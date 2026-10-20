@@ -1,0 +1,11 @@
+{
+  "total_count": 2,
+  "jobs": [
+    {"name": "build", "status": "completed", "conclusion": "failure", "html_url": "https://example.com/job/1",
+     "steps": [
+       {"name": "checkout", "status": "completed", "conclusion": "success", "number": 1},
+       {"name": "go-toolchain", "status": "completed", "conclusion": "failure", "number": 2}
+     ]},
+    {"name": "smoke", "status": "completed", "conclusion": "success", "html_url": "https://example.com/job/2", "steps": []}
+  ]
+}

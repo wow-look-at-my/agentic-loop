@@ -1,0 +1,11 @@
+{
+  "number": 11,
+  "title": "Crash on load",
+  "state": "open",
+  "comments": 40,
+  "body": "It crashes.",
+  "html_url": "https://github.com/octo/hello/issues/11",
+  "updated_at": "2026-07-01T10:00:00Z",
+  "user": {"login": "alice"},
+  "labels": [{"name": "bug"}]
+}
