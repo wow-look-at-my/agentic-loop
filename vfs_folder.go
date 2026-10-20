@@ -9,9 +9,7 @@ import (
 )
 
 // vfsFolder adapts one registered VFS mount to the generic Folder interface
-// used by the file tools. The VFS itself only needs to implement read and
-// directory listing; find_files and grep are provided generically by walking
-// the mounted tree.
+// used by the file tools.
 type vfsFolder struct {
 	name string
 	vfs  VFS

@@ -65,9 +65,7 @@ func TestVFSMountAnsweredByFetchURL(t *testing.T) {
 }
 
 func TestVFSUnregisteredFallsThroughToGitHub(t *testing.T) {
-	// A mux with no matching mount must not intercept: the request goes to
-	// GitHub (and here fails because there is no server, not because the VFS
-	// claimed it).
+	// A mux with no matching mount must not intercept: the request goes to GitHub.
 	mux := NewVFSMux()
 	mux.Mount("/diag", &staticVFS{})
 	gh := NewGitHub(GitHubConfig{VFS: mux})

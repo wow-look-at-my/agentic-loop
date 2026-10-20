@@ -93,12 +93,6 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 	var best GHResponse
 	bestRank := rankNone
 	// bestAuthed is the most informative failure produced by a TOKEN attempt.
-	// It is kept separate from best so an anonymous failure can never
-	// supersede it: when a configured PAT was tried and produced a failure,
-	// the caller must be told about THAT, never "this was anonymous." The
-	// anonymous attempt runs last, so without this separation its (typically
-	// less informative) 401/403 would overwrite the token's answer on the
-	// last-write-wins tiebreak.
 	var bestAuthed GHResponse
 	bestAuthedRank := rankNone
 	var lastErr error
@@ -116,9 +110,8 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 		res.authed = att.token != ""
 		res.credentialName = att.name
 		r := failureRank(res)
-		// A token's failure outranks any anonymous one: an anonymous result
-		// says only "no credential was sent", so when a PAT was configured
-		// and tried, its answer is what the caller must see.
+		// A token's failure outranks any anonymous one: an anonymous result says
+		// only "no credential was sent", so when a PAT was configured and tried.
 		if att.token != "" {
 			if r > bestAuthedRank {
 				bestAuthedRank, bestAuthed = r, res

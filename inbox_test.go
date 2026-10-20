@@ -31,8 +31,7 @@ func TestRunDrainsInboxBeforeEachTurn(t *testing.T) {
 		{comp: assistantComp("first answer")},
 		{comp: assistantComp("second answer")},
 	}}
-	// The inbox holds one message before the run; the model answers it on its
-	// first call. No message is dropped.
+	// The inbox holds one message before the run; the model answers it on its first call. No message is dropped.
 	inbox := &queueInbox{}
 	inbox.push(Message{Role: RoleUser, Content: "queued notice"})
 
@@ -53,9 +52,7 @@ func TestRunDrainsInboxBeforeEachTurn(t *testing.T) {
 // that arrives DURING the final turn is still answered before the run ends.
 func TestRunDrainsInboxAtFinish(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
-		// First turn: model answers, asks for no tools. The inbox is empty at
-		// the top of this turn, so the run would end -- but a message lands
-		// during the turn.
+		// First turn: model answers, asks for no tools.
 		{comp: assistantComp("done")},
 		// finish() drains, finds the message, and loops: the model answers it.
 		{comp: assistantComp("answered the notice")},
@@ -77,8 +74,7 @@ func TestRunDrainsInboxAtFinish(t *testing.T) {
 	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
-	// The run did not end after the first turn: it drained the inbox, found
-	// the late message, and answered it.
+	// The run did not end after the first turn: it drained the inbox, found the late message, and answered it.
 	require.Len(t, provider.reqs, 2)
 	require.Equal(t, "answered the notice", res.Final.Content)
 	require.Empty(t, inbox.msgs)

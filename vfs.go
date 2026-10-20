@@ -5,23 +5,9 @@ import (
 	"strings"
 )
 
-// VFS is a virtual filesystem that the repo read tools can walk. It is how a
-// host exposes state that is not GitHub -- diagnostics, workspace metadata, a
-// queue, anything -- as files the model can read with the same read_file /
-// repo_read tools it already has.
-//
-// GHResponse is the shared envelope for both GitHub and virtual mounts: it is
-// status + body + content-type + truncated, and nothing in it is GitHub-only.
-// A virtual mount returns a synthetic GHResponse exactly like a GitHub
-// endpoint would.
-//
-// A VFS is registered under a path prefix. The prefix is stripped before Read
-// or List is called, so a mount at "/diag" serves "/diag/workspaces" as
-// path "workspaces".
+// VFS is a virtual filesystem that the repo read tools can walk.
 type VFS interface {
-	// Read returns the file at path. A 404 (not found) is a normal answer,
-	// returned as a GHResponse with Status()==404, not an error. The caller
-	// decides how to render it, the same as a GitHub 404.
+	// Read returns the file at path.
 	Read(ctx context.Context, path string, opt FetchOptions) (GHResponse, error)
 	// List returns the directory listing at path.
 	List(ctx context.Context, path string, opt FetchOptions) ([]DirEntry, error)
@@ -33,9 +19,7 @@ type DirEntry struct {
 	IsDir bool   `json:"is_dir"`
 }
 
-// VFSMux routes reads by path prefix to registered virtual filesystems. It is
-// the single registration point: any code can Mount a VFS, and the read tools
-// consult the mux before touching GitHub.
+// VFSMux routes reads by path prefix to registered virtual filesystems.
 type VFSMux struct {
 	mounts []vfsMount
 }

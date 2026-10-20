@@ -48,11 +48,7 @@ type RepoKeyCache interface {
 type GitHubConfig struct {
 	HTTPClient *http.Client
 	APIBaseURL string
-	// VFS, when non-nil, is consulted by every read before GitHub is. A path
-	// a registered mount owns is answered by that mount -- a virtual
-	// filesystem (diagnostics, workspace state, anything) exposed through the
-	// same read tools. Paths no mount owns fall through to the real GitHub
-	// API. See VFSMux.
+	// VFS, when non-nil, is consulted by every read before GitHub is.
 	VFS *VFSMux
 	// Tokens is the READ credential list; writes never touch it.
 	Tokens []GitHubToken
@@ -65,11 +61,7 @@ type GitHubConfig struct {
 	OnRateLimit func(RateLimitObservation)
 }
 
-// GitHub is the credential-rotating GitHub REST client: commits, pull
-// requests, issues, CI, file contents and the gated writes, with the token
-// rotation and the winning-token cache behind them. It also serves the VFS
-// mounts registered in its config, so virtual filesystems ride the same read
-// path as GitHub.
+// GitHub is the credential-rotating GitHub REST client.
 type GitHub struct {
 	hc          *http.Client
 	base        string
