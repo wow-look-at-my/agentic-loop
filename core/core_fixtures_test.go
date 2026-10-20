@@ -39,3 +39,6 @@ var openAIRoutedModelResponse string
 
 //go:embed testdata/thinking_repair_stream.yml
 var thinkingRepairStream string
+
+//go:embed testdata/gzip_anthropic_stream.yml
+var gzipAnthropicStream string

@@ -101,6 +101,9 @@ const DialectResponses = loop.DialectResponses
 var IsTransient = loop.IsTransient
 var IsContextOverflow = loop.IsContextOverflow
 
+// Run answers req in a fresh session, one turn: the one-shot entry point.
+var Run = loop.Run
+
 // DialectRefused: see docs/dialect-refusal.md
 var DialectRefused = loop.DialectRefused
 

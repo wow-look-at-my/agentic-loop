@@ -29,7 +29,7 @@ func (h *gzipSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // The transport advertises gzip when nothing set the header, and decodes a
-// gzipped answer transparently, so a compressed upstream is read as if it had
+// gzipped answer transparently. A compressed upstream is read as if it had
 // sent plaintext. Setting Accept-Encoding by hand would suppress that decoding
 // and hand the parser raw gzip bytes shaped like SSE, so no dialect sets it.
 func TestProvidersAdvertiseAndDecodeGzip(t *testing.T) {
@@ -46,12 +46,7 @@ func TestProvidersAdvertiseAndDecodeGzip(t *testing.T) {
 		{
 			name:  "anthropic",
 			build: func(t *testing.T, u string) Provider { return anProvider(t, u) },
-			body: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n" +
-				"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
-				"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n" +
-				"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
-				"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n" +
-				"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+			body:  gzipAnthropicStream,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
