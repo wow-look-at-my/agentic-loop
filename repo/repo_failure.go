@@ -237,6 +237,9 @@ func primaryDenialDetail(res GHResponse) string {
 // resource.
 func explainFailure(op, what string, res GHResponse, numTokens int, now time.Time) string {
 	lead := fmt.Sprintf("could not %s %s", op, what)
+	if res.target != "" {
+		lead += " (requested " + res.target + ")"
+	}
 	if rl, limited := classifyRateLimit(res, now); limited {
 		kind := "rate limit"
 		if rl.secondary {

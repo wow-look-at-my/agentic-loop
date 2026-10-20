@@ -14,14 +14,9 @@ func TestRepoStatusReportsCombinedStatusAndCheckRuns(t *testing.T) {
 	_, ex := newFakeGitHub(t, GitHubConfig{Cache: newMemCache()}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/commits/main/status":
-			return http.StatusOK, `{"state":"failure","sha":"0123456789abcdef","statuses":[
-				{"context":"all-builds","state":"failure","description":"1/2 builds failed","target_url":"https://example.com/checks"}
-			]}`
+			return http.StatusOK, fixtureStatusCombinedFailure
 		case "/repos/octo/hello/commits/main/check-runs":
-			return http.StatusOK, `{"check_runs":[
-				{"name":"build","status":"completed","conclusion":"failure","html_url":"https://example.com/run/1"},
-				{"name":"lint","status":"in_progress","conclusion":"","html_url":"https://example.com/run/2"}
-			]}`
+			return http.StatusOK, fixtureCheckRunsMixed
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -89,24 +84,14 @@ func TestRepoStatusFallsBackToActionsWhenCheckRunsAreUnreadable(t *testing.T) {
 	g, ex := newFakeGitHub(t, GitHubConfig{Tokens: []GitHubToken{{ID: "t1", Token: "tok"}}}, func(c ghCall) (int, string) {
 		switch c.Path {
 		case "/repos/octo/hello/commits/main/status":
-			return http.StatusOK, `{"state":"failure","sha":"0123456789abcdef","statuses":[
-				{"context":"all-builds","state":"failure","description":"1/2 builds failed"}
-			]}`
+			return http.StatusOK, fixtureStatusCombinedFailureBrief
 		case "/repos/octo/hello/commits/main/check-runs":
 			return http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`
 		case "/repos/octo/hello/actions/runs":
 			assert.Equal(t, "0123456789abcdef", c.Query.Get("head_sha"), "the Actions read must be scoped to the same commit")
-			return http.StatusOK, `{"total_count":1,"workflow_runs":[
-				{"id":77,"name":"CI","status":"completed","conclusion":"failure","html_url":"https://example.com/run/77"}
-			]}`
+			return http.StatusOK, fixtureWorkflowRunsOne
 		case "/repos/octo/hello/actions/runs/77/jobs":
-			return http.StatusOK, `{"total_count":2,"jobs":[
-				{"name":"build","status":"completed","conclusion":"failure","html_url":"https://example.com/job/1","steps":[
-					{"name":"checkout","status":"completed","conclusion":"success","number":1},
-					{"name":"go-toolchain","status":"completed","conclusion":"failure","number":2}
-				]},
-				{"name":"smoke","status":"completed","conclusion":"success","html_url":"https://example.com/job/2","steps":[]}
-			]}`
+			return http.StatusOK, fixtureRunJobsTwo
 		default:
 			t.Fatalf("unexpected path %q", c.Path)
 			return 0, ""
@@ -187,9 +172,7 @@ func TestRepoStatusActionsJobsFailureIsStatedUnderItsRun(t *testing.T) {
 		case "/repos/octo/hello/commits/main/check-runs":
 			return http.StatusForbidden, `{"message":"no"}`
 		case "/repos/octo/hello/actions/runs":
-			return http.StatusOK, `{"total_count":1,"workflow_runs":[
-				{"id":9,"name":"CI","status":"completed","conclusion":"failure","html_url":"https://example.com/run/9"}
-			]}`
+			return http.StatusOK, fixtureWorkflowRunsOneAlt
 		case "/repos/octo/hello/actions/runs/9/jobs":
 			return http.StatusInternalServerError, `{"message":"boom"}`
 		default:

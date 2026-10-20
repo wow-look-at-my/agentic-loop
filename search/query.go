@@ -148,16 +148,8 @@ func (i *Index) searchText(ctx context.Context, owner, query string, limit int) 
 	if match == "" {
 		return nil, nil
 	}
-	// Ties break on recency. bm25 gives identical scores to messages that use
-	// a term. The same way -- which, in a chat history, is most of them --
-	// and the newer of equally relevant messages is the being looked for.
-	rows, err := i.sql.QueryContext(ctx, `
-		SELECT m.message_id, bm25(messages_fts)
-		FROM messages_fts
-		JOIN indexed_messages m ON m.rowid = messages_fts.rowid
-		WHERE messages_fts MATCH ? AND m.owner = ?
-		ORDER BY bm25(messages_fts), m.created_at DESC
-		LIMIT ?`, match, owner, limit)
+	// Ties break on recency: of equally relevant messages, the newer is meant.
+	rows, err := i.sql.QueryContext(ctx, textSearchSQL, match, owner, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search: text query: %w", err)
 	}
@@ -212,11 +204,7 @@ func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit 
 		return nil, fmt.Errorf("search: %q returned a vector with no direction for the query", q.Model)
 	}
 
-	rows, err := i.sql.QueryContext(ctx, `
-		SELECT e.message_id, e.vector
-		FROM embeddings e
-		JOIN indexed_messages m ON m.message_id = e.message_id
-		WHERE m.owner = ? AND e.model = ?`, q.Owner, q.Model)
+	rows, err := i.sql.QueryContext(ctx, vectorScanSQL, q.Owner, q.Model)
 	if err != nil {
 		return nil, fmt.Errorf("search: vector scan: %w", err)
 	}
@@ -271,12 +259,7 @@ func (i *Index) searchSemantic(ctx context.Context, q Query, text string, limit 
 // The needle is escaped at the binding site so LIKE's %, _ and \ match
 // literally -- searching "%" finds "%", not every "...".
 func (i *Index) searchSubstring(ctx context.Context, owner, query string, limit int) ([]Hit, error) {
-	rows, err := i.sql.QueryContext(ctx, `
-		SELECT message_id, conversation_id, role, content, position, created_at
-		FROM indexed_messages
-		WHERE owner = ? AND content LIKE '%' || ? || '%' ESCAPE '\'
-		ORDER BY created_at DESC
-		LIMIT ?`, owner, escapeLike(query), limit)
+	rows, err := i.sql.QueryContext(ctx, substringSearchSQL, owner, escapeLike(query), limit)
 	if err != nil {
 		return nil, fmt.Errorf("search: substring query: %w", err)
 	}
@@ -322,10 +305,8 @@ func (i *Index) hydrate(ctx context.Context, owner string, ranked []Hit) ([]Hit,
 		args = append(args, h.MessageID)
 		placeholders[n] = "?"
 	}
-	rows, err := i.sql.QueryContext(ctx, `
-		SELECT message_id, conversation_id, role, content, position, created_at
-		FROM indexed_messages
-		WHERE owner = ? AND message_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	rows, err := i.sql.QueryContext(ctx,
+		hydratePrefixSQL+strings.Join(placeholders, ",")+")", args...)
 	if err != nil {
 		return nil, fmt.Errorf("search: hydrate hits: %w", err)
 	}

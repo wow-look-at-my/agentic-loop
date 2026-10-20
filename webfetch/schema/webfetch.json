@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "The http or https URL to fetch. Userinfo credentials are rejected."
+    },
+    "summary_prompt": {
+      "type": "string",
+      "description": "Optional instructions for a second call to the same model to summarize the cleaned content."
+    }
+  },
+  "required": ["url"]
+}

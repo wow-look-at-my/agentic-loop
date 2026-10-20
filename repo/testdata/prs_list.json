@@ -1,0 +1,4 @@
+[
+  {"number":7,"title":"Add feature","state":"open","draft":true,"updated_at":"2026-07-01T10:00:00Z","user":{"login":"alice"},"head":{"ref":"feature-x"},"base":{"ref":"main"}},
+  {"number":5,"title":"Fix bug","state":"open","draft":false,"updated_at":"2026-06-30T09:00:00Z","user":{"login":"bob"},"head":{"ref":"bugfix"},"base":{"ref":"main"}}
+]

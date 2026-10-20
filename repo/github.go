@@ -58,7 +58,7 @@ type GitHubConfig struct {
 	Tokens []GitHubToken
 	// WriteTokens is the WRITE list; nil means this client cannot write at all.
 	WriteTokens []GitHubToken
-	// NoAnonymous drops the unauthenticated attempt from every read order.
+	// NoAnonymous drops the unauthenticated attempt from EVERY read order this client issues.
 	NoAnonymous bool
 	Cache       RepoKeyCache
 	// OnRateLimit hears every response's core-quota headers. see rate_limit_headers.go

@@ -1,0 +1,11 @@
+{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "content": "on it",
+      "reasoning": "the user wants a search",
+      "tool_calls": [{"id":"c1","function":{"name":"grep","arguments":"{\"q\":\"x\"}"}}]
+    }
+  }],
+  "usage": {"prompt_tokens":11,"completion_tokens":4,"total_tokens":15,"cost":0.5}
+}

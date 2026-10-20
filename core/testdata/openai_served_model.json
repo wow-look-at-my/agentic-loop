@@ -1,0 +1,5 @@
+{
+  "model": "deepseek/deepseek-v4.1-flash",
+  "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
+  "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}
+}

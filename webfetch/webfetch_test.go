@@ -3,6 +3,7 @@ package webfetch
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	agentic "github.com/wow-look-at-my/agentic-loop"
 	"github.com/wow-look-at-my/agentic-loop/internal/jsontest"
@@ -19,6 +20,9 @@ import (
 
 // wfCall builds a web_fetch agentic.ToolCall with the given JSON arguments.
 func wfCall(args string) json.RawMessage { return json.RawMessage(args) }
+
+//go:embed testdata/cleaned_page.html
+var cleanedPageHTML string
 
 func TestWebFetchAdvertisement(t *testing.T) {
 	exec := NewWebFetchTool(WebFetchConfig{})
@@ -38,9 +42,7 @@ func TestWebFetchSuccessCleansHTML(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(`<html><head><title>x</title><style>b{}</style></head>
-<body><!-- hidden --><script>evil()</script>
-<h1>Big   Title</h1><p>Hello &amp; welcome.<br>Line two.</p></body></html>`))
+		_, _ = w.Write([]byte(cleanedPageHTML))
 	}))
 	defer srv.Close()
 
