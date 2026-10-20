@@ -1,4 +1,4 @@
-package agentic
+package loop
 
 import (
 	"context"
@@ -28,23 +28,23 @@ func (q *queueInbox) push(m Message) { q.msgs = append(q.msgs, m) }
 // run starts is appended to the transcript and answered by the model.
 func TestRunDrainsInboxBeforeEachTurn(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
-		{comp: assistantComp("first answer")},
-		{comp: assistantComp("second answer")},
+		{comp: assistantComp("the answer")},
 	}}
 	// The inbox holds one message before the run; the model answers it on its first call. No message is dropped.
 	inbox := &queueInbox{}
 	inbox.push(Message{Role: RoleUser, Content: "queued notice"})
 
 	cfg := Config{Provider: provider, Inbox: inbox}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg,
+		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	// The model saw both the original user message and the queued notice.
-	require.Len(t, provider.reqs, 2)
+	require.Len(t, provider.reqs, 1)
 	got := provider.reqs[0].Messages
 	require.Equal(t, "go", got[len(got)-2].Content)
 	require.Equal(t, "queued notice", got[len(got)-1].Content)
-	require.Equal(t, "second answer", res.Final.Content)
+	require.Equal(t, "the answer", res.Final.Content)
 	require.Empty(t, inbox.msgs, "inbox must be drained")
 }
 
@@ -52,26 +52,25 @@ func TestRunDrainsInboxBeforeEachTurn(t *testing.T) {
 // that arrives DURING the final turn is still answered before the run ends.
 func TestRunDrainsInboxAtFinish(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
-		// First turn: model answers, asks for no tools.
+		// First turn: the model answers and asks for no tools.
 		{comp: assistantComp("done")},
-		// finish() drains, finds the message, and loops: the model answers it.
+		// The finish point drains, finds the message, and loops: the model answers it.
 		{comp: assistantComp("answered the notice")},
 	}}
 	inbox := &queueInbox{}
+	events := &Events{}
+	// A hook that pushes a message DURING the first turn, simulating an
+	// external event arriving mid-run.
+	keep(t, &events.OnTurnEnd, func(TurnEndEvent) error {
+		if len(provider.reqs) == 1 {
+			inbox.push(Message{Role: RoleUser, Content: "late notice"})
+		}
+		return nil
+	})
 
-	cfg := Config{
-		Provider: provider,
-		Inbox:    inbox,
-		// A hook that pushes a message DURING the first turn, simulating an
-		// external event arriving mid-run.
-		Events: Events{OnTurnEnd: func(_ int, _ *Completion, _ error) error {
-			if len(provider.reqs) == 1 {
-				inbox.push(Message{Role: RoleUser, Content: "late notice"})
-			}
-			return nil
-		}},
-	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	cfg := Config{Provider: provider, Inbox: inbox, Events: events}
+	res, err := runTurn(context.Background(), cfg,
+		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	// The run did not end after the first turn: it drained the inbox, found the late message, and answered it.
@@ -85,7 +84,8 @@ func TestRunNoInboxIsNoop(t *testing.T) {
 	provider := &scriptProvider{steps: []scriptStep{
 		{comp: assistantComp("done")},
 	}}
-	res, err := Run(context.Background(), Config{Provider: provider}, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), Config{Provider: provider},
+		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 	require.Len(t, provider.reqs, 1)
 	require.Equal(t, "done", res.Final.Content)

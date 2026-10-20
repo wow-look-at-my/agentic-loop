@@ -82,12 +82,26 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 		res.Final = final
 		return res, err
 	}
+	// drainInboxNow appends every message the host's inbox holds, announcing
+	// each, and reports whether any arrived.
+	drainInboxNow := func() bool {
+		msgs := drainInbox(ctx, cfg.Inbox)
+		for _, msg := range msgs {
+			cfg.Events.emitSystemMessage(SystemMessageEvent{Msg: msg})
+			s.appendFlat(msg)
+		}
+		return len(msgs) > 0
+	}
 	// answer ends turn on final: the stop hook is asked, the host's row is
 	// finalized, and a queued message takes another turn instead (nil result).
 	answer := func(turn int, comp *Completion, id MessageID, final Message) *Result {
 		cfg.Events.emitStop(StopEvent{Turn: turn + 1, Comp: comp})
 		finalizeAssistant(FinalizeAssistantEvent{ID: id, Msg: final, Status: "complete"})
 		if cfg.Messages.Pending() && moreTurnsAllowed(turn) {
+			return nil
+		}
+		// The inbox is drained at the finish point too.
+		if moreTurnsAllowed(turn) && drainInboxNow() {
 			return nil
 		}
 		r, _ := done(final, nil)
@@ -131,6 +145,8 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 			}
 		}
 		drain()
+		// Inbox: messages the host injected while the model was working are appended now, so this turn's call answers them.
+		drainInboxNow()
 		// Resource watch: poll at the turn boundary; a non-empty poll is delivered as a notice.
 		if cfg.ResourceWatcher != nil {
 			poll, perr := cfg.ResourceWatcher.Poll(ctx)

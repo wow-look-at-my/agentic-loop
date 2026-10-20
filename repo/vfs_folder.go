@@ -1,4 +1,4 @@
-package agentic
+package repo
 
 import (
 	"context"
@@ -6,14 +6,25 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/wow-look-at-my/agentic-loop/vfs"
 )
 
-// vfsFolder adapts one registered VFS mount to the generic Folder interface
-// used by the file tools.
+// vfsFolder adapts one registered VFS mount to the folder-provider interface
+// the file tools use.
 type vfsFolder struct {
 	name string
-	vfs  VFS
+	fs   VFS
 }
+
+// NewVFSFolder adapts a VFS mounted at name (without the leading slash) to
+// the folder-provider interface.
+func NewVFSFolder(name string, fs VFS) vfs.IFolderProvider {
+	return &vfsFolder{name: strings.Trim(name, "/"), fs: fs}
+}
+
+// Path is the virtual path the mount lives at.
+func (f *vfsFolder) Path() string { return "/" + f.name }
 
 func (f *vfsFolder) Display(p string) string { return "/" + f.name + strings.TrimPrefix(p, "/"+f.name) }
 
@@ -29,35 +40,35 @@ func (f *vfsFolder) relative(p string) (string, bool) {
 	return strings.TrimPrefix(rest, "/"), true
 }
 
-func (f *vfsFolder) List(ctx context.Context, p string) (Listing, error) {
+func (f *vfsFolder) List(ctx context.Context, p string) (vfs.Listing, error) {
 	rel, ok := f.relative(p)
 	if !ok {
-		return Listing{}, &vfsPathError{path: p, status: http.StatusNotFound}
+		return vfs.Listing{}, &vfsPathError{path: p, status: http.StatusNotFound}
 	}
-	entries, err := f.vfs.List(ctx, rel, FetchOptions{})
+	entries, err := f.fs.List(ctx, rel, FetchOptions{})
 	if err != nil {
-		return Listing{}, err
+		return vfs.Listing{}, err
 	}
-	out := Listing{Entries: make([]DirEntry, 0, len(entries))}
+	out := vfs.Listing{Entries: make([]vfs.DirEntry, 0, len(entries))}
 	for _, e := range entries {
-		out.Entries = append(out.Entries, DirEntry{Name: e.Name, Dir: e.IsDir})
+		out.Entries = append(out.Entries, vfs.DirEntry{Name: e.Name, Dir: e.IsDir})
 	}
 	return out, nil
 }
 
-func (f *vfsFolder) Read(ctx context.Context, p string) (File, error) {
+func (f *vfsFolder) Read(ctx context.Context, p string) (vfs.File, error) {
 	rel, ok := f.relative(p)
 	if !ok {
-		return File{}, &vfsPathError{path: p, status: http.StatusNotFound}
+		return vfs.File{}, &vfsPathError{path: p, status: http.StatusNotFound}
 	}
-	res, err := f.vfs.Read(ctx, rel, FetchOptions{})
+	res, err := f.fs.Read(ctx, rel, FetchOptions{})
 	if err != nil {
-		return File{}, err
+		return vfs.File{}, err
 	}
 	if res.Status() < 200 || res.Status() >= 300 {
-		return File{}, &vfsPathError{path: p, status: res.Status()}
+		return vfs.File{}, &vfsPathError{path: p, status: res.Status()}
 	}
-	return File{Content: string(res.Body()), TruncatedNote: truncationNote(res)}, nil
+	return vfs.File{Content: string(res.Body()), TruncatedNote: truncationNote(res)}, nil
 }
 
 func (f *vfsFolder) Find(ctx context.Context, p, pattern string, limit int) ([]string, error) {
@@ -67,7 +78,7 @@ func (f *vfsFolder) Find(ctx context.Context, p, pattern string, limit int) ([]s
 		if len(out) >= limit {
 			return nil
 		}
-		entries, err := f.vfs.List(ctx, rel, FetchOptions{})
+		entries, err := f.fs.List(ctx, rel, FetchOptions{})
 		if err != nil {
 			return err
 		}
@@ -97,9 +108,9 @@ func (f *vfsFolder) Find(ctx context.Context, p, pattern string, limit int) ([]s
 	return nil, &vfsPathError{path: p, status: http.StatusNotFound}
 }
 
-func (f *vfsFolder) Grep(ctx context.Context, p string, q GrepQuery) (GrepResult, error) {
-	hits := GrepResult{}
-	files, err := f.Find(ctx, p, "*", ListMaxEntries)
+func (f *vfsFolder) Grep(ctx context.Context, p string, q vfs.GrepQuery) (vfs.GrepResult, error) {
+	hits := vfs.GrepResult{}
+	found, err := f.Find(ctx, p, "*", vfs.ListMaxEntries)
 	if err != nil {
 		return hits, err
 	}
@@ -113,7 +124,7 @@ func (f *vfsFolder) Grep(ctx context.Context, p string, q GrepQuery) (GrepResult
 			return hits, err
 		}
 	}
-	for _, filePath := range files {
+	for _, filePath := range found {
 		if !matchGlobs(filePath, q.Globs) {
 			continue
 		}
@@ -132,7 +143,7 @@ func (f *vfsFolder) Grep(ctx context.Context, p string, q GrepQuery) (GrepResult
 				matched = strings.Contains(strings.ToLower(line), strings.ToLower(q.Pattern))
 			}
 			if matched {
-				hits.Hits = append(hits.Hits, GrepHit{Path: filePath, Line: n + 1, Text: line})
+				hits.Hits = append(hits.Hits, vfs.GrepHit{Path: filePath, Line: n + 1, Text: line})
 				matchedFile = true
 				if len(hits.Hits) >= q.MaxHits {
 					hits.Truncated = true

@@ -1,4 +1,4 @@
-package agentic
+package repo
 
 import (
 	"context"
@@ -36,15 +36,15 @@ func TestVFSMuxRoutesByLongestPrefix(t *testing.T) {
 	mux.Mount("/diag/deep", deep)
 
 	// Exact prefix.
-	vfs, rest, ok := mux.Resolve("/diag/rate_limit")
+	fs, rest, ok := mux.Resolve("/diag/rate_limit")
 	require.True(t, ok)
-	require.Equal(t, diag, vfs)
+	require.Equal(t, diag, fs)
 	require.Equal(t, "rate_limit", rest)
 
 	// Longest prefix wins.
-	vfs, rest, ok = mux.Resolve("/diag/deep/x")
+	fs, rest, ok = mux.Resolve("/diag/deep/x")
 	require.True(t, ok)
-	require.Equal(t, deep, vfs)
+	require.Equal(t, deep, fs)
 	require.Equal(t, "x", rest)
 
 	// Unregistered path falls through.
@@ -53,9 +53,9 @@ func TestVFSMuxRoutesByLongestPrefix(t *testing.T) {
 }
 
 func TestVFSMountAnsweredByFetchURL(t *testing.T) {
-	vfs := &staticVFS{files: map[string]string{"rate_limit": `{"core":{"remaining":18}}`}}
+	fs := &staticVFS{files: map[string]string{"rate_limit": `{"core":{"remaining":18}}`}}
 	mux := NewVFSMux()
-	mux.Mount("/diag", vfs)
+	mux.Mount("/diag", fs)
 
 	gh := NewGitHub(GitHubConfig{VFS: mux})
 	res, err := gh.FetchURL(context.Background(), "", "/diag/rate_limit", "application/vnd.github+json")
@@ -65,7 +65,7 @@ func TestVFSMountAnsweredByFetchURL(t *testing.T) {
 }
 
 func TestVFSUnregisteredFallsThroughToGitHub(t *testing.T) {
-	// A mux with no matching mount must not intercept: the request goes to GitHub.
+	// A mux with no matching mount must not intercept: the request goes on to GitHub.
 	mux := NewVFSMux()
 	mux.Mount("/diag", &staticVFS{})
 	gh := NewGitHub(GitHubConfig{VFS: mux})

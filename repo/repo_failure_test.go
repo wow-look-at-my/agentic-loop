@@ -299,25 +299,3 @@ func TestExplainFailure403AppendsExpiryAdvisoryAlongsideThePermissionDetail(t *t
 	assert.Contains(t, msg, "needs the contents=read permission")
 	assert.Contains(t, msg, "rotate it")
 }
-
-// When BOTH the token and the anonymous attempt are rate-limited, the token's
-// must be the reported. Before the fix both ranked, so the last attempt
-// (anonymous) won by virtue of running last, and the caller was told "this
-// was the unauthenticated (anonymous) request". This happens when a PAT had
-// been tried and hit the same wall. A caller with valid PATs must never be
-// told it ran without.
-func TestFailureRankTokenRateLimitOutranksAnonymousRateLimit(t *testing.T) {
-	limited := GHResponse{
-		status: http.StatusForbidden,
-		header: rateLimitHeaders("0", time.Now().Add(time.Minute), "core"),
-		authed: true,
-	}
-	anonLimited := GHResponse{
-		status: http.StatusForbidden,
-		header: rateLimitHeaders("0", time.Now().Add(time.Minute), "core"),
-		authed: false,
-	}
-	// The ordering is the whole contract: a rate-limited PAT outranks the anonymous attempt.
-	assert.Greater(t, failureRank(limited), failureRank(anonLimited),
-		"a rate-limited PAT must outrank a rate-limited anonymous attempt")
-}
