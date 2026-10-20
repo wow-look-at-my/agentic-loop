@@ -102,20 +102,28 @@ func completionIsEmpty(comp *commonai.Completion) bool {
 // retryComplete runs model call with retry. conditions retry: the attempt
 // streamed nothing and the error is transient (a nil completion, per the
 // Provider contract -- a delta reached the caller's sink, re-sending would
-// duplicate it), or the attempt succeeded but came back genuinely empty (no
-// text, no tool call, no thinking). An empty completion is never mid-way
-// through anything, nothing was emitted to the caller's sink either.
-// Re-sending it is exactly as safe as re-sending a nothing-streamed error.
-//
-// Every retry is announced through StreamEvents.OnRetry BEFORE the backoff. A
-// waiting caller can show what failed and what is being waited on rather than
-// sitting silent through minutes of backoff.
+// duplicate it), or the attempt succeeded but came back genuinely empty.
 func retryComplete(ctx context.Context, p commonai.Provider, policy RetryPolicy, req commonai.Request, ev *commonai.StreamEvents) (*commonai.Completion, error) {
+	return retryWith(ctx, policy,
+		func() (*commonai.Completion, error) { return p.Complete(ctx, req, ev) },
+		ev.EmitRetry)
+}
+
+// retryStream is retryComplete into a CallSink: the sink hears each retry, so the call's nodes keep
+// what they received as a retry revision.
+func retryStream(ctx context.Context, p commonai.Provider, policy RetryPolicy, req commonai.Request, out commonai.CallSink) (*commonai.Completion, error) {
+	return retryWith(ctx, policy,
+		func() (*commonai.Completion, error) { return commonai.StreamCall(ctx, p, req, out) },
+		func(a commonai.RetryAttempt) error { out.Retry(a); return out.Err() })
+}
+
+func retryWith(ctx context.Context, policy RetryPolicy, send func() (*commonai.Completion, error),
+	announce func(commonai.RetryAttempt) error) (*commonai.Completion, error) {
 	attempts := policy.Attempts()
 	var comp *commonai.Completion
 	var err error
 	for attempt := 1; ; attempt++ {
-		comp, err = p.Complete(ctx, req, ev)
+		comp, err = send()
 		empty := err == nil && completionIsEmpty(comp)
 		// comp != nil (on an error) IS "this attempt streamed something": re-sending would duplicate what the caller already saw.
 		retryable := empty || (err != nil && comp == nil && commonai.IsTransient(err))
@@ -127,7 +135,7 @@ func retryComplete(ctx context.Context, p commonai.Provider, policy RetryPolicy,
 			retryErr = errEmptyCompletion
 		}
 		delay := policy.delay(attempt)
-		if cberr := ev.EmitRetry(commonai.RetryAttempt{
+		if cberr := announce(commonai.RetryAttempt{
 			Attempt: attempt, Of: attempts, Delay: delay, Err: retryErr,
 		}); cberr != nil {
 			// The caller pulled the plug on retrying; surface their error, not the upstream's.
@@ -161,6 +169,11 @@ func Retrying(inner commonai.Provider, policy *RetryPolicy) commonai.Provider {
 // Complete implements commonai.Provider.
 func (r *retryingProvider) Complete(ctx context.Context, req commonai.Request, ev *commonai.StreamEvents) (*commonai.Completion, error) {
 	return retryComplete(ctx, r.inner, r.policy, req, ev)
+}
+
+// Stream implements commonai.Streamer.
+func (r *retryingProvider) Stream(ctx context.Context, req commonai.Request, out commonai.CallSink) (*commonai.Completion, error) {
+	return retryStream(ctx, r.inner, r.policy, req, out)
 }
 
 // ModelLimits implements commonai.ModelLimiter by asking the wrapped provider.

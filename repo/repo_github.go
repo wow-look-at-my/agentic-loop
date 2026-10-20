@@ -23,16 +23,9 @@ type GHResponse struct {
 	ctype     string
 	header    http.Header
 	truncated bool
-	// target is the FULL URL this response was fetched from — scheme, host,
-	// path, query. Without it a failure cannot say which server answered:
-	// api.github.com and github-state-mirror.pazer.io look identical once the
-	// response is reduced to status and headers, which is exactly the detail
-	// that shows whether a request reached the configured mirror or leaked to
-	// the public API.
+	// target is the FULL URL this response was fetched from — scheme, host, path, query.
 	target string
-	// authed records whether the credential that produced this response was a
-	// token. A failure from a token explains far more than the anonymous
-	// attempt's, which is what failureRank uses it for.
+	// authed records whether the credential that produced this response was a token.
 	authed bool
 	// credentialName is the Settings label of the token that produced this response.
 	credentialName string
@@ -50,9 +43,7 @@ func (r GHResponse) ContentType() string { return r.ctype }
 // Truncated reports that the body hit the read cap, so it is a PREFIX.
 func (r GHResponse) Truncated() bool { return r.truncated }
 
-// Target is the full URL this response was fetched from, e.g.
-// https://api.github.com/repos/octo/hello/contents/README.md. Empty only for
-// hand-built GHResponse test values.
+// Target is the full URL this response was fetched from, e.g. https://api.github.com/repos/octo/hello/contents/README.md.
 func (r GHResponse) Target() string { return r.target }
 
 // FetchOptions tunes one repo fetch.
@@ -124,14 +115,13 @@ type tokenAttempt struct {
 }
 
 // tokenOrder is the credential order every repo read tries: the cached winner
-// for cacheKey first (if any; an empty cacheKey skips the cache), then every
+// for cacheKey first (if any. An empty cacheKey skips the cache), then every
 // configured token, then an unauthenticated attempt (so public resources work
-// without a PAT) unless NoAnonymous drops it OR the client was configured with
-// NoAnonymous -- the host's policy that a server holding at least one PAT must
-// never let a read fall through to an anonymous request. Duplicates are
-// dropped so each distinct credential is tried once. Writes use
-// writeTokenOrder (repo_write.go) instead, which never falls through to
-// unauthenticated.
+// without a PAT). This happens unless NoAnonymous drops it OR the client was
+// configured with NoAnonymous -- the host's policy. That policy is one that a
+// server holding at least one PAT must never let a read fall through to an
+// anonymous request. Duplicates are dropped so each distinct credential is
+// tried once.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()

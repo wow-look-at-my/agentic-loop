@@ -3,10 +3,9 @@ package commonai
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 )
 
-// anEvent is one decoded Messages API stream event; the payload's type field
+// anEvent is decoded Messages API stream event; the payload's type field
 // discriminates, so the SSE event name is not needed.
 type anEvent struct {
 	Type         string          `json:"type"`
@@ -30,9 +29,7 @@ type anContentBlock struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Text is the block's starting text. A streamed text block opens empty and
-	// fills by delta, but a block replayed from a non-streaming response
-	// carries it here.
+	// Text is the block's starting text; streamed blocks fill it by delta, replayed ones carry it.
 	Text      string `json:"text"`
 	Thinking  string `json:"thinking"`
 	Signature string `json:"signature"`
@@ -53,7 +50,7 @@ type anDelta struct {
 
 // anUsage is the wire usage of message_start / message_delta. input_tokens
 // EXCLUDES cached tokens on this dialect; the cache fields are pointers so an
-// absent field is distinguishable from an explicit zero.
+// absent field is distinguishable from an explicit.
 type anUsage struct {
 	InputTokens              int  `json:"input_tokens"`
 	OutputTokens             *int `json:"output_tokens"`
@@ -61,17 +58,15 @@ type anUsage struct {
 	CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
 }
 
-// anError is the payload of an error event; Type discriminates against the
-// documented error-type table (the human-readable message stays in the raw
-// event JSON, which becomes the APIError body).
+// anError is an error event's payload; Type keys the error table, message in the APIError body.
 type anError struct {
 	Type string `json:"type"`
 }
 
 // anthropicErrorStatus maps a stream error event's error type onto the HTTP
-// status Anthropic documents for it, so an in-stream error classifies for
-// retry exactly like its non-2xx counterpart. Unrecognized types map to 500:
-// an unknown in-stream failure is a server-side abort, and treating it as
+// status Anthropic documents for it. An in-stream error classifies for
+// retry exactly like its non-2xx counterpart. Unrecognized types map to: an
+// unknown in-stream failure is a server-side abort, and treating it as
 // transient is the safe default.
 func anthropicErrorStatus(errType string) int {
 	switch errType {
@@ -95,47 +90,12 @@ func anthropicErrorStatus(errType string) int {
 	return 500
 }
 
-// anBlock accumulates one content block across start/delta/stop events.
-type anBlock struct {
-	typ       string
-	id        string
-	name      string
-	text      strings.Builder
-	json      strings.Builder
-	thinking  strings.Builder
-	signature strings.Builder
-	data      string
-}
-
-// part renders one content block as the part it is, or nil when the block
-// carried nothing worth keeping.
-func (b *anBlock) part() Part {
-	switch b.typ {
-	case "text":
-		if s := b.text.String(); s != "" {
-			return TextPart{Text: s}
-		}
-	case "tool_use":
-		return ToolCallPart{ID: b.id, Name: b.name, Arguments: toolArgs(b.json.String())}
-	case "thinking":
-		return ThinkingPart{Text: b.thinking.String(), Signature: b.signature.String()}
-	case "redacted_thinking":
-		return RedactedThinkingPart{Data: b.data}
-	}
-	return nil
-}
-
-// anStream accumulates one streamed Messages API response.
+// anStream writes a streamed Messages API response into a CallSink, one node per content block.
 type anStream struct {
-	ev *StreamEvents
-	// blocks and order together preserve what this layer actually sends: a
-	// numbered sequence of content blocks, which is why a reply whose text
-	// brackets a thinking block reads the way the model wrote it. A finished
-	// block is delivered through OnPart as it stops, and the final parts are
-	// built from all of them -- so a stream cut mid-block still yields the
-	// partial block it was filling, which OnPart never announced.
-	blocks map[int]*anBlock
-	order  []int
+	out CallSink
+	// blocks maps a content-block index to its node; nodes keeps the order the blocks began.
+	blocks map[int]IMessage
+	nodes  []IMessage
 	stop   string
 
 	inputTokens  int
@@ -148,22 +108,60 @@ type anStream struct {
 	sawData bool
 }
 
-// blockFor returns the block at index, opening one of the given type if no
-// content_block_start announced it. A delta with no block is malformed, but
-// the text in it is still what the model said, and a message assembled from
-// blocks would otherwise drop it silently -- a wrong answer that reads like a
-// right one.
-func (st *anStream) blockFor(index int, typ string) *anBlock {
-	if b := st.blocks[index]; b != nil {
-		return b
-	}
-	b := &anBlock{typ: typ}
-	st.blocks[index] = b
-	st.order = append(st.order, index)
-	return b
+func newANStream(out CallSink) *anStream {
+	return &anStream{out: out, blocks: map[int]IMessage{}}
 }
 
-// onData decodes one stream payload. Unparseable payloads are tolerated
+func (st *anStream) start(index int, n IMessage) {
+	st.blocks[index] = n
+	st.nodes = append(st.nodes, n)
+	st.out.Start(n)
+}
+
+// blockFor is the node at index. A delta for a block that was never announced still keeps its text.
+func (st *anStream) blockFor(index int, mk func() IMessage) IMessage {
+	if n := st.blocks[index]; n != nil {
+		return n
+	}
+	n := mk()
+	st.start(index, n)
+	return n
+}
+
+// startBlock makes the node a content_block_start announces.
+func (st *anStream) startBlock(index int, cb *anContentBlock, data []byte) {
+	if old := st.blocks[index]; old != nil && !old.Final() {
+		st.out.Done(old)
+	}
+	switch cb.Type {
+	case "text":
+		n := NewAssistant()
+		st.start(index, n)
+		if cb.Text != "" {
+			st.out.Delta(n, FieldText, cb.Text)
+		}
+	case "tool_use":
+		st.start(index, NewToolCall(CallID(cb.ID), cb.Name))
+	case "thinking":
+		n := NewThinking(DialectAnthropic)
+		n.Signature = NewEncryptedReasoning(cb.Signature)
+		st.start(index, n)
+		if cb.Thinking != "" {
+			st.out.Delta(n, FieldText, cb.Thinking)
+		}
+	case "redacted_thinking":
+		n := &ThinkingMessage{Text: FinishedString(""), Redacted: NewEncryptedReasoning(cb.Data), Dialect: DialectAnthropic}
+		st.start(index, n)
+	default:
+		var raw struct {
+			ContentBlock json.RawMessage `json:"content_block"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		st.start(index, &RawBlockMessage{Type: cb.Type, JSON: raw.ContentBlock, Dialect: DialectAnthropic})
+	}
+}
+
+// onData decodes stream payload. Unparseable payloads are tolerated
 // silently; ping events are ignored; an error event aborts the stream with
 // the server's message.
 func (st *anStream) onData(data []byte) error {
@@ -186,26 +184,16 @@ func (st *anStream) onData(data []byte) error {
 			if u.OutputTokens != nil {
 				st.outputTokens = *u.OutputTokens
 			}
-			return st.ev.EmitUsage(st.currentUsage())
+			st.out.Usage(st.currentUsage())
+			return st.out.Err()
 		}
 	case "content_block_start":
 		st.sawData = true
 		if msg.ContentBlock == nil {
 			return nil
 		}
-		b := &anBlock{
-			typ:  msg.ContentBlock.Type,
-			id:   msg.ContentBlock.ID,
-			name: msg.ContentBlock.Name,
-			data: msg.ContentBlock.Data,
-		}
-		b.thinking.WriteString(msg.ContentBlock.Thinking)
-		b.signature.WriteString(msg.ContentBlock.Signature)
-		b.text.WriteString(msg.ContentBlock.Text)
-		if _, seen := st.blocks[msg.Index]; !seen {
-			st.order = append(st.order, msg.Index)
-		}
-		st.blocks[msg.Index] = b
+		st.startBlock(msg.Index, msg.ContentBlock, data)
+		return st.out.Err()
 	case "content_block_delta":
 		st.sawData = true
 		if msg.Delta == nil {
@@ -213,31 +201,29 @@ func (st *anStream) onData(data []byte) error {
 		}
 		switch msg.Delta.Type {
 		case "text_delta":
-			st.blockFor(msg.Index, "text").text.WriteString(msg.Delta.Text)
-			return st.ev.EmitText(msg.Delta.Text)
+			n := st.blockFor(msg.Index, func() IMessage { return NewAssistant() })
+			st.out.Delta(n, FieldText, msg.Delta.Text)
 		case "thinking_delta":
-			st.blockFor(msg.Index, "thinking").thinking.WriteString(msg.Delta.Thinking)
-			return st.ev.EmitReasoning(msg.Delta.Thinking)
+			n := st.blockFor(msg.Index, func() IMessage { return NewThinking(DialectAnthropic) })
+			st.out.Delta(n, FieldText, msg.Delta.Thinking)
 		case "signature_delta":
-			if b := st.blocks[msg.Index]; b != nil {
-				b.signature.WriteString(msg.Delta.Signature)
+			// signature_delta carries the whole signature: it assigns, never appends.
+			if t, ok := st.blocks[msg.Index].(*ThinkingMessage); ok && msg.Delta.Signature != "" {
+				t.Signature = NewEncryptedReasoning(msg.Delta.Signature)
 			}
 		case "input_json_delta":
-			if b := st.blocks[msg.Index]; b != nil {
-				b.json.WriteString(msg.Delta.PartialJSON)
+			if tc, ok := st.blocks[msg.Index].(*ToolCallMessage); ok {
+				st.out.Delta(tc, FieldArguments, msg.Delta.PartialJSON)
 			}
 		}
+		return st.out.Err()
 	case "content_block_stop":
 		st.sawData = true
-		// The block is finished, which is the only moment it carries
-		// everything that goes on its element -- a thinking block's signature
-		// arrives after its text, and the blocks are the order the message is
-		// in.
-		if b := st.blocks[msg.Index]; b != nil {
-			if p := b.part(); p != nil {
-				return st.ev.EmitPart(p)
-			}
+		// The finished block has everything: a thinking signature arrives after its text.
+		if n := st.blocks[msg.Index]; n != nil && !n.Final() {
+			st.out.Done(n)
 		}
+		return st.out.Err()
 	case "message_delta":
 		st.sawData = true
 		if msg.Delta != nil && msg.Delta.StopReason != "" {
@@ -247,19 +233,13 @@ func (st *anStream) onData(data []byte) error {
 			// Cumulative snapshot: overwrite, never sum.
 			st.haveUsage = true
 			st.outputTokens = *msg.Usage.OutputTokens
-			return st.ev.EmitUsage(st.currentUsage())
+			st.out.Usage(st.currentUsage())
+			return st.out.Err()
 		}
 	case "message_stop":
 		st.sawData = true
 	case "error":
-		// The Messages API can reject or abort a request in-stream: an HTTP
-		// 200 whose stream carries an error event (overloaded_error arrives
-		// this way). Map the event onto the same *APIError a non-2xx response
-		// produces -- status from the documented error-type table, body = the
-		// raw event JSON -- so retry classification (IsTransient) and overflow
-		// detection work identically on both delivery paths. Deliberately not
-		// marked as sawData: when the error is the first thing on the stream,
-		// the call stays retryable.
+		// In-stream error events map to *APIError like non-2xx; not sawData, so error- stays retryable.
 		errType := ""
 		if msg.Error != nil {
 			errType = msg.Error.Type
@@ -295,25 +275,19 @@ func (st *anStream) currentUsage() Usage {
 	return u
 }
 
-// completion assembles the final (or partial) result from every block, the one
+// completion assembles the final (or partial) result from every block. The
 // cut off mid-stream included: what a block accumulated before the connection
 // dropped is output the caller already watched arrive. A missing stop_reason
 // falls back to tool_use when calls were assembled, else end_turn.
 // Completion.Timings stays nil on this layer -- the Messages API has no
 // timings equivalent.
 func (st *anStream) completion() *Completion {
-	var parts []Part
 	haveCall := false
-	for _, idx := range st.order {
-		b := st.blocks[idx]
-		if b == nil {
-			continue
-		}
-		if p := b.part(); p != nil {
-			parts = append(parts, p)
-			if p.Kind() == PartKindToolCall {
-				haveCall = true
-			}
+	for _, n := range st.nodes {
+		// A block that never stopped keeps what it received but is not announced as finished.
+		FinishNode(n)
+		if _, ok := n.(*ToolCallMessage); ok {
+			haveCall = true
 		}
 	}
 	stop := st.stop
@@ -324,16 +298,9 @@ func (st *anStream) completion() *Completion {
 			stop = StopEndTurn
 		}
 	}
-	msg := Message{Role: RoleAssistant, Parts: parts}
-	msg.SyncViews()
-	comp := &Completion{Message: msg, StopReason: stop, Streamed: true, Model: st.model}
+	comp := &Completion{Message: MessageFromNodes(st.nodes), StopReason: stop, Streamed: true, Model: st.model}
 	if st.haveUsage {
-		// The usage report arrives in fragments -- input and cache
-		// counts on message_start, output tokens on message_delta -- so the
-		// assembled report is one entry, not one per event. Raw is the
-		// wire-shaped object a non-streaming response would have carried
-		// (input_tokens excludes cached tokens; the cache fields ride as
-		// siblings).
+		// Usage fragments (input+cache at start, output at delta) join into; Raw is the wire shape.
 		u := st.currentUsage()
 		u.Raw = anRawUsageJSON(st.inputTokens, st.outputTokens, st.cacheRead, st.cacheWrite)
 		comp.Usages = []Usage{u}

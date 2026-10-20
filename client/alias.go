@@ -97,6 +97,8 @@ var (
 	// DialectRefused: see docs/dialect-refusal.md
 	DialectRefused = commonai.DialectRefused
 	ErrNoModelList = commonai.ErrNoModelList
+	// ErrReasoningRefused is the OnRetry cause when an endpoint rejects replayed reasoning.
+	ErrReasoningRefused = commonai.ErrReasoningRefused
 )
 
 // Error constructors; a caller's own marker for refusal would be classified transient and re-sent.

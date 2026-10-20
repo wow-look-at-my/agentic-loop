@@ -11,8 +11,9 @@ type oaNonStream struct {
 		Message      oaNonStreamMessage `json:"message"`
 		FinishReason string             `json:"finish_reason"`
 	} `json:"choices"`
-	Usage json.RawMessage `json:"usage"`
-	Model string          `json:"model"`
+	Usage       json.RawMessage `json:"usage"`
+	Model       string          `json:"model"`
+	ExtraFields *oaExtraFields  `json:"extra_fields"`
 }
 
 // oaNonStreamMessage is the assistant message inside a non-streaming choice.
@@ -20,9 +21,18 @@ type oaNonStream struct {
 type oaNonStreamMessage struct {
 	Role             string              `json:"role"`
 	Content          *string             `json:"content"`
+	ReasoningContent string              `json:"reasoning_content"`
 	Reasoning        string              `json:"reasoning"`
 	ReasoningDetails []oaReasoningDetail `json:"reasoning_details"`
 	ToolCalls        []oaToolCall        `json:"tool_calls"`
+}
+
+// reasoning prefers reasoning_content, as the streamed delta does.
+func (m oaNonStreamMessage) reasoning() string {
+	if m.ReasoningContent != "" {
+		return m.ReasoningContent
+	}
+	return m.Reasoning
 }
 
 // parseNonStream reassembles a plain-JSON chat-completions response into a
@@ -52,10 +62,11 @@ func (o *openaiProvider) parseNonStream(data []byte) (*Completion, error) {
 	}
 	details := oaReasoningDetailsJSON(first.Message.ReasoningDetails)
 	comp := &Completion{
-		Message:    oaAssistantMessage(first.Message.Reasoning, details, content, calls),
+		Message:    oaAssistantMessage(first.Message.reasoning(), details, content, calls),
 		StopReason: normalizeStopReason(first.FinishReason),
 		Streamed:   false,
 		Model:      resp.Model,
+		Routed:     resp.ExtraFields.routed(),
 	}
 	if len(resp.Usage) > 0 {
 		var u oaUsage

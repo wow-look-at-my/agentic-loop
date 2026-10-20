@@ -201,6 +201,8 @@ func writeMessage(x *writer, m Message) {
 	if m.ToolIsError {
 		attrs = append(attrs, attr{name: "tool-is-error", value: "true"})
 	}
+	attrs = append(attrs, optAttr("id", m.ID)...)
+	attrs = append(attrs, optAttr("kind", m.Kind)...)
 	x.start(elMessage, attrs...)
 	writeParts(x, m.EffectiveParts())
 	x.end()

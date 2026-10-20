@@ -36,6 +36,9 @@ const stuckNudgeInstruction = "You have now requested the same tool calls severa
 // ErrStuck ends a run whose model kept repeating a byte-identical tool-call batch.
 var ErrStuck = errors.New("agentic: model is stuck repeating the same tool calls")
 
+// ErrStateLost ends a run whose model call started without an earlier turn's output.
+var ErrStateLost = errors.New("agentic: the model lost state from the transcript")
+
 // Config wires Run: the Provider to call, the Tools advertised and
 // executed (empty runs tool-less), the Approver consulted for EVERY tool call
 // (nil allows a Readonly tool and denies anything else with DeniedMessage),
@@ -64,8 +67,14 @@ type Config struct {
 	// DisableOutputDedup opts out of collapsing byte-identical read-only results.
 	DisableOutputDedup bool
 
-	// ContextWindow is the model's context window size.
-	ContextWindow int
+	// ContextWindowFallback is the window when the server reports none. A reported window always wins.
+	ContextWindowFallback int
+	// ContextWindowOverride caps the window: it must not exceed a window the server reports.
+	ContextWindowOverride int
+
+	// window is the run's resolved window; windowReported says the server supplied it.
+	window         int
+	windowReported bool
 
 	// ElapsedTime, when set, states how long has passed since the request on every call.
 	ElapsedTime *ElapsedTime
@@ -84,4 +93,22 @@ type Result struct {
 	Usages      []Usage
 	Turns       int
 	Undelivered []Message
+	// StateLosses lists each call that started without an earlier turn's output.
+	StateLosses []StateLossEvent
+	session     *session
 }
+
+// Tree is the whole conversation the run built, compactions and superseded nodes included.
+func (r *Result) Tree() []IMessage {
+	if r == nil || r.session == nil {
+		return nil
+	}
+	return r.session.path()
+}
+
+// The kinds of note the loop writes into a conversation.
+const (
+	StopNudgeKind      = "stop_nudge"
+	WrapUpKind         = "wrap_up"
+	ResourceNoticeKind = "resource_notice"
+)

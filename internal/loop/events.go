@@ -105,12 +105,26 @@ type CompactionEvent struct {
 	ID         *MessageID
 }
 
+// CompactionFailedEvent is the param to OnCompactionFailed. The run keeps the window it had.
+type CompactionFailedEvent struct {
+	event.Args
+	Err error
+}
+
 // Window is zero exactly when Err says why there is none, and a run with no window never auto-compacts.
 type ContextWindowEvent struct {
 	event.Args
 	Window int
-	// FromModelList is true when Config.ContextWindow was unset and the provider's model list supplied Window.
+	// Reported is the window the server's model list gave, or zero.
+	Reported int
+	// FromModelList is true when Window is the reported window.
 	FromModelList bool
+	// FromFallback is true when the server reported none and Config.ContextWindowFallback supplied Window.
+	FromFallback bool
+	// Overridden is true when Config.ContextWindowOverride supplied Window.
+	Overridden bool
+	// Warning says why Window is a host setting that nothing checked against the server.
+	Warning string
 	// Served names the model the list was asked about.
 	Served string
 	Err    error
@@ -131,7 +145,23 @@ type Events struct {
 	OnResourceNotice    event.Event[ResourceNoticeEvent]
 	OnSystemMessage     event.Event[SystemMessageEvent]
 	OnCompaction        event.Event[CompactionEvent]
+	OnCompactionFailed  event.Event[CompactionFailedEvent]
 	OnContextWindow     event.Event[ContextWindowEvent]
+	OnStateLoss         event.Event[StateLossEvent]
+	// OnNode fires when a node joins the conversation and when one of its fields changes.
+	OnNode event.Event[NodeEvent]
+}
+
+func (e *Events) emitNode(ev NodeEvent) {
+	_ = e.OnNode.Invoke(ev)
+}
+
+func (e *Events) emitStateLoss(ev StateLossEvent) {
+	_ = e.OnStateLoss.Invoke(ev)
+}
+
+func (e *Events) emitCompactionFailed(ev CompactionFailedEvent) {
+	_ = e.OnCompactionFailed.Invoke(ev)
 }
 
 func (e *Events) emitContextWindow(ev ContextWindowEvent) {

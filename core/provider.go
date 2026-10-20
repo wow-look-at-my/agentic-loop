@@ -177,6 +177,8 @@ type Completion struct {
 	StopReason string
 	// Model is the model the response names.
 	Model string
+	// Routed is the model-list id a routing gateway says it sent the request to, when the response states one.
+	Routed string
 }
 
 // Provider runs streaming model call; after data arrives, returns partial Completion + error.

@@ -10,12 +10,13 @@ import (
 )
 
 // NoAnonymous is the host's policy knob: a server holding at least one PAT
-// must never let a read fall through to an unauthenticated request, because
-// GitHub buckets the anonymous request by the server's own IP and answers it
-// with a different (worse) verdict than the token's real failure. These tests
-// pin that the client-level flag drops the anonymous attempt from the read
-// paths (FetchURLOpts, Credentials, OwnerRepos) while leaving the default
-// (zero tokens) anonymous-friendly for public repositories.
+// must never let a read fall through to an unauthenticated request. This is
+// because GitHub buckets the anonymous request. This holds by the server's
+// own IP and answers it with a different (worse) verdict than the token's
+// real failure. These tests pin that the client-level flag drops the
+// anonymous attempt from the read paths (FetchURLOpts, Credentials,
+// OwnerRepos). This happens while leaving the default (zero tokens)
+// anonymous-friendly for public repositories.
 
 func TestNoAnonymousDropsTheUnauthenticatedAttemptFromReads(t *testing.T) {
 	var auths []string
