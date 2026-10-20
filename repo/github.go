@@ -48,6 +48,8 @@ type RepoKeyCache interface {
 type GitHubConfig struct {
 	HTTPClient *http.Client
 	APIBaseURL string
+	// VFS, when non-nil, is consulted by every read before GitHub is.
+	VFS *VFSMux
 	// Tokens is the READ credential list; writes never touch it.
 	Tokens []GitHubToken
 	// WriteTokens is the WRITE list; nil means this client cannot write at all.
@@ -59,7 +61,7 @@ type GitHubConfig struct {
 	OnRateLimit func(RateLimitObservation)
 }
 
-// GitHub is the credential-rotating GitHub REST client behind the repo tools.
+// GitHub is the credential-rotating GitHub REST client.
 type GitHub struct {
 	hc          *http.Client
 	base        string
@@ -67,6 +69,7 @@ type GitHub struct {
 	writeTokens []GitHubToken
 	noAnonymous bool
 	cache       RepoKeyCache
+	vfs         *VFSMux
 	onRateLimit func(RateLimitObservation)
 }
 
@@ -87,6 +90,7 @@ func NewGitHub(cfg GitHubConfig) *GitHub {
 		writeTokens: cfg.WriteTokens,
 		noAnonymous: cfg.NoAnonymous,
 		cache:       cfg.Cache,
+		vfs:         cfg.VFS,
 		onRateLimit: cfg.OnRateLimit,
 	}
 }

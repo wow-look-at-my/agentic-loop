@@ -61,6 +61,9 @@ type Config struct {
 	// Messages delivers system notices and user messages INTO the run.
 	Messages *MessageQueue
 
+	// Inbox, when non-nil, is drained at the top of every turn and again at the point where the run would otherwise end.
+	Inbox Inbox
+
 	// Subagents is the registry an asynchronous run_subagent reports into; nil = none.
 	Subagents *SubagentRuns
 
