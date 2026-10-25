@@ -1,6 +1,6 @@
 //go:build js || wasip1
 
-// The release call has nothing to free, so the collector reclaims the bytes once no reader holds them.
+// blob_read.go holds mapBlob.
 
 package commonai
 

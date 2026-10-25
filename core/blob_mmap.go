@@ -1,6 +1,6 @@
 //go:build !js && !wasip1
 
-// mapBlob maps the file at path read-only and gives its bytes and the call that unmaps them.
+// blob_mmap.go holds mapBlob.
 
 package commonai
 
