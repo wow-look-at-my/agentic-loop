@@ -1,3 +1,5 @@
+// Conversions between the flat Message and the node tree.
+
 package commonai
 
 // Conversions between the flat Message and the node tree. They exist while callers still pass

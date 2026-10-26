@@ -1,3 +1,5 @@
+// The streamed event types this dialect acts on.
+
 package commonai
 
 import (

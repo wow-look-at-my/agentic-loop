@@ -1,3 +1,5 @@
+// The Responses wire vocabulary, where input and output share the same item vocabulary.
+
 package commonai
 
 import (
@@ -70,8 +72,8 @@ const (
 	respItemFuncOutput = "function_call_output"
 	respItemReasoning  = "reasoning"
 
-	respTextInput   = "input_text"
-	respTextOutput  = "output_text"
+	respTextInput     = "input_text"
+	respTextOutput    = "output_text"
 	respTextSummary   = "summary_text"
 	respTextReasoning = "reasoning_text"
 	respImageInput    = "input_image"

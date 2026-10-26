@@ -1,3 +1,5 @@
+// Responses dialect: chat-completions cannot carry reasoning across tool calls, so it replays it.
+
 package commonai
 
 import (

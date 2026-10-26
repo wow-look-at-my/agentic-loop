@@ -1,3 +1,5 @@
+// Element and attribute names; a rename here is a breaking change, not a refactor.
+
 package commonai
 
 import (

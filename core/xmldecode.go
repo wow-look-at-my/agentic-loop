@@ -1,3 +1,5 @@
+// Decoding goes through xml-validator, which accepts &#; and can check against the schema.
+
 package commonai
 
 import (

@@ -1,3 +1,5 @@
+// IMessage is one node of a conversation tree.
+
 package commonai
 
 import (

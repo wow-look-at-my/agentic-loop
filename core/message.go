@@ -1,3 +1,5 @@
+// Role identifies the author of a Message.
+
 package commonai
 
 import (
