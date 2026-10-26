@@ -102,6 +102,18 @@ func TestPartOrderSurvives(t *testing.T) {
 	assert.Equal(t, "beforeafter", got.Messages[0].Content)
 }
 
+// A raw reasoning_text block must stay raw through the document, or it reads back as a summary
+// and is no longer replayed.
+func TestRawThinkingSurvivesTheDocument(t *testing.T) {
+	req := Request{Model: "m", Messages: []Message{
+		NewMessage(RoleAssistant, ThinkingPart{Text: "the thinking", ID: "rs_1", Raw: true}, TextPart{Text: "ok"}),
+	}}
+	got := roundTripRequest(t, req)
+	require.Len(t, got.Messages, 1)
+	assert.Equal(t, ThinkingPart{Text: "the thinking", ID: "rs_1", Raw: true}, got.Messages[0].Parts[0])
+	assert.Equal(t, []ThinkingBlock{{Text: "the thinking", ID: "rs_1", Raw: true}}, got.Messages[0].Thinking)
+}
+
 // The host's id and kind survive a store round trip. A stored conversation that loses them detaches its rows.
 func TestMessageIDAndKindSurvive(t *testing.T) {
 	req := Request{Model: "m", Messages: []Message{

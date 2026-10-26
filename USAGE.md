@@ -158,6 +158,10 @@ The OpenAI dialect also captures one structured shape. OpenRouter's chat-complet
 
 **The Responses API models a turn as an ordered list of items**. A reasoning item can be sent back verbatim. This provider asks for `include: ["reasoning.encrypted_content"]`, keeps what comes back in `ThinkingBlock` (summary in `Text`, encrypted payload in `Signature`, item id in `ID`), and replays it — reasoning first, then the text. Then the tool calls, in the order the model emitted them. A block with no payload is dropped rather than half-replayed. A summary is prose *about* the reasoning, and sending it as though it were the reasoning hands the model a paraphrase of its own thinking.
 
+**A `reasoning_text` item is the reasoning itself. It is replayed.** OpenRouter's non-OpenAI models (DeepSeek, Qwen, GLM, Kimi), vLLM and LM Studio return the thinking as `content: [{type: "reasoning_text"}]` with an empty `summary` and no `encrypted_content`. It read it back from `content`. The provider streams `response.reasoning_text.delta` as reasoning, marks that block `ThinkingBlock.Raw`, and replays it as `{type: "reasoning", id, summary: [], content: [{type: "reasoning_text"}]}`. A block's text goes back to the field it came from. An item with a summary keeps the summary.
+
+A host that stores `ThinkingBlock` must store `Raw` with it, or the block reads back as a summary and is dropped.
+
 Positions this provider takes deliberately:
 
 - **`Store` defaults to false**, unlike the API. Server-side retention of every prompt and response is a decision for the caller to make out loud, not one to inherit from a default. Reasoning still survives with it off — that is what the encrypted payload is for.
