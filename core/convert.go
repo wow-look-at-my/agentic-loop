@@ -23,7 +23,7 @@ func partOf(n IMessage) Part {
 		if v.Redacted != nil {
 			return RedactedThinkingPart{Data: v.Redacted.String()}
 		}
-		return ThinkingPart{Text: v.Text.String(), Signature: thinkingBlob(v), ID: string(v.ItemID)}
+		return ThinkingPart{Text: v.Text.String(), Signature: thinkingBlob(v), ID: string(v.ItemID), Raw: v.Raw}
 	case *AssistantMessage:
 		if s := v.Text.String(); s != "" {
 			return TextPart{Text: s}
@@ -201,7 +201,9 @@ func NodesFromMessage(m Message, d Dialect) []IMessage {
 		for _, p := range m.EffectiveParts() {
 			switch v := p.(type) {
 			case ThinkingPart:
-				add(ThinkingFromBlock(v.Text, v.Signature, v.ID, d))
+				t := ThinkingFromBlock(v.Text, v.Signature, v.ID, d)
+				t.Raw = v.Raw
+				add(t)
 			case RedactedThinkingPart:
 				add(&ThinkingMessage{Text: FinishedString(""), Redacted: NewEncryptedReasoning(v.Data), Dialect: d})
 			case TextPart:

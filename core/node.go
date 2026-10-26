@@ -150,6 +150,8 @@ type ThinkingMessage struct {
 	Redacted *EncryptedReasoning
 	ItemID   ResponsesItemID
 	Details  ReasoningDetails
+	// Raw marks Text as a Responses reasoning_text rather than a summary.
+	Raw bool
 	// Dialect produced the node. Any other dialect replays Text only.
 	Dialect Dialect
 }

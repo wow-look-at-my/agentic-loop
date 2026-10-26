@@ -10,6 +10,7 @@ const (
 	respEvItemAdded       = "response.output_item.added"
 	respEvOutputTextDelta = "response.output_text.delta"
 	respEvSummaryDelta    = "response.reasoning_summary_text.delta"
+	respEvReasoningDelta  = "response.reasoning_text.delta"
 	respEvArgsDelta       = "response.function_call_arguments.delta"
 	respEvItemDone        = "response.output_item.done"
 	respEvCompleted       = "response.completed"
@@ -136,12 +137,16 @@ func (st *respStream) onData(data []byte) error {
 		st.out.Delta(st.nodeFor(e.ItemID, nil, respItemMessage), FieldText, e.Delta)
 		return st.out.Err()
 
-	case respEvSummaryDelta:
+	case respEvSummaryDelta, respEvReasoningDelta:
 		if e.Delta == "" {
 			return nil
 		}
 		st.sawData = true
-		st.out.Delta(st.nodeFor(e.ItemID, nil, respItemReasoning), FieldText, e.Delta)
+		n := st.nodeFor(e.ItemID, nil, respItemReasoning)
+		if e.Type == respEvReasoningDelta {
+			n.(*ThinkingMessage).Raw = true
+		}
+		st.out.Delta(n, FieldText, e.Delta)
 		return st.out.Err()
 
 	case respEvArgsDelta:
@@ -199,12 +204,13 @@ func (st *respStream) finishItem(item respItem) {
 		st.out.Done(n)
 	case respItemReasoning:
 		n := st.nodeFor(item.ID, &item, respItemReasoning).(*ThinkingMessage)
-		var b strings.Builder
-		for _, s := range item.Summary {
-			b.WriteString(s.Text)
-		}
-		if final := b.String(); final != "" || n.Text.String() == "" {
+		// The done item says which field the text is; a bare one keeps what the deltas said.
+		final, raw := item.reasoningText()
+		if final != "" || n.Text.String() == "" {
 			WriterOf(n.Text).Finish(final)
+		}
+		if final != "" {
+			n.Raw = raw
 		}
 		n.Encrypted = NewEncryptedReasoning(item.EncryptedContent)
 		st.out.Done(n)

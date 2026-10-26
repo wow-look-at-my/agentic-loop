@@ -1,6 +1,9 @@
 package commonai
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // The Responses wire vocabulary, where input and output share the same item vocabulary.
 
@@ -28,8 +31,28 @@ type respItem struct {
 	Arguments string `json:"arguments,omitempty"`
 	Output    string `json:"output,omitempty"`
 	// Summary and EncryptedContent belong to a reasoning item; the payload must be replayed verbatim.
-	Summary          []respContent `json:"summary,omitempty"`
-	EncryptedContent string        `json:"encrypted_content,omitempty"`
+	Summary          *[]respContent `json:"summary,omitempty"`
+	EncryptedContent string         `json:"encrypted_content,omitempty"`
+}
+
+// reasoningText is a reasoning item's text and whether it is the thinking itself:
+// the summary when there is one, else the reasoning_text content.
+func (it respItem) reasoningText() (string, bool) {
+	var b strings.Builder
+	if it.Summary != nil {
+		for _, s := range *it.Summary {
+			b.WriteString(s.Text)
+		}
+	}
+	if b.Len() > 0 {
+		return b.String(), false
+	}
+	for _, c := range it.Content {
+		if c.Type == respTextReasoning {
+			b.WriteString(c.Text)
+		}
+	}
+	return b.String(), b.Len() > 0
 }
 
 // respContent is part of a message or reasoning summary.
@@ -49,8 +72,9 @@ const (
 
 	respTextInput   = "input_text"
 	respTextOutput  = "output_text"
-	respTextSummary = "summary_text"
-	respImageInput  = "input_image"
+	respTextSummary   = "summary_text"
+	respTextReasoning = "reasoning_text"
+	respImageInput    = "input_image"
 )
 
 // respInputItems maps the transcript onto Responses input items, keeping their emitted order.
@@ -64,14 +88,9 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 			})
 		case RoleAssistant:
 			for _, tb := range m.Thinking {
-				if tb.Signature == "" {
-					continue
+				if item, ok := respReasoningItem(tb); ok {
+					out = append(out, item)
 				}
-				item := respItem{Type: respItemReasoning, ID: tb.ID, EncryptedContent: tb.Signature}
-				if tb.Text != "" {
-					item.Summary = []respContent{{Type: respTextSummary, Text: tb.Text}}
-				}
-				out = append(out, item)
 			}
 			if m.Content != "" {
 				out = append(out, respItem{
@@ -95,6 +114,26 @@ func respInputItems(msgs []Message) ([]respItem, error) {
 		}
 	}
 	return out, nil
+}
+
+// respReasoningItem is the replay of a reasoning block. Text goes back where it came from: a
+// reasoning_text to content, a summary to summary. A summary with no encrypted_content is prose
+// about the reasoning and is not replayed. A reasoning_text with none is the reasoning itself,
+// which is how a server with no encrypted reasoning reads its own thinking back.
+func respReasoningItem(tb ThinkingBlock) (respItem, bool) {
+	if tb.Signature == "" && !(tb.Raw && tb.Text != "") {
+		return respItem{}, false
+	}
+	item := respItem{Type: respItemReasoning, ID: tb.ID, EncryptedContent: tb.Signature}
+	switch {
+	case tb.Text == "":
+	case tb.Raw:
+		item.Summary = &[]respContent{}
+		item.Content = []respContent{{Type: respTextReasoning, Text: tb.Text}}
+	default:
+		item.Summary = &[]respContent{{Type: respTextSummary, Text: tb.Text}}
+	}
+	return item, true
 }
 
 // respInputContent builds a user message's content list: text alone is input_text.

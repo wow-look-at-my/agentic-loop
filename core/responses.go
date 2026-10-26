@@ -176,14 +176,10 @@ type respIncomplete struct {
 	Reason string `json:"reason"`
 }
 
-// respThinkingBlock maps a reasoning item onto a ThinkingBlock: the summary
-// text, the item id, and the encrypted payload in Signature -- the field whose
+// respThinkingBlock maps a reasoning item onto a ThinkingBlock.
 func respThinkingBlock(item respItem) ThinkingBlock {
-	var b strings.Builder
-	for _, s := range item.Summary {
-		b.WriteString(s.Text)
-	}
-	return ThinkingBlock{ID: item.ID, Text: b.String(), Signature: item.EncryptedContent}
+	text, raw := item.reasoningText()
+	return ThinkingBlock{ID: item.ID, Text: text, Signature: item.EncryptedContent, Raw: raw}
 }
 
 // respStopReason normalizes a terminal Response's outcome. A response that
@@ -258,7 +254,7 @@ func parseResponsesObject(data []byte) (*Completion, error) {
 		case respItemReasoning:
 			tb := respThinkingBlock(item)
 			comp.Message.Parts = append(comp.Message.Parts,
-				ThinkingPart{Text: tb.Text, Signature: tb.Signature, ID: tb.ID})
+				ThinkingPart{Text: tb.Text, Signature: tb.Signature, ID: tb.ID, Raw: tb.Raw})
 		}
 	}
 	comp.Message.SyncViews()

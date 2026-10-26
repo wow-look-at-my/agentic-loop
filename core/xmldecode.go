@@ -248,6 +248,7 @@ func partFrom(el *validator.Element) (Part, error) {
 			Text:      el.TextContent(),
 			Signature: attrOf(el, "signature"),
 			ID:        attrOf(el, "id"),
+			Raw:       attrOf(el, "raw") == "true",
 		}, nil
 	case elRedacted:
 		return RedactedThinkingPart{Data: el.TextContent()}, nil

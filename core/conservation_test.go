@@ -101,6 +101,20 @@ func TestTranscriptConservation(t *testing.T) {
 	}
 }
 
+// TestResponsesConservesReasoningText: a reasoning_text block with no encrypted_content is the
+// thinking itself, and the Responses dialect must put it on the wire.
+func TestResponsesConservesReasoningText(t *testing.T) {
+	srv, body := captureServer(t)
+	p := mustResponses(t, ResponsesConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}})
+	msgs := conservationTranscript()
+	msgs[1].Thinking = []ThinkingBlock{{Text: "S-THINK", ID: "S-RSID", Raw: true}}
+	_, err := p.Complete(context.Background(), Request{Model: "m", MaxTokens: 16, Messages: msgs}, nil)
+	require.Error(t, err, "the capture server refuses every call")
+	for _, s := range []string{"S-THINK", "S-RSID"} {
+		assert.Contains(t, string(*body), s, "responses dialect lost %s from the transcript", s)
+	}
+}
+
 // TestOpenAINonStreamKeepsReasoningContent covers a server that ignores
 // stream:true and answers with reasoning_content, the DeepSeek field name.
 func TestOpenAINonStreamKeepsReasoningContent(t *testing.T) {
