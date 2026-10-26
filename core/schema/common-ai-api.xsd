@@ -104,8 +104,11 @@
     One reasoning block. signature is the opaque token that must be replayed
     verbatim for the block to still count as the model's own thinking, and id
     is the provider's identifier for the item. The element's text is the
-    human-readable reasoning, which is PROSE ABOUT the thinking -- replaying it
-    without the signature hands the model a paraphrase of itself.
+    human-readable reasoning. Unless raw is true it can be PROSE ABOUT the
+    thinking (a summary), and replaying that without the signature hands the
+    model a paraphrase of itself. raw="true" says the text IS the thinking:
+    a Responses reasoning_text, which a server with no encrypted reasoning
+    reads back from the item's content.
   -->
   <xs:element name="thinking">
     <xs:complexType>
@@ -113,6 +116,7 @@
         <xs:extension base="xs:string">
           <xs:attribute name="signature" type="xs:string"/>
           <xs:attribute name="id" type="xs:string"/>
+          <xs:attribute name="raw" type="xs:boolean"/>
         </xs:extension>
       </xs:simpleContent>
     </xs:complexType>

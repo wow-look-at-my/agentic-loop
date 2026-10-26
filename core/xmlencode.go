@@ -1,3 +1,5 @@
+// Element and attribute names; a rename here is a breaking change, not a refactor.
+
 package commonai
 
 import (
@@ -229,6 +231,9 @@ func writePart(x *writer, p Part) {
 	case ThinkingPart:
 		attrs := optAttr("signature", v.Signature)
 		attrs = append(attrs, optAttr("id", v.ID)...)
+		if v.Raw {
+			attrs = append(attrs, attr{name: "raw", value: "true"})
+		}
 		x.element(elThinking, v.Text, attrs...)
 	case RedactedThinkingPart:
 		x.element(elRedacted, v.Data)
