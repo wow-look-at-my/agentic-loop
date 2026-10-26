@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	mmap "github.com/wow-look-at-my/go-mmap"
 )
 
 // BlobStore keeps binary content as raw bytes in one directory, named by
@@ -25,8 +23,9 @@ type BlobStore struct {
 }
 
 type blobMap struct {
-	m    mmap.MMap
-	refs uint
+	data  []byte
+	unmap func() error
+	refs  uint
 }
 
 // NewBlobStore stores blobs under dir, which it creates.
@@ -94,16 +93,16 @@ func (b *BlobRef) Bytes() (data []byte, release func(), err error) {
 		if b.Size == 0 {
 			return nil, func() {}, nil
 		}
-		m, err := mmap.MapFile(s.path(b.Hash))
+		data, unmap, err := mapBlob(s.path(b.Hash))
 		if err != nil {
 			return nil, nil, fmt.Errorf("commonai: blob %s: %w", b.Hash, err)
 		}
-		bm = &blobMap{m: m}
+		bm = &blobMap{data: data, unmap: unmap}
 		s.maps[b.Hash] = bm
 	}
 	bm.refs++
 	var once sync.Once
-	return bm.m, func() { once.Do(func() { s.release(b.Hash) }) }, nil
+	return bm.data, func() { once.Do(func() { s.release(b.Hash) }) }, nil
 }
 
 func (s *BlobStore) release(hash string) {
@@ -115,7 +114,7 @@ func (s *BlobStore) release(hash string) {
 	}
 	bm.refs--
 	if bm.refs == 0 {
-		_ = bm.m.Unmap()
+		_ = bm.unmap()
 		delete(s.maps, hash)
 	}
 }
