@@ -94,6 +94,8 @@ Provider owns HOW a call gets made and everything transient in the try. Loop own
 - `docs/goal.md` — goal mode: the seams, what the evaluator must never read, the outcomes, and why a blocked stop re-arms in place.
 - `docs/search.md` — the conversation index: the Source seam, why the vectors are scanned in Go, what that costs measured, and how lag is reported.
 - `docs/nul-char.md` — `&#0;`, and the deviation from XML 1.1's `Char`.
+- `docs/postmortem-transcript-decay.md` — reasoning lost between a response and the next request across grok-build, bifrost, Ollama and OpenRouter. Each provider's field names, and why every hop must conserve them.
+- `.claude/skills/transcript-decay/SKILL.md` — `/transcript-decay check|fix`: find and fix that loss in any host, gateway or dialect.
 - `docs/dialect-refusal.md` — a refusal that names an endpoint: what `DialectRefused` reads, which statuses it accepts, and why no model name.
 
 ## Fix the bug. Never build around it.
