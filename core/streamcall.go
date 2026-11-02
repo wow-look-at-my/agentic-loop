@@ -1,3 +1,5 @@
+// streamcall.go holds the streamcall code.
+
 package commonai
 
 import "context"

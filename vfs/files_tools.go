@@ -1,3 +1,5 @@
+// files_tools.go holds the files tools code.
+
 package vfs
 
 import (

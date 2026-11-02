@@ -1,3 +1,5 @@
+// completion.go holds the completion code.
+
 package client
 
 import (

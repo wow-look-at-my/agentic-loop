@@ -1,3 +1,5 @@
+// run_config.go holds the run config code.
+
 package loop
 
 import (

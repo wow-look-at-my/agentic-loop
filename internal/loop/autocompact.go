@@ -1,3 +1,5 @@
+// autocompact.go holds the autocompact code.
+
 package loop
 
 import (

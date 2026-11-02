@@ -1,3 +1,5 @@
+// indexer.go holds the indexer code.
+
 package search
 
 import (

@@ -1,3 +1,5 @@
+// validate.go holds the validate code.
+
 package commonai
 
 import (

@@ -1,3 +1,5 @@
+// anthropic.go holds the anthropic code.
+
 package commonai
 
 import (

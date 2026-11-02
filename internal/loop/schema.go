@@ -1,3 +1,5 @@
+// schema.go holds the schema code.
+
 package loop
 
 import (

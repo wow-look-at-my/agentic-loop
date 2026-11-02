@@ -1,3 +1,5 @@
+// paramstrip.go holds the paramstrip code.
+
 package commonai
 
 import (

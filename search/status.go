@@ -1,3 +1,5 @@
+// status.go holds the status code.
+
 package search
 
 import (

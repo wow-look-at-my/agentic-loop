@@ -1,3 +1,5 @@
+// sse.go holds the sse code.
+
 package commonai
 
 import (

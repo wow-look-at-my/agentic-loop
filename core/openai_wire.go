@@ -1,3 +1,5 @@
+// openai_wire.go holds the openai wire code.
+
 package commonai
 
 // Outbound chat-completions wire vocabulary (shapes, mapping, cache); transport in openai.go.

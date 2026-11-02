@@ -1,3 +1,5 @@
+// content.go holds the content code.
+
 package commonai
 
 // IContent is one block of a user, system or tool-result message.

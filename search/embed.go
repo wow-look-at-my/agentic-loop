@@ -1,3 +1,5 @@
+// embed.go holds the embed code.
+
 package search
 
 import (

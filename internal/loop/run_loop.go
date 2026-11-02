@@ -1,3 +1,5 @@
+// run_loop.go holds the run loop code.
+
 package loop
 
 import (

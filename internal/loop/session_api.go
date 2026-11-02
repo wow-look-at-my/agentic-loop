@@ -1,3 +1,5 @@
+// session_api.go holds the session api code.
+
 package loop
 
 import (

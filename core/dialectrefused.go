@@ -1,3 +1,5 @@
+// dialectrefused.go holds the dialectrefused code.
+
 package commonai
 
 import (

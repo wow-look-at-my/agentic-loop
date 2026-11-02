@@ -1,3 +1,5 @@
+// alias.go holds the alias code.
+
 package client
 
 import (

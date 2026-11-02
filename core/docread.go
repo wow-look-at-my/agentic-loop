@@ -1,3 +1,5 @@
+// docread.go holds the docread code.
+
 package commonai
 
 import (

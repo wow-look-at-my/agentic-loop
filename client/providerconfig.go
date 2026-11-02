@@ -1,3 +1,5 @@
+// providerconfig.go holds the providerconfig code.
+
 package client
 
 import (

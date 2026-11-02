@@ -1,3 +1,5 @@
+// blob.go holds the blob code.
+
 package commonai
 
 import (

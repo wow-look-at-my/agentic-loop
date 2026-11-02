@@ -1,3 +1,5 @@
+// session_statecheck.go holds the session statecheck code.
+
 package loop
 
 import (

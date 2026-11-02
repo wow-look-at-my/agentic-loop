@@ -1,3 +1,5 @@
+// modellist.go holds the modellist code.
+
 package commonai
 
 import (

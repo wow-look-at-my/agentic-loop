@@ -1,3 +1,5 @@
+// run_once.go holds the run once code.
+
 package loop
 
 import "context"

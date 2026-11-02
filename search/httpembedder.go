@@ -1,3 +1,5 @@
+// httpembedder.go holds the httpembedder code.
+
 package search
 
 import (

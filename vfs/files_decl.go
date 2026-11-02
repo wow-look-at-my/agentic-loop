@@ -1,3 +1,5 @@
+// files_decl.go holds the files decl code.
+
 package vfs
 
 import agentic "github.com/wow-look-at-my/agentic-loop"

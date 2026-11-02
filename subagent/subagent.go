@@ -1,3 +1,5 @@
+// subagent.go holds the subagent code.
+
 package subagent
 
 import (

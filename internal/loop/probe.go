@@ -1,3 +1,5 @@
+// probe.go holds the probe code.
+
 package loop
 
 import (

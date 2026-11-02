@@ -1,3 +1,5 @@
+// dialect.go holds the dialect code.
+
 package commonai
 
 // Detection asks the endpoint which protocol it speaks; a gateway may serve the separately; callers may override.

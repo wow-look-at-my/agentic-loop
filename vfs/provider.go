@@ -1,3 +1,5 @@
+// provider.go holds the provider code.
+
 package vfs
 
 import (

@@ -1,3 +1,5 @@
+// errors.go holds the errors code.
+
 package commonai
 
 import (

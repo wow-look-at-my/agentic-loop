@@ -1,3 +1,5 @@
+// inbox.go holds the inbox code.
+
 package loop
 
 import "context"

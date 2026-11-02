@@ -1,3 +1,5 @@
+// files_render.go holds the files render code.
+
 package vfs
 
 import (

@@ -1,3 +1,5 @@
+// chat.go holds the chat code.
+
 package cli
 
 import (
