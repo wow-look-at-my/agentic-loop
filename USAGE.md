@@ -681,7 +681,7 @@ Nothing in it knows what MCP is. A host supplies multiple seams:
 - **`ResourceSource`** — `ID`/`Name`/`List`/`Read`. One thing that publishes resources (an MCP server, a directory, anything listable).
 - **`ResourceSnapshots`** — where the watcher keeps what it saw, and where it records each change. `RecordChange` returns the id. As a result, the host owns id generation (it is the side that resolves one later).
 
-`NewResourceDiffTool(ResourceChanges)` is the matching tool: it resolves a change id to the before/after captured AT THAT MOMENT, from the change record's own copy. A resource that moved a few times since still answers the first notice with the first change. Failures are recoverable results that list the real ids. A source that can not be listed becomes a WARNING, not a removal (absent-because-unreachable is not absent). Binary content is watched by hash and size and reported as such, not rendered as a diff.
+`NewResourceDiffTool(ResourceChanges)` is the matching tool: it resolves a change id to the before/after captured AT THAT MOMENT, from the change record's own copy. A resource that moved a few times since still answers the first notice with the first change. Failures are recoverable results that list the real ids. A source that can not be listed becomes a WARNING, not a removal (absent-because-unreachable is not absent). By hash and size and reported as such, binary content is watched, not rendered as a diff.
 
 `UnifiedDiff`/`CountLineChanges`/`HumanSize` are exported for hosts rendering their own changes with the same words.
 

@@ -1,3 +1,5 @@
+// stream.go holds the stream code.
+
 package httpapi
 
 import (

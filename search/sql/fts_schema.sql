@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS indexed_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_indexed_owner ON indexed_messages(owner);
 CREATE INDEX IF NOT EXISTS idx_indexed_conversation ON indexed_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_indexed_pending ON indexed_messages(owner, created_at, message_id) WHERE content <> '';
 
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 	content,

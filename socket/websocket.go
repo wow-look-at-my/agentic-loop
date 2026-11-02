@@ -1,3 +1,5 @@
+// websocket.go holds the websocket code.
+
 package socket
 
 import (

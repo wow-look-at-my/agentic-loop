@@ -1,3 +1,5 @@
+// retry.go holds the retry code.
+
 package extras
 
 import (

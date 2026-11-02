@@ -1,3 +1,5 @@
+// enums.go holds the enums code.
+
 package commonai
 
 import "fmt"

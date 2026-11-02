@@ -1,3 +1,5 @@
+// loop.go holds the loop code.
+
 package goal
 
 import (

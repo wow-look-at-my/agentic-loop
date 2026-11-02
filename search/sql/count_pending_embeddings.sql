@@ -1,5 +1,5 @@
 SELECT COUNT(*)
-FROM indexed_messages m
+FROM indexed_messages m INDEXED BY idx_indexed_pending
 WHERE m.owner = ?
   AND m.content <> ''
   AND NOT EXISTS (

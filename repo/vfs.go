@@ -1,3 +1,5 @@
+// vfs.go holds the vfs code.
+
 package repo
 
 import (

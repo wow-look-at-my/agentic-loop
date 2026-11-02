@@ -1,3 +1,5 @@
+// anthropic_stream.go holds the anthropic stream code.
+
 package commonai
 
 import (

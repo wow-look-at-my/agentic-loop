@@ -1,3 +1,5 @@
+// events.go holds the events code.
+
 package loop
 
 import (

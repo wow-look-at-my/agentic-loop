@@ -1,3 +1,5 @@
+// compact.go holds the compact code.
+
 package loop
 
 import (

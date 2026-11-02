@@ -1,3 +1,5 @@
+// repo_github.go holds the repo github code.
+
 package repo
 
 import (
@@ -343,6 +345,15 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	key := etagKey{target: target, accept: accept, token: token}
+	cacheable := method == http.MethodGet && body == nil && e.etags != nil
+	var cached GHResponse
+	if cacheable {
+		if etag, res, ok := e.etags.lookup(key); ok {
+			req.Header.Set("If-None-Match", etag)
+			cached = res
+		}
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return GHResponse{}, err
@@ -354,14 +365,21 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 	}
 	// Every response states the quota, so nothing asks. see rate_limit_headers.go
 	e.observeRateLimit(token, resp.Header)
-	return GHResponse{
+	if resp.StatusCode == http.StatusNotModified && cached.status == http.StatusOK {
+		return cached, nil
+	}
+	res := GHResponse{
 		status:    resp.StatusCode,
 		body:      data,
 		ctype:     resp.Header.Get("Content-Type"),
 		header:    resp.Header,
 		truncated: truncated,
 		target:    target,
-	}, nil
+	}
+	if cacheable {
+		e.etags.store(key, res)
+	}
+	return res, nil
 }
 
 func EscapeSegments(p string) string {

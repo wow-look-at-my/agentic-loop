@@ -1,3 +1,5 @@
+// version.go holds the version code.
+
 package loop
 
 // Version is the library's semantic version; "" means an untagged build.

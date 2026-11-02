@@ -1,3 +1,5 @@
+// xmlstream.go holds the xmlstream code.
+
 package commonai
 
 import (

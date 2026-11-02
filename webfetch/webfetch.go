@@ -1,3 +1,5 @@
+// webfetch.go holds the webfetch code.
+
 package webfetch
 
 import (

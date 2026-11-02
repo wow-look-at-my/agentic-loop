@@ -1,3 +1,5 @@
+// resource_diff.go holds the resource diff code.
+
 package resources
 
 import (

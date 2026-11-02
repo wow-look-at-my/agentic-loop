@@ -1,3 +1,5 @@
+// thinkingrepair.go holds the thinkingrepair code.
+
 package commonai
 
 import (

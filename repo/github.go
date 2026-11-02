@@ -1,3 +1,5 @@
+// github.go holds the github code.
+
 package repo
 
 import (
@@ -71,6 +73,7 @@ type GitHub struct {
 	cache       RepoKeyCache
 	vfs         *VFSMux
 	onRateLimit func(RateLimitObservation)
+	etags       *etagCache
 }
 
 // NewGitHub builds the client; the only constructor, so all callers share cache.
@@ -92,6 +95,7 @@ func NewGitHub(cfg GitHubConfig) *GitHub {
 		cache:       cfg.Cache,
 		vfs:         cfg.VFS,
 		onRateLimit: cfg.OnRateLimit,
+		etags:       newETagCache(),
 	}
 }
 

@@ -1,3 +1,5 @@
+// resource_watch.go holds the resource watch code.
+
 package resources
 
 import (

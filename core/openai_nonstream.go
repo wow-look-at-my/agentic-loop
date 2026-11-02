@@ -1,3 +1,5 @@
+// openai_nonstream.go holds the openai nonstream code.
+
 package commonai
 
 import (

@@ -1,3 +1,5 @@
+// contextwindow.go holds the contextwindow code.
+
 package loop
 
 import (

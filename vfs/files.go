@@ -1,3 +1,5 @@
+// files.go holds the files code.
+
 package vfs
 
 import (

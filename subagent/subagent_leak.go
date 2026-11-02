@@ -1,3 +1,5 @@
+// subagent_leak.go holds the subagent leak code.
+
 package subagent
 
 import (

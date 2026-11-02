@@ -1,3 +1,5 @@
+// anthropic_nonstream.go holds the anthropic nonstream code.
+
 package commonai
 
 import (

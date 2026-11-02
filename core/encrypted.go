@@ -1,3 +1,5 @@
+// encrypted.go holds the encrypted code.
+
 package commonai
 
 import (

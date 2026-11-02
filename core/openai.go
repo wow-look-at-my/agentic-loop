@@ -1,3 +1,5 @@
+// openai.go holds the openai code.
+
 package commonai
 
 import (

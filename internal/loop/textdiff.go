@@ -1,3 +1,5 @@
+// textdiff.go holds the textdiff code.
+
 package loop
 
 import (

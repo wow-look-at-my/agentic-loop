@@ -1,3 +1,5 @@
+// session.go holds the session code.
+
 package cli
 
 import (

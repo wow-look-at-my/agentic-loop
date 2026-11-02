@@ -1,3 +1,5 @@
+// query.go holds the query code.
+
 package search
 
 import (

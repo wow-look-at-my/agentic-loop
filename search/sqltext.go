@@ -1,3 +1,5 @@
+// sqltext.go holds the sqltext code.
+
 package search
 
 import _ "embed"

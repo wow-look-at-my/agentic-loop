@@ -1,3 +1,5 @@
+// repo_write_failure.go holds the repo write failure code.
+
 package repo
 
 import (

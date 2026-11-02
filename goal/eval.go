@@ -1,3 +1,5 @@
+// eval.go holds the eval code.
+
 package goal
 
 import (

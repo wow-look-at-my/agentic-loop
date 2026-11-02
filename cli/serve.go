@@ -1,3 +1,5 @@
+// serve.go holds the serve code.
+
 package cli
 
 import (

@@ -1,3 +1,5 @@
+// session.go holds the session code.
+
 package agentic
 
 import "github.com/wow-look-at-my/agentic-loop/internal/loop"

@@ -1,3 +1,5 @@
+// anthropic_wire.go holds the anthropic wire code.
+
 package commonai
 
 // Outbound Messages API wire vocabulary (blocks, cache, images); transport in anthropic.go.

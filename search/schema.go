@@ -1,3 +1,5 @@
+// schema.go holds the schema code.
+
 package search
 
 // The index is derived data, rebuildable from the conversations; its halves are versioned separately.

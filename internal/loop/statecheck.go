@@ -1,3 +1,5 @@
+// statecheck.go holds the statecheck code.
+
 package loop
 
 import (

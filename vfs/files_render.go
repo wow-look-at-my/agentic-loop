@@ -1,3 +1,5 @@
+// files_render.go holds the files render code.
+
 package vfs
 
 import (
@@ -63,15 +65,22 @@ func renderListing(where string, l Listing) string {
 
 // renderGrep renders hits grouped by file. Every path is a full virtual path
 // carrying its line number, so a hit feeds straight back into read_file.
-func renderGrep(where, pattern string, globs []string, res GrepResult) string {
+func renderGrep(where, pattern string, regexp bool, globs []string, res GrepResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "grep %q in %s", pattern, where)
+	mode := "literal"
+	if regexp {
+		mode = "regexp"
+	}
+	fmt.Fprintf(&b, "grep %q (%s) in %s", pattern, mode, where)
 	if len(globs) > 0 {
 		fmt.Fprintf(&b, " (%s)", strings.Join(globs, ", "))
 	}
 	if len(res.Hits) == 0 {
 		// An empty result states what it proves: every line in scope was read, so the text is genuinely absent.
 		b.WriteString(": no matches.\nEvery line of every file in scope was searched, so the text is genuinely absent from it — this is a real negative, not a search that gave up.")
+		if !regexp && looksLikeRegexp(pattern) {
+			b.WriteString("\n" + grepLiteralHint)
+		}
 		if res.Note != "" {
 			b.WriteString("\n" + res.Note)
 		}
@@ -94,6 +103,19 @@ func renderGrep(where, pattern string, globs []string, res GrepResult) string {
 		b.WriteString("\n" + res.Note)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// grepLiteralHint follows an empty literal search whose pattern is written like a regexp: the usual model mistake.
+const grepLiteralHint = `The pattern was matched as literal text and contains regular-expression syntax; set "regexp": true to search it as a pattern.`
+
+// looksLikeRegexp reports whether a pattern carries syntax that only means something to a regexp.
+func looksLikeRegexp(pattern string) bool {
+	for _, s := range []string{"|", ".*", `\d`, `\w`, `\s`, `\b`, "^", "$", "(", "["} {
+		if strings.Contains(pattern, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // SliceLines applies read_file's line window. A whole file is the default, but

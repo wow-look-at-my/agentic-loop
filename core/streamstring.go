@@ -1,3 +1,5 @@
+// streamstring.go holds the streamstring code.
+
 package commonai
 
 import (

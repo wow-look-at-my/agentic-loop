@@ -1,3 +1,5 @@
+// meta.go holds the meta code.
+
 package commonai
 
 import (

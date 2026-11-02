@@ -1,3 +1,5 @@
+// sessionsource.go holds the sessionsource code.
+
 package search
 
 import (

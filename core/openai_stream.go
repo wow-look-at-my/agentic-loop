@@ -1,3 +1,5 @@
+// openai_stream.go holds the openai stream code.
+
 package commonai
 
 import (

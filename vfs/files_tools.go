@@ -1,3 +1,5 @@
+// files_tools.go holds the files tools code.
+
 package vfs
 
 import (
@@ -34,7 +36,7 @@ type (
 		Path          string `json:"path" jsonschema:"Where to search, recursively. A directory, a subdirectory of one, or a single file."`
 		Pattern       string `json:"pattern" jsonschema:"The text to find. Matched literally and case-insensitively anywhere in a line unless regexp or case_sensitive say otherwise. Not tokenized: give the literal text you expect to see in the file."`
 		Glob          string `json:"glob,omitempty" jsonschema:"Only search files whose name matches this glob, or a comma-separated list of them, e.g. \"*.usf\" or \"*.c,*.h\"."`
-		Regexp        bool   `json:"regexp,omitempty" jsonschema:"Treat pattern as an extended regular expression instead of literal text. Defaults to false."`
+		Regexp        bool   `json:"regexp,omitempty" jsonschema:"Treat pattern as a regular expression in RE2 syntax (Go's regexp): \\d \\w \\s \\b, (?i) and | work; lookaround and backreferences do not. Defaults to false; without it, | . * ( are matched as literal characters."`
 		CaseSensitive bool   `json:"case_sensitive,omitempty" jsonschema:"Match case exactly. Defaults to false (case-insensitive)."`
 		Limit         int    `json:"limit,omitempty" jsonschema:"Maximum matching lines to return, 1-100 (default 30). The reply says when it stopped at the cap."`
 	}
@@ -225,7 +227,7 @@ func (e *files) grep(ctx context.Context, args json.RawMessage) (agentic.ToolRes
 	if err != nil {
 		return agentic.ToolResult{Content: GrepToolName + ": " + err.Error(), IsError: true}, nil
 	}
-	return agentic.ToolResult{Content: renderGrep(f.Display(in.Path), pattern, globs, res)}, nil
+	return agentic.ToolResult{Content: renderGrep(f.Display(in.Path), pattern, in.Regexp, globs, res)}, nil
 }
 
 func (e *files) writeFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
