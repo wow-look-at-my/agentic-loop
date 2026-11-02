@@ -272,6 +272,22 @@ func TestReadFileWindow(t *testing.T) {
 	assert.Contains(t, missing.Content, "does not exist")
 }
 
+// A model that writes a regexp but leaves "regexp" off gets an empty literal search. The reply says which mode ran
+// and points at the switch, rather than declaring the text absent and nothing more.
+func TestAnEmptyLiteralSearchThatLooksLikeARegexpSaysSo(t *testing.T) {
+	res := GrepResult{}
+	literal := renderGrep("/work", "foo|bar", false, nil, res)
+	assert.Contains(t, literal, `grep "foo|bar" (literal) in /work`)
+	assert.Contains(t, literal, grepLiteralHint)
+
+	plain := renderGrep("/work", "foo", false, nil, res)
+	assert.NotContains(t, plain, grepLiteralHint, "a plain word is not a regexp mistake")
+
+	pattern := renderGrep("/work", "foo|bar", true, nil, res)
+	assert.Contains(t, pattern, `grep "foo|bar" (regexp) in /work`)
+	assert.NotContains(t, pattern, grepLiteralHint)
+}
+
 func TestGrepStatesWhatAnEmptyResultProves(t *testing.T) {
 	reg, _ := fileRig()
 	hit := runFileTool(t, reg, GrepToolName, `{"path":"/work","pattern":"TODO"}`)

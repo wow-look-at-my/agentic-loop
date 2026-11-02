@@ -19,7 +19,7 @@ const (
 		"Searches names and paths only; to search what is INSIDE the files use " + GrepToolName + "."
 	grepDescription = "Searches file CONTENTS below a path, recursively — the equivalent of grep -r. " +
 		"Works on every path the other file tools do, and the path sets the scope: a directory, a subdirectory of one, or a single file. " +
-		"Matching is literal and case-insensitive by default; set \"regexp\" for a pattern or \"case_sensitive\" for an exact match, and narrow with \"glob\". " +
+		"Matching is literal and case-insensitive by default; set \"regexp\" for a pattern in RE2 syntax (Go's regexp, no lookaround or backreferences) or \"case_sensitive\" for an exact match, and narrow with \"glob\". " +
 		"Each hit is a path and a line number, ready for " + ReadFileToolName + " and its \"offset\". " +
 		"Because every line of every file in scope is read, NO MATCHES really does mean the text is not there — and if coverage was partial the reply says so, so trust the stated scope."
 	writeFileDescription  = "Creates a NEW file. Fails when the path already exists — change an existing file with " + EditFileToolName + ", never by rewriting it whole."
