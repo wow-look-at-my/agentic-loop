@@ -27,7 +27,7 @@ var repoReadFields = map[string][]string{
 	"issue":     {"org", "repo", "number"},
 	"status":    {"org", "repo", "ref"},
 	"check_run": {"org", "repo", "id"},
-	"job_log":   {"org", "repo", "job_id", "offset", "limit"},
+	"job_log":   {"org", "repo", "job_id", "offset", "limit", "pattern"},
 }
 
 // repoReadFieldRedirect points each ignorable field at the read that does use
@@ -46,6 +46,7 @@ var repoReadFieldRedirect = map[string]string{
 	"job_id":       `"job_id" names the Actions job what=job_log reads; what=status prints it beside each job as [job N].`,
 	"offset":       `"offset" and "limit" pick a line window of what=job_log. To read part of a FILE use ` + vfs.ReadFileToolName + `, which takes the same two.`,
 	"limit":        `"limit" bounds what=job_log's line window; the list reads take "per_page" instead.`,
+	"pattern":      `"pattern" searches the lines of what=job_log. To search inside files use grep on /repos/<org>/<repo>/<path>.`,
 }
 
 // validateRepoReadArgs rejects a call carrying arguments the chosen read
