@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	agentic "github.com/wow-look-at-my/agentic-loop"
+	"regexp"
 	"strings"
 )
 
@@ -27,6 +28,13 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) agentic.Too
 	}
 	if in.JobID <= 0 {
 		return agentic.ToolResult{Content: `repo_read what=job_log needs "job_id": the job id what=status prints beside each job as [job N].`, IsError: true}
+	}
+	var re *regexp.Regexp
+	if in.Pattern != "" {
+		var err error
+		if re, err = regexp.Compile(in.Pattern); err != nil {
+			return agentic.ToolResult{Content: fmt.Sprintf(`repo_read what=job_log: "pattern" is not a valid Go regular expression: %s`, err), IsError: true}
+		}
 	}
 
 	resource := fmt.Sprintf("job %d of %s", in.JobID, RepoPath(in.Org, in.Repo, ""))
@@ -72,7 +80,52 @@ func (e *repoTools) jobLogRead(ctx context.Context, in repoReadArgs) agentic.Too
 	if len(lines) == 1 && lines[0] == "" {
 		return agentic.ToolResult{Content: fmt.Sprintf("The log of %s is empty.", resource)}
 	}
+	if re != nil {
+		return agentic.ToolResult{Content: searchJobLog(in, re, resource, lines, res.truncated)}
+	}
 	return agentic.ToolResult{Content: renderJobLog(in, resource, lines, res.truncated)}
+}
+
+// jobLogMaxMatches caps the lines a pattern search returns.
+const jobLogMaxMatches = 300
+
+// searchJobLog returns the lines that match re, each with its line number. It always states the scope it read. No
+// match reads as a fact about those lines, and a cap that bites says where to continue.
+func searchJobLog(in repoReadArgs, re *regexp.Regexp, resource string, lines []string, truncated bool) string {
+	start, end := 0, len(lines)
+	if in.Offset > 0 || in.Limit > 0 {
+		start, end, _ = jobLogWindow(in.Offset, in.Limit, len(lines))
+	}
+	var hits []string
+	last := end
+	for i := start; i < end; i++ {
+		if !re.MatchString(lines[i]) {
+			continue
+		}
+		if len(hits) == jobLogMaxMatches {
+			last = i
+			break
+		}
+		hits = append(hits, fmt.Sprintf("%d: %s", i+1, lines[i]))
+	}
+	var b strings.Builder
+	switch {
+	case len(hits) == 0:
+		fmt.Fprintf(&b, "No line of %s matches %q: lines %d-%d of %d were all read.", resource, in.Pattern, start+1, end, len(lines))
+	case last < end:
+		fmt.Fprintf(&b, "Lines of %s matching %q -- the first %d matches in lines %d-%d of %d. More matches follow: continue with {\"offset\":%d}.",
+			resource, in.Pattern, len(hits), start+1, end, len(lines), last+1)
+	default:
+		fmt.Fprintf(&b, "Lines of %s matching %q -- %d matches in lines %d-%d of %d.", resource, in.Pattern, len(hits), start+1, end, len(lines))
+	}
+	if truncated {
+		fmt.Fprintf(&b, "\nGitHub's log exceeded this tool's %d MiB cap and was cut at that point; only the part that was read was searched.", jobLogMaxBytes>>20)
+	}
+	if len(hits) > 0 {
+		b.WriteString("\n\n")
+		b.WriteString(strings.Join(hits, "\n"))
+	}
+	return b.String()
 }
 
 // fetchJobForLogFailure re-reads GET /actions/jobs/{id} after a failed log

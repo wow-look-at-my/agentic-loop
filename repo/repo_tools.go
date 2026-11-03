@@ -125,6 +125,7 @@ type repoReadArgs struct {
 	JobID       int64  `json:"job_id,omitempty" jsonschema:"For what=job_log: the Actions job id, as what=status prints it beside each job ([job N])."`
 	Offset      int    `json:"offset,omitempty" jsonschema:"For what=job_log: 1-based first line to return. Omitted, the log's tail is returned (where a failing step's error is)."`
 	Limit       int    `json:"limit,omitempty" jsonschema:"For what=job_log: how many lines to return from offset."`
+	Pattern     string `json:"pattern,omitempty" jsonschema:"For what=job_log: a Go regular expression. Only the lines that match are returned, each with its line number, from the whole log (or from the offset/limit window when one is given). Use it to find the error in a long log, e.g. ^(FAIL|--- FAIL|panic:)."`
 }
 
 // repoReadWhatOrder is the declaration of which reads exist, in order.

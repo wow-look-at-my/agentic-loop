@@ -60,6 +60,42 @@ func TestRepoJobLogWindowIsAddressableSoTheWholeLogIsReachable(t *testing.T) {
 	assert.NotContains(t, res.Content, "line 11\n")
 }
 
+func TestRepoJobLogPatternFindsAFailureAnywhereInALongLog(t *testing.T) {
+	log := numberedLog(5000)
+	log = strings.Replace(log, "line 1234\n", "FAIL\tnet/http\t12.3s\n", 1)
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(ghCall) (int, string) { return http.StatusOK, log })
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 5, Pattern: `^(FAIL|panic:)`})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, "1 matches in lines 1-5000 of 5000")
+	assert.Contains(t, res.Content, "1234: FAIL\tnet/http\t12.3s", "a hit carries its line number, so a window around it is one call away")
+	assert.NotContains(t, res.Content, "line 1233")
+}
+
+func TestRepoJobLogPatternStatesANegativeAndItsScope(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(ghCall) (int, string) { return http.StatusOK, numberedLog(100) })
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 5, Pattern: "panic:", Offset: 11, Limit: 20})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, `No line of job 5 of /repos/octo/hello matches "panic:": lines 11-30 of 100 were all read.`)
+}
+
+func TestRepoJobLogPatternAnnouncesItsCap(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(ghCall) (int, string) { return http.StatusOK, numberedLog(jobLogMaxMatches + 10) })
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 5, Pattern: "^line"})
+	require.False(t, res.IsError, res.Content)
+	assert.Contains(t, res.Content, fmt.Sprintf("the first %d matches", jobLogMaxMatches))
+	assert.Contains(t, res.Content, fmt.Sprintf(`continue with {"offset":%d}`, jobLogMaxMatches+1))
+}
+
+func TestRepoJobLogRejectsABadPatternBeforeFetching(t *testing.T) {
+	_, ex := newFakeGitHub(t, GitHubConfig{}, func(ghCall) (int, string) {
+		t.Fatal("a bad pattern must not cost a log fetch")
+		return 0, ""
+	})
+	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "job_log", Org: "octo", Repo: "hello", JobID: 5, Pattern: "("})
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Content, `"pattern" is not a valid Go regular expression`)
+}
+
 // GitHub does not serve the log from the API host: it answers with a
 // short-lived signed URL on storage. Following that is the whole read. The
 // Authorization header must NOT cross to the other host. The signature is the
