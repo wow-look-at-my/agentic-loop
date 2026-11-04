@@ -192,7 +192,7 @@ func TestFetchModelListNamesBothRefusals(t *testing.T) {
 	defer srv.Close()
 	_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "401 to a Bearer token and 403 to x-api-key")
+	assert.Contains(t, err.Error(), "401 to a Bearer token (no body) and 403 to x-api-key (no body)")
 }
 
 // OpenRouter advertises the paths that serve each model; a batch-only model advertises none a dialect speaks.
