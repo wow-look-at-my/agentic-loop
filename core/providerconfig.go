@@ -85,6 +85,28 @@ func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
 	}), nil
 }
 
+// CompletionsConfig configures NewCompletionsProvider: the shared connection base and nothing else.
+type CompletionsConfig struct {
+	ProviderConfig
+}
+
+// NewCompletionsProvider builds the Provider for the OpenAI completions. API
+// (POST /completions). It fails fast -- with a permanent (never-retried)
+// error -- on an empty BaseURL. A request that declares tools or carries an
+// image FAILS: the API has no field for either.
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error) {
+	if cfg.BaseURL == "" {
+		return nil, badRequestErr("commonai: CompletionsConfig.BaseURL is required")
+	}
+	return &completionsProvider{
+		baseURL:    cfg.BaseURL,
+		apiKey:     cfg.APIKey,
+		httpClient: cfg.HTTPClient,
+		userAgent:  cfg.UserAgent,
+		headers:    cfg.Headers,
+	}, nil
+}
+
 // NewAnthropicProvider builds the Provider for the Anthropic Messages API. It
 // fails fast -- with a permanent (never-retried) error -- on an empty BaseURL.
 // The concrete implementation is unexported; consumers hold only the Provider

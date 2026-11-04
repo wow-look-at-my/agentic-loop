@@ -13,7 +13,7 @@ import (
 // modellist_test.go. This covers both envelopes, both bare-item forms, and
 // what a document of neither shape answers.
 func TestDialectVocabulary(t *testing.T) {
-	assert.Equal(t, []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}, Dialects())
+	assert.Equal(t, []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses, DialectCompletions}, Dialects())
 	for _, d := range Dialects() {
 		assert.True(t, d.Valid())
 		assert.NotEmpty(t, d.Label())

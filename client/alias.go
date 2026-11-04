@@ -77,10 +77,11 @@ const (
 
 // Wire dialects.
 const (
-	DialectAuto      = commonai.DialectAuto
-	DialectOpenAI    = commonai.DialectOpenAI
-	DialectAnthropic = commonai.DialectAnthropic
-	DialectResponses = commonai.DialectResponses
+	DialectAuto        = commonai.DialectAuto
+	DialectOpenAI      = commonai.DialectOpenAI
+	DialectAnthropic   = commonai.DialectAnthropic
+	DialectResponses   = commonai.DialectResponses
+	DialectCompletions = commonai.DialectCompletions
 )
 
 // DefaultRetry is the retry policy a provider gets when its config names none.
