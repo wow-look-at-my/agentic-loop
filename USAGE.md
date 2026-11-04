@@ -346,7 +346,7 @@ A nil result lets the call run as usual once it arrives whole. A refusal ends th
 
 `Events.OnToolCall` and `OnToolResult` fire for the refused call as for any other. The `Approver` is not asked, since nothing runs. A refused call is replayed with its cut arguments, which the wire writers send as `{}` like any arguments that are not valid JSON.
 
-What a cut costs: the call's usage never arrives. That turn reports none (its `Usage` is zero and unreported), and any call the model queued after the refused one in the same turn is never written. The model asks for it again next turn, after reading why the first was refused. A turn that advertises no tools asks no preflight. The provider never re-sends a cut call: the stop is a callback error, which is permanent by contract.
+What a cut costs: the call's usage never arrives. That turn reports none (its `Usage` is zero and unreported), and any call the model queued after the refused one in the same turn is never written. The model asks for it again next turn, after reading why the first was refused. A turn that advertises no tools runs no hook. The provider never re-sends a cut call: the stop is a callback error, which is permanent by contract.
 
 ### Built-in tools (the plugin pattern)
 
