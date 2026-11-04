@@ -323,6 +323,22 @@ Restricting a toolset filters a slice, so `Tools` carries the helpers the loop a
 
 `NewTool(decl, run)` is the shorthand for a plain function tool. Gating it is not part of building it: the host's `Approver` sees the call either way.
 
+**A tool can refuse a call before its arguments finish arriving.** A model writes a whole file into `write_file`'s `content` before the loop learns the path is taken. The refusal then costs every token of that content, and the wait for it. A `Preflighter` is asked on every argument delta of a call to it, with the arguments streamed so far:
+
+```go
+type Preflighter interface {
+	Tool
+	Preflight(ctx context.Context, partial string) (refusal *ToolResult, decided bool)
+}
+tool := agentic.WithPreflight(agentic.NewTool(decl, run), func(ctx context.Context, partial string) (*agentic.ToolResult, bool) { ... })
+```
+
+`partial` is usually not valid JSON yet. `decided=false` asks again on the next delta. A nil refusal with `decided` lets the call run as usual once it arrives whole. A refusal ends the model call there: the stream is closed. The assistant turn is what streamed before the cut (the refused call's arguments stop where they stopped), the refusal is recorded as the call's result, and the tool never runs. The run goes on to the next turn, where the model reads the refusal.
+
+`Events.OnToolCall` and `OnToolResult` fire for the refused call as for any other. The `Approver` is not asked, since nothing runs. A refused call is replayed with its cut arguments, which the wire writers send as `{}` like any arguments that are not valid JSON.
+
+What a cut costs: the call's usage never arrives. That turn reports none (its `Usage` is zero and unreported), and any call the model queued after the refused one in the same turn is never written. The model asks for it again next turn, after reading why the first was refused. A turn that advertises no tools asks no preflight. The provider never re-sends a cut call: the stop is a callback error, which is permanent by contract.
+
 ### Built-in tools (the plugin pattern)
 
 The `Tool` seam **is** the plugin interface: a "plugin" is nothing more than a value implementing it, appended to your toolset. The library ships the optional tools below. Callers who do not append them are unaffected.
@@ -717,6 +733,7 @@ ft.Remove("/repos")
 - **`IFolderProvider`** — embeds `IProvider`. Adds `Display`/`List`/`Read`/ `Find`/`Grep`. Every method receives the WHOLE virtual path as the model wrote it, because only the folder knows its own grammar.
 - **`IFileProvider`** — embeds `IProvider`. Adds `Read`/`Display`. Serves exactly one virtual file at its registered path. Use it when you only need to expose a single document without a full folder hierarchy.
 - **`IWritableFolderProvider`** adds `Writable`/`Create`/`Replace`/`Remove`. A folder that is not one gets the write tools' refusals for free. A `ReadOnlyExplainer` lets it say *why* a particular path is read-only.
+- **`CreateRefuser`** lets a writable folder refuse a `Create` from the path alone. `RefuseCreate(ctx, path)` is the reason `Create` will give, or `""` when the path is free. `write_file` is a `Preflighter` (see "Tools and approval"). Once the `path` member streamed whole, it asks the guard, the mount, `Writable` and then `RefuseCreate`, and a refusal ends the model call. This happens before the `content` streams in. A folder without it is refused at `Create`, after the whole file arrived. An error from `RefuseCreate` means the folder cannot tell yet, and `Create` decides.
 - **`PathGuard`** blocks a path before any provider sees it, with the reason the model is shown.
 - **`DuplicateMountError`** — returned by `Add`/`AddFile` when a provider is already registered at that path (case-insensitive). Never a silent overwrite.
 

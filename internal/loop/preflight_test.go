@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,9 +20,8 @@ type turnsSSEHandler struct {
 }
 
 func (h *turnsSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var buf strings.Builder
-	_, _ = buf.ReadFrom(r.Body)
-	h.body = append(h.body, []byte(buf.String()))
+	body, _ := io.ReadAll(r.Body)
+	h.body = append(h.body, body)
 	payloads := h.turns[h.hits]
 	h.hits++
 	w.Header().Set("Content-Type", "text/event-stream")
