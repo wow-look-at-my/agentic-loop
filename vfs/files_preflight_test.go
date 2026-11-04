@@ -82,7 +82,8 @@ func TestWriteFilePreflightLetsAnUndecidedFolderRun(t *testing.T) {
 	assert.True(t, decided)
 	work.err = nil
 
-	plain := &plainWritable{writableFolder: &writableFolder{newMemFolder(map[string]string{"a.txt": "a"})}}
+	plain := &plainWritable{w: &writableFolder{newMemFolder(map[string]string{"a.txt": "a"})}}
+	plain.memFolder = plain.w.memFolder
 	require.NoError(t, ft.Add("/plain", plain))
 	refusal, decided = pf.Preflight(ctx, `{"path": "/plain/a.txt", "content": "`)
 	assert.Nil(t, refusal)
@@ -92,10 +93,19 @@ func TestWriteFilePreflightLetsAnUndecidedFolderRun(t *testing.T) {
 }
 
 // plainWritable is a writable folder with no RefuseCreate.
-type plainWritable struct{ *writableFolder }
-
-func (f *plainWritable) RefuseCreate(context.Context, string) (string, error) {
-	panic("not a CreateRefuser")
+type plainWritable struct {
+	*memFolder
+	w *writableFolder
 }
+
+func (f *plainWritable) Writable(p string) (bool, string) { return f.w.Writable(p) }
+func (f *plainWritable) Create(ctx context.Context, p, content string) (string, error) {
+	return f.w.Create(ctx, p, content)
+}
+
+func (f *plainWritable) Replace(ctx context.Context, p, oldText, newText string) (string, error) {
+	return f.w.Replace(ctx, p, oldText, newText)
+}
+func (f *plainWritable) Remove(ctx context.Context, p string) (string, error) { return f.w.Remove(ctx, p) }
 
 var _ IWritableFolderProvider = (*plainWritable)(nil)
