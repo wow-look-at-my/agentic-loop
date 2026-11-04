@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,9 +47,9 @@ func toolCallChunk(args string) string {
 	return string(b)
 }
 
-// A tool that refuses from its streamed arguments ends the model call there. The refusal is the
-// call's result, the tool never runs, the model never finishes the arguments, and the run goes on.
-func TestPreflightRefusalEndsTheCallAndAnswersIt(t *testing.T) {
+// A hook that refuses ends the model call the moment its member has streamed. The refusal is the
+// call's result, the tool never runs, the rest of the arguments never arrive, and the run goes on.
+func TestArgHookRefusalEndsTheCallAndAnswersIt(t *testing.T) {
 	h := &turnsSSEHandler{turns: [][]string{
 		{
 			toolCallChunk(`{"path": "/work/ma`),
@@ -67,14 +66,11 @@ func TestPreflightRefusalEndsTheCallAndAnswersIt(t *testing.T) {
 	p := newProvider(mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}}), retryTestPolicy(3))
 
 	exec := &fakeExec{tools: []ToolDecl{{Name: "write_file"}}}
-	var asked []string
-	tools := Tools{WithPreflight(exec.registry()[0], func(_ context.Context, partial string) (*ToolResult, bool) {
-		asked = append(asked, partial)
-		if !strings.Contains(partial, `"/work/main.go"`) {
-			return nil, false
-		}
-		return &ToolResult{Content: "write_file: main.go already exists", IsError: true}, true
-	})}
+	var paths []string
+	tools := Tools{WithArgHooks(exec.registry()[0], OnArg("path", func(_ context.Context, path string) *ToolResult {
+		paths = append(paths, path)
+		return &ToolResult{Content: "write_file: " + path + " already exists", IsError: true}
+	}))}
 
 	var calls []ToolCall
 	var results []ToolResultEvent
@@ -88,8 +84,8 @@ func TestPreflightRefusalEndsTheCallAndAnswersIt(t *testing.T) {
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "add main.go"}}})
 	require.NoError(t, err)
 
-	// Asked on each delta until the path was whole, then never again.
-	assert.Equal(t, []string{`{"path": "/work/ma`, `{"path": "/work/main.go", "content": "pack`}, asked)
+	// Called once, with the decoded value, when the path was whole: not once per delta.
+	assert.Equal(t, []string{"/work/main.go"}, paths)
 	assert.Empty(t, exec.executed, "a refused call never runs")
 
 	// The turn is what streamed before the refusal; the rest of the arguments never arrived.
@@ -97,14 +93,14 @@ func TestPreflightRefusalEndsTheCallAndAnswersIt(t *testing.T) {
 	assistant := res.Messages[1]
 	require.Len(t, assistant.ToolCalls, 1)
 	assert.Equal(t, `{"path": "/work/main.go", "content": "pack`, assistant.ToolCalls[0].Arguments)
-	assert.Equal(t, Message{Role: RoleTool, Content: "write_file: main.go already exists", ToolCallID: "c1", ToolIsError: true}, res.Messages[2])
+	assert.Equal(t, Message{Role: RoleTool, Content: "write_file: /work/main.go already exists", ToolCallID: "c1", ToolIsError: true}, res.Messages[2])
 	assert.Equal(t, "used edit_file instead", res.Final.Content)
 
 	// The host saw the call and its result the usual way; the call ended complete, not failed.
 	require.Len(t, calls, 1)
 	assert.Equal(t, "c1", calls[0].ID)
 	require.Len(t, results, 1)
-	assert.Equal(t, "write_file: main.go already exists", results[0].Result.Content)
+	assert.Equal(t, "write_file: /work/main.go already exists", results[0].Result.Content)
 	require.Len(t, finals, 2)
 	assert.Equal(t, "complete", finals[0].Status)
 
@@ -116,12 +112,13 @@ func TestPreflightRefusalEndsTheCallAndAnswersIt(t *testing.T) {
 	assert.Contains(t, string(h.body[1]), "main.go already exists", "the next request carries the refusal")
 }
 
-// A preflight that lets the call through changes nothing: the whole arguments arrive and Execute runs.
-func TestPreflightPassLetsTheCallRunWhole(t *testing.T) {
+// A hook that passes changes nothing: the whole arguments arrive and Execute runs. A member no hook
+// names, and a value that does not decode as the hook's type, never reach it.
+func TestArgHookPassLetsTheCallRunWhole(t *testing.T) {
 	h := &turnsSSEHandler{turns: [][]string{
 		{
-			toolCallChunk(`{"path": "/work/new.go", `),
-			toolCallChunk(`"content": "package new\n"}`),
+			toolCallChunk(`{"mode": 3, "path": "/work/new.go", `),
+			toolCallChunk(`"content": "package new\n", "path2": 7}`),
 			`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
 		},
 		{`{"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}`},
@@ -131,16 +128,30 @@ func TestPreflightPassLetsTheCallRunWhole(t *testing.T) {
 	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}})
 
 	exec := &fakeExec{tools: []ToolDecl{{Name: "write_file"}}}
-	decisions := 0
-	tools := Tools{WithPreflight(exec.registry()[0], func(context.Context, string) (*ToolResult, bool) {
-		decisions++
-		return nil, true
-	})}
+	var paths, modes []string
+	tools := Tools{WithArgHooks(exec.registry()[0],
+		OnArg("path", func(_ context.Context, path string) *ToolResult { paths = append(paths, path); return nil }),
+		OnArg("mode", func(_ context.Context, mode string) *ToolResult { modes = append(modes, mode); return nil }),
+	)}
 	res, err := runTurn(context.Background(), Config{Provider: p, Tools: tools, Approver: allowAll},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
-	assert.Equal(t, 1, decisions, "decided on the first delta, not asked again")
+	assert.Equal(t, []string{"/work/new.go"}, paths)
+	assert.Empty(t, modes, "a number does not decode as a string, so Execute reports it")
 	require.Len(t, exec.executed, 1)
-	assert.Equal(t, `{"path": "/work/new.go", "content": "package new\n"}`, exec.executed[0].Arguments)
+	assert.Equal(t, `{"mode": 3, "path": "/work/new.go", "content": "package new\n", "path2": 7}`, exec.executed[0].Arguments)
 	assert.Equal(t, "done", res.Final.Content)
+}
+
+// A turn whose tools have no hooks scans nothing.
+func TestArgHooksForIsNilWithoutHooks(t *testing.T) {
+	exec := &fakeExec{tools: []ToolDecl{{Name: "a"}, {Name: "b"}}}
+	assert.Nil(t, argHooksFor(exec.registry(), exec.tools))
+	hooked := Tools{WithArgHooks(exec.registry()[0], ArgHook{Key: "x"}), exec.registry()[1]}
+	assert.Nil(t, argHooksFor(hooked, nil), "a turn that advertises nothing runs no call")
+	fn := argHooksFor(hooked, exec.tools)
+	require.NotNil(t, fn)
+	assert.Len(t, fn("a"), 1)
+	assert.Empty(t, fn("b"))
+	assert.Empty(t, fn("unknown"))
 }

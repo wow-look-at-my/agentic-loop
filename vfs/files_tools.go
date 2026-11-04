@@ -246,32 +246,23 @@ func (e *files) writeFile(ctx context.Context, args json.RawMessage) (agentic.To
 	return agentic.ToolResult{Content: note}, nil
 }
 
-// writePreflight judges a write_file call from the arguments streamed so far. Once the path has
-// arrived whole, everything that can refuse the call without its content is asked. This is the
-// guard, the mount, Writable, and the folder's own CreateRefuser. A path still arriving is
-// undecided.
-func (e *files) writePreflight(ctx context.Context, partial string) (*agentic.ToolResult, bool) {
-	path, state := partialStringField(partial, "path")
-	switch state {
-	case fieldPending:
-		return nil, false
-	case fieldAbsent:
-		// No usable path: Execute reports what is wrong with the arguments.
-		return nil, true
-	}
+// refuseWritePath is write_file's hook on its path, run once the path has streamed and before the
+// content arrives. It asks everything that can refuse without the content: the guard, the mount,
+// Writable, and the folder's own CreateRefuser.
+func (e *files) refuseWritePath(ctx context.Context, path string) *agentic.ToolResult {
 	w, fail := e.writable(WriteFileToolName, path)
 	if fail != nil {
-		return fail, true
+		return fail
 	}
 	r, ok := w.(CreateRefuser)
 	if !ok {
-		return nil, true
+		return nil
 	}
 	reason, err := r.RefuseCreate(ctx, path)
 	if err != nil || reason == "" {
-		return nil, true
+		return nil
 	}
-	return &agentic.ToolResult{Content: WriteFileToolName + ": " + reason, IsError: true}, true
+	return &agentic.ToolResult{Content: WriteFileToolName + ": " + reason, IsError: true}
 }
 
 func (e *files) editFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {

@@ -177,48 +177,63 @@ func (s *session) addText(rec *commonai.CallRecord, text string) {
 
 // sink is the CallSink of one model call: each node joins the tree when its
 // part begins.
-func (s *session) sink(ctx context.Context, rec *commonai.CallRecord, firstID string, preflight preflightFn) *callSink {
-	return &callSink{s: s, ctx: ctx, rec: rec, firstID: firstID, preflight: preflight, decided: set.New[*commonai.ToolCallMessage]()}
+func (s *session) sink(ctx context.Context, rec *commonai.CallRecord, firstID string, hooks argHooksFn) *callSink {
+	return &callSink{s: s, ctx: ctx, rec: rec, firstID: firstID, hooks: hooks, scans: map[*commonai.ToolCallMessage]*argScanner{}}
 }
 
-// preflightFn judges one call by name from its streamed arguments; nil asks no tool.
-type preflightFn func(ctx context.Context, name, partial string) (*ToolResult, bool)
-
 type callSink struct {
-	s         *session
-	ctx       context.Context
-	rec       *commonai.CallRecord
-	firstID   string
-	preflight preflightFn
-	mu        sync.Mutex
-	nodes     []IMessage
-	err       error
-	// decided holds the calls a preflight has judged; refused holds each refusal by call id.
-	decided set.Set[*commonai.ToolCallMessage]
+	s       *session
+	ctx     context.Context
+	rec     *commonai.CallRecord
+	firstID string
+	hooks   argHooksFn
+	mu      sync.Mutex
+	nodes   []IMessage
+	err     error
+	// scans holds each watched call's argument scanner; nil marks a call nothing watches.
+	scans map[*commonai.ToolCallMessage]*argScanner
+	// refused holds each hook refusal by call id.
 	refused map[string]ToolResult
 }
 
-// judge asks the call's tool about its arguments so far. A refusal is kept for the batch and stops
-// the stream; a decision either way means the call is not asked again.
-func (c *callSink) judge(tc *commonai.ToolCallMessage) {
-	if c.preflight == nil || c.decided.Contains(tc) {
-		return
-	}
-	refusal, decided := c.preflight(c.ctx, tc.Name, tc.Arguments.String())
-	if !decided {
+// watchArgs scans a call's argument delta and runs the hook of each member it completes. A
+// refusal is kept for the batch and stops the stream.
+func (c *callSink) watchArgs(tc *commonai.ToolCallMessage, delta string) {
+	if c.hooks == nil {
 		return
 	}
 	c.mu.Lock()
-	c.decided.Add(tc)
-	if refusal != nil {
-		if c.refused == nil {
-			c.refused = map[string]ToolResult{}
+	scan, seen := c.scans[tc]
+	if !seen {
+		// A name that has arrived and watches nothing is never scanned. A late name is scanned anyway.
+		if tc.Name == "" || len(c.hooks(tc.Name)) > 0 {
+			scan = &argScanner{}
 		}
-		c.refused[string(tc.CallID)] = *refusal
+		c.scans[tc] = scan
 	}
 	c.mu.Unlock()
-	if refusal != nil {
-		c.keep(wrapCallbackErr(errPreflightStop))
+	if scan == nil || scan.ended() {
+		return
+	}
+	for _, m := range scan.feed(delta) {
+		for _, h := range c.hooks(tc.Name) {
+			if h.Key != m.key || h.On == nil {
+				continue
+			}
+			refusal := h.On(c.ctx, m.value)
+			if refusal == nil {
+				continue
+			}
+			c.mu.Lock()
+			if c.refused == nil {
+				c.refused = map[string]ToolResult{}
+			}
+			c.refused[string(tc.CallID)] = *refusal
+			c.scans[tc] = nil
+			c.mu.Unlock()
+			c.keep(wrapCallbackErr(errArgRefused))
+			return
+		}
 	}
 }
 
@@ -244,7 +259,9 @@ func (c *callSink) Delta(n IMessage, f commonai.FieldID, delta string) {
 	case *commonai.ThinkingMessage:
 		err = c.s.events.EmitReasoning(delta)
 	case *commonai.ToolCallMessage:
-		c.judge(node)
+		if f == commonai.FieldArguments {
+			c.watchArgs(node, delta)
+		}
 	}
 	c.keep(err)
 	c.s.events.emitNode(NodeEvent{Node: n})
@@ -274,6 +291,8 @@ func (c *callSink) Timings(t commonai.Timings) {
 func (c *callSink) Retry(a commonai.RetryAttempt) {
 	c.mu.Lock()
 	nodes := append([]IMessage(nil), c.nodes...)
+	// The arguments start again, so every scan does too.
+	c.scans = map[*commonai.ToolCallMessage]*argScanner{}
 	c.mu.Unlock()
 	for _, n := range nodes {
 		for _, f := range commonai.StreamFields(n) {
@@ -320,9 +339,9 @@ func partOfNode(n IMessage) commonai.Part {
 }
 
 // streamCall runs one model call into the tree and gives its result and the nodes it produced.
-func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn int, firstID string, preflight preflightFn) (*Completion, []IMessage, *commonai.CallRecord, map[string]ToolResult, error) {
+func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn int, firstID string, hooks argHooksFn) (*Completion, []IMessage, *commonai.CallRecord, map[string]ToolResult, error) {
 	rec := &commonai.CallRecord{Turn: uint(turn), Status: commonai.CallStreaming, Started: time.Now()}
-	sink := s.sink(ctx, rec, firstID, preflight)
+	sink := s.sink(ctx, rec, firstID, hooks)
 	comp, err := client.Stream(ctx, p, req, sink)
 	rec.Ended = time.Now()
 	nodes := sink.produced()
@@ -330,7 +349,7 @@ func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn 
 		commonai.FinishNode(n)
 	}
 	// A refusal ended the call on purpose. What streamed is the turn, and the batch answers the refused call.
-	if errors.Is(err, errPreflightStop) && comp != nil {
+	if errors.Is(err, errArgRefused) && comp != nil {
 		err = nil
 		if comp.StopReason == "" || comp.StopReason == StopEndTurn {
 			comp.StopReason = StopToolUse
@@ -348,7 +367,7 @@ func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn 
 		rec.StopReason, rec.Model, rec.Streamed = comp.StopReason, comp.Model, comp.Streamed
 	}
 	if err == nil {
-		if serr := sink.Err(); serr != nil && !errors.Is(serr, errPreflightStop) {
+		if serr := sink.Err(); serr != nil && !errors.Is(serr, errArgRefused) {
 			err = serr
 		}
 	}

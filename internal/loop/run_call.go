@@ -37,7 +37,7 @@ func runModelCall(
 		return modelCall{}, cberr
 	}
 
-	comp, nodes, rec, refused, err := s.streamCall(ctx, cfg.Provider, r, turn, firstID, preflightFor(cfg.Tools, tools))
+	comp, nodes, rec, refused, err := s.streamCall(ctx, cfg.Provider, r, turn, firstID, argHooksFor(cfg.Tools, tools))
 	res.Turns++
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)
