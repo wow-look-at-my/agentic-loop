@@ -93,6 +93,19 @@ func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
 	return finish(p, cfg.Retry, err)
 }
 
+// CompletionsConfig configures NewCompletionsProvider: the shared ProviderConfig connection base, nothing more.
+type CompletionsConfig struct {
+	ProviderConfig
+}
+
+// NewCompletionsProvider builds the Provider for the OpenAI completions. API.
+// It fails fast -- with a permanent (never-retried) error -- on an empty.
+// BaseURL.
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error) {
+	p, err := commonai.NewCompletionsProvider(commonai.CompletionsConfig{ProviderConfig: cfg.core()})
+	return finish(p, cfg.Retry, err)
+}
+
 // NewAnthropicProvider builds the Provider for the Anthropic Messages API. It
 // fails fast -- with a permanent (never-retried) error -- on an empty BaseURL.
 // A thinking block whose signature the API rejects is stripped and the call
@@ -120,4 +133,9 @@ func finish(p commonai.Provider, policy *RetryPolicy, err error) (Provider, erro
 // FetchModelList reads an endpoint's model list: the dialect it speaks and what its models charge.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
 	return commonai.FetchModelList(ctx, cfg.core())
+}
+
+// FetchModelListPages reads every page of an endpoint's model list as raw documents.
+func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, error) {
+	return commonai.FetchModelListPages(ctx, cfg.core())
 }

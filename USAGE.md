@@ -132,6 +132,7 @@ type Provider interface {
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error)
 func NewResponsesProvider(cfg ResponsesConfig) (Provider, error)
 func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error)
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error)
 ```
 
 The per-dialect constructors are the only way to build the dialect providers — the implementations are unexported, so consumers hold nothing but the `Provider` interface. `ProviderConfig` is the shared connection base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`, `Headers` — embedded in each dialect's config: `OpenAIConfig` adds `SelfHosted` (the `cache_prompt` opt-in for llama.cpp-style servers), `ResponsesConfig` adds `Store`. `AnthropicConfig` adds `Version` (the `anthropic-version` header) and `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
@@ -169,13 +170,19 @@ Positions this provider takes deliberately:
 
 Everything else behind the seam is unchanged: the same `Request`, the same callbacks, the same retry and error classification, the same `Run`. What differs is the wire — `instructions` rather than a system message, `max_output_tokens` rather than `max_tokens`, `input_tokens`/`output_tokens` rather than `prompt`/`completion`, no `finish_reason` (the shape of the turn says it). This is a failure that can arrive inside a 200 as a `response.failed` event. That last one surfaces as a permanent error, not a transient one: re-sending a request the server accepted. The server then rejected just gets billed twice.
 
+### The completions dialect
+
+`NewCompletionsProvider` speaks the legacy `POST /completions` API: one prompt string in, text out. Some models are served there and nowhere else (an instruct model, a base model on a self-hosted server). A gateway can advertise it beside the chat APIs. The transcript becomes labelled turns (`System:`, `User:`, `Assistant:`, `Tool result (<id>):`) ending on an open `Assistant:`. Reasoning text and tool calls go in as text, so nothing the model produced is lost. Depth: `docs/completions.md`.
+
+It FAILS on what it cannot express: a request that declares tools, or a message with an image. A host that wants a tool-less turn on such a model drops the tools itself, and says so. A request with no `max_tokens` gets `DefaultCompletionsMaxTokens`, because the API's own default of multiple cuts every answer off. Its params are the `openai` namespace's.
+
 ### Which dialect an endpoint speaks
 
 ```go
-type Dialect string // DialectAuto (""), DialectOpenAI, DialectAnthropic
+type Dialect string // DialectAuto (""), DialectOpenAI, DialectAnthropic, DialectResponses, DialectCompletions
 
 func (d Dialect) Valid() bool
-func (d Dialect) Label() string          // "detect" / "openai-compatible" / "anthropic messages"
+func (d Dialect) Label() string          // "detect" / "openai-compatible" / "anthropic messages" / ...
 func Dialects() []Dialect                // every dialect, default first
 ```
 
@@ -194,9 +201,10 @@ The envelope is checked before the items, so a list with no models at all still 
 
 ```go
 type ModelList struct {
-    Dialect Dialect
-    Prices  map[string]Rates  // absent = published no pricing
-    Limits  map[string]Limits // absent = published neither limit
+    Dialect   Dialect
+    Prices    map[string]Rates     // absent = published no pricing
+    Limits    map[string]Limits    // absent = published neither limit
+    Endpoints map[string][]Dialect // absent = advertised nothing; empty = no path a dialect speaks
 }
 
 type Limits struct {
@@ -205,6 +213,7 @@ type Limits struct {
 }
 
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error)
+func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, error)
 func DecodeModelList(body []byte) (*ModelList, error)
 func ModelLimitsOf(ctx context.Context, p Provider, model string) (Limits, bool, error)
 ```
@@ -219,7 +228,9 @@ A gateway that resolves an alias (`auto-pr-resolve`) lists the model it serves, 
 
 The openai dialect reads `provider/model` from it into `Completion.Routed` (`Synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`), the exact list id, and the loop asks about that name before `Completion.Model`. When every name misses, one event reports them all.
 
-One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one request and one decode. `FetchModelList` does a `GET {base}/v1/models`, sending both credential forms, since which server answers is the very thing in question.
+One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one decode per page. `FetchModelList` does a `GET {base}/v1/models` in the OpenAI form first: a Bearer token, and no `anthropic-version`. A gateway that serves both APIs reads that header as a choice. OpenRouter answers it with multiple Anthropic-shaped entries whose ids no chat call accepts, instead of its several hundred models. Only a 400, 401 or 403 re-asks in the Anthropic form (`x-api-key`, `anthropic-version`, `limit=1000`). An Anthropic list is paged, so every page is read (`has_more`, `last_id`, `after_id`), and a walk past `modelListMaxPages` is an error rather than a cut. `FetchModelListPages` returns the raw pages for a host that decodes fields of its own.
+
+**A model's protocols can be advertised.** OpenRouter lists the API paths that serve each model (`"endpoints": ["/api/v1/chat/completions", "/api/v1/messages", ...]`). `Endpoints` maps them onto dialects with the same path reading `DialectRefused` uses. A model that advertises only paths no dialect speaks (`/api/v1/batches`) gets an EMPTY list, not an absent one. It is listed, and nothing can chat with it. `EndpointsFor` takes the same suffix rule as `LimitsFor`.
 
 The trailing `/v1` is trimmed off the base first. The chat dialects disagree about what a base URL contains — the OpenAI request is `baseURL + "/chat/completions"`. As a result, its base **ends** in `/v1`, while the Anthropic one is `baseURL + "/v1/messages"`. As a result, its base does not. And appending to the first spelling asks for `/v1/v1/models`, a 404 that reads as an endpoint publishing neither a dialect nor a price.
 

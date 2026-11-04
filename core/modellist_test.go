@@ -1,5 +1,7 @@
 package commonai
 
+import _ "embed"
+
 import (
 	"context"
 	"fmt"
@@ -118,12 +120,96 @@ func TestFetchModelListReadsTheEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/models", gotPath)
 	assert.Contains(t, list.Prices, "anthropic/claude-opus-4-6")
-	assert.Equal(t, DialectOpenAI, list.Dialect, "one request answers both")
+	assert.Equal(t, DialectOpenAI, list.Dialect)
 
-	// Both credential forms, because which server answers is what this asks.
+	// The OpenAI form only: a gateway reads anthropic-version as a choice of list.
 	assert.Equal(t, "Bearer sk-test", gotAuth)
-	assert.Equal(t, "sk-test", gotKey)
-	assert.Equal(t, defaultAnthropicVersion, gotVersion)
+	assert.Empty(t, gotKey)
+	assert.Empty(t, gotVersion)
+}
+
+// A gateway that speaks both answers a shorter, renamed list when it sees
+// anthropic-version. The fetch must get the full list.
+func TestFetchModelListGetsTheOpenAIListFromADualGateway(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("anthropic-version") != "" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"anthropic/x/a[1m]","type":"model"}],"has_more":false}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"x/a","endpoints":["/api/v1/chat/completions"]},{"id":"x/b"}]}`))
+	}))
+	defer srv.Close()
+	list, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, APIKey: "k", HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	assert.Equal(t, []Dialect{DialectOpenAI}, list.Endpoints["x/a"])
+	assert.NotContains(t, list.Endpoints, "anthropic/x/a[1m]")
+}
+
+// Anthropic refuses a Bearer token, so the fetch re-asks with x-api-key and reads every page.
+func TestFetchModelListFallsBackToAnthropicAndReadsEveryPage(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "k" || r.Header.Get("anthropic-version") == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("after_id") == "" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"claude-a","type":"model","max_tokens":10}],"has_more":true,"last_id":"claude-a"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-b","type":"model","max_tokens":20}],"has_more":false,"last_id":"claude-b"}`))
+	}))
+	defer srv.Close()
+	list, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, APIKey: "k", HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	assert.Equal(t, DialectAnthropic, list.Dialect)
+	assert.Equal(t, 10, list.Limits["claude-a"].MaxOutput)
+	assert.Equal(t, 20, list.Limits["claude-b"].MaxOutput, "the second page is read")
+	assert.Equal(t, []string{"limit=1000", "limit=1000&after_id=claude-a"}, queries)
+}
+
+// A list that never stops paging is an error, never a silent cut.
+func TestFetchModelListFailsOnAnEndlessPageWalk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[],"has_more":true,"last_id":"z"}`))
+	}))
+	defer srv.Close()
+	_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still has more")
+}
+
+// Both forms refused is an error that names both answers.
+func TestFetchModelListNamesBothRefusals(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("anthropic-version") != "" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401 to a Bearer token (no body) and 403 to x-api-key (no body)")
+}
+
+// OpenRouter advertises the paths that serve each model; a batch-only model advertises none a dialect speaks.
+func TestDecodeModelListReadsAdvertisedEndpoints(t *testing.T) {
+	list, err := DecodeModelList([]byte(testDecodeModelListReadsAdvertisedEndpointsJson))
+	require.NoError(t, err)
+	assert.Equal(t, []Dialect{DialectOpenAI, DialectCompletions, DialectAnthropic, DialectResponses}, list.Endpoints["p/all"])
+	got, ok := list.EndpointsFor("p/batch")
+	assert.True(t, ok)
+	assert.Empty(t, got, "advertised, but on nothing a dialect speaks")
+	_, ok = list.EndpointsFor("p/none")
+	assert.False(t, ok, "a model that advertises nothing is absent")
+	got, ok = list.EndpointsFor("all")
+	assert.True(t, ok, "a gateway-stripped id resolves by suffix")
+	assert.Len(t, got, 4)
+	_, ok = (*ModelList)(nil).EndpointsFor("x")
+	assert.False(t, ok)
 }
 
 // The chat dialects disagree about a trailing /v1, so the model list accepts both spellings.
@@ -210,3 +296,6 @@ func TestPricingIsReadWhateverEnvelopeCarriesIt(t *testing.T) {
 	assert.InDelta(t, 0.000015, r.Prompt, 1e-12)
 	assert.InDelta(t, 0.000075, r.Completion, 1e-12)
 }
+
+//go:embed testdata/test-decode-model-list-reads-advertised-endpoints.json
+var testDecodeModelListReadsAdvertisedEndpointsJson string

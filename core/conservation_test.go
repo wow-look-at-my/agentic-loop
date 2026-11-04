@@ -74,6 +74,18 @@ func TestTranscriptConservation(t *testing.T) {
 			},
 		},
 		{
+			name: "completions",
+			build: func(base ProviderConfig) Provider {
+				p, err := NewCompletionsProvider(CompletionsConfig{ProviderConfig: base})
+				require.NoError(t, err)
+				return p
+			},
+			dropped: map[string]string{
+				"S-SIG":  "a prompt string has no field for a reasoning signature",
+				"S-RSID": "a prompt string has no reasoning item id",
+			},
+		},
+		{
 			name: "responses",
 			build: func(base ProviderConfig) Provider {
 				return mustResponses(t, ResponsesConfig{ProviderConfig: base})
