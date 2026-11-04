@@ -85,8 +85,8 @@ func (l *ModelList) LimitsFor(model string) (Limits, bool) {
 	return found, true
 }
 
-// modelListMaxBytes caps the read; a model list is small, so anything larger is not the document being read.
-const modelListMaxBytes = 1 << 20
+// modelListMaxBytes caps one page.
+const modelListMaxBytes = 16 << 20
 
 // FetchModelList reads an endpoint's model list, every page of it, decoded.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
@@ -126,17 +126,19 @@ func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, err
 		return nil, err
 	}
 	anthropic := false
-	if status < 200 || status >= 300 {
-		openaiStatus := status
+	if refusesCredentialForm(status) {
+		openaiStatus, openaiBody := status, body
 		body, status, err = getModelList(ctx, cfg, url+"?limit=1000", true)
 		if err != nil {
 			return nil, err
 		}
 		if status < 200 || status >= 300 {
-			return nil, fmt.Errorf("reading the model list: %s answered %d to a Bearer token and %d to x-api-key",
-				url, openaiStatus, status)
+			return nil, fmt.Errorf("reading the model list: %s answered %d to a Bearer token (%s) and %d to x-api-key (%s)",
+				url, openaiStatus, bodySnippet(openaiBody), status, bodySnippet(body))
 		}
 		anthropic = true
+	} else if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("reading the model list: %s answered %d (%s)", url, status, bodySnippet(body))
 	}
 	pages := [][]byte{body}
 	for {
@@ -156,10 +158,27 @@ func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, err
 			return nil, err
 		}
 		if status < 200 || status >= 300 {
-			return nil, fmt.Errorf("reading the model list: %s answered %d", next, status)
+			return nil, fmt.Errorf("reading the model list: %s answered %d (%s)", next, status, bodySnippet(body))
 		}
 		pages = append(pages, body)
 	}
+}
+
+// refusesCredentialForm reports a status that may mean "not this credential form". A server failure says nothing about one.
+func refusesCredentialForm(status int) bool {
+	return status == 400 || status == 401 || status == 403
+}
+
+// bodySnippet is an error body, trimmed and bounded, so a refusal says why.
+func bodySnippet(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "no body"
+	}
+	if r := []rune(s); len(r) > 300 {
+		return string(r[:300]) + "..."
+	}
+	return s
 }
 
 // getModelList makes one model-list request, in the Anthropic form or the OpenAI one.
@@ -191,9 +210,12 @@ func getModelList(ctx context.Context, cfg ProviderConfig, url string, anthropic
 		return nil, 0, fmt.Errorf("reading the model list: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _, err := readCapped(resp.Body, modelListMaxBytes)
+	body, truncated, err := readCapped(resp.Body, modelListMaxBytes)
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading the model list: %w", err)
+	}
+	if truncated {
+		return nil, 0, fmt.Errorf("reading the model list: %s is larger than %d bytes", url, modelListMaxBytes)
 	}
 	return body, resp.StatusCode, nil
 }
@@ -268,7 +290,7 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 	}
 
 	out := &ModelList{
-		Prices: make(map[string]Rates, len(doc.Data)),
+		Prices:    make(map[string]Rates, len(doc.Data)),
 		Limits:    make(map[string]Limits, len(doc.Data)),
 		Endpoints: map[string][]Dialect{},
 	}

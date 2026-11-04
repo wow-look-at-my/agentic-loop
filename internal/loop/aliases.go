@@ -50,21 +50,21 @@ const (
 
 // Provider construction and its policies.
 type (
-	ProviderConfig  = client.ProviderConfig
-	OpenAIConfig    = client.OpenAIConfig
+	ProviderConfig    = client.ProviderConfig
+	OpenAIConfig      = client.OpenAIConfig
 	ResponsesConfig   = client.ResponsesConfig
 	CompletionsConfig = client.CompletionsConfig
 	AnthropicConfig   = client.AnthropicConfig
-	RetryPolicy     = client.RetryPolicy
-	RateLimiter     = client.RateLimiter
-	Dialect         = client.Dialect
+	RetryPolicy       = client.RetryPolicy
+	RateLimiter       = client.RateLimiter
+	Dialect           = client.Dialect
 )
 
 // Wire dialects.
 const (
-	DialectAuto      = client.DialectAuto
-	DialectOpenAI    = client.DialectOpenAI
-	DialectAnthropic = client.DialectAnthropic
+	DialectAuto        = client.DialectAuto
+	DialectOpenAI      = client.DialectOpenAI
+	DialectAnthropic   = client.DialectAnthropic
 	DialectResponses   = client.DialectResponses
 	DialectCompletions = client.DialectCompletions
 )
