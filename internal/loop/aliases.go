@@ -52,8 +52,9 @@ const (
 type (
 	ProviderConfig  = client.ProviderConfig
 	OpenAIConfig    = client.OpenAIConfig
-	ResponsesConfig = client.ResponsesConfig
-	AnthropicConfig = client.AnthropicConfig
+	ResponsesConfig   = client.ResponsesConfig
+	CompletionsConfig = client.CompletionsConfig
+	AnthropicConfig   = client.AnthropicConfig
 	RetryPolicy     = client.RetryPolicy
 	RateLimiter     = client.RateLimiter
 	Dialect         = client.Dialect
@@ -64,7 +65,8 @@ const (
 	DialectAuto      = client.DialectAuto
 	DialectOpenAI    = client.DialectOpenAI
 	DialectAnthropic = client.DialectAnthropic
-	DialectResponses = client.DialectResponses
+	DialectResponses   = client.DialectResponses
+	DialectCompletions = client.DialectCompletions
 )
 
 // DefaultRetry is the policy used when a config names none: attempts, 500ms base delay.
@@ -86,6 +88,12 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 // NewResponsesProvider builds the OpenAI Responses API Provider; fails fast on an empty BaseURL.
 func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
 	return client.NewResponsesProvider(cfg)
+}
+
+// NewCompletionsProvider builds the OpenAI completions Provider; fails fast
+// on an empty BaseURL.
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error) {
+	return client.NewCompletionsProvider(cfg)
 }
 
 // NewAnthropicProvider builds the Anthropic Messages API Provider; fails fast on an empty BaseURL.
@@ -133,6 +141,11 @@ var ErrReasoningRefused = client.ErrReasoningRefused
 // FetchModelList reads an endpoint's model list; unpriced models are ABSENT from Prices.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
 	return client.FetchModelList(ctx, cfg)
+}
+
+// FetchModelListPages reads every page of an endpoint's model list as raw documents.
+func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, error) {
+	return client.FetchModelListPages(ctx, cfg)
 }
 
 // DecodeModelList reads a model-list document; a document that will not parse is an error.

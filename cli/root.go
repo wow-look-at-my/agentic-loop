@@ -90,8 +90,10 @@ func newProvider(cmd *cobra.Command) (client.Provider, error) {
 		return client.NewAnthropicProvider(client.AnthropicConfig{ProviderConfig: cfg})
 	case client.DialectResponses:
 		return client.NewResponsesProvider(client.ResponsesConfig{ProviderConfig: cfg})
+	case client.DialectCompletions:
+		return client.NewCompletionsProvider(client.CompletionsConfig{ProviderConfig: cfg})
 	}
-	return nil, fmt.Errorf("unknown dialect %q: openai, anthropic or responses", dialect)
+	return nil, fmt.Errorf("unknown dialect %q: openai, anthropic, responses or completions", dialect)
 }
 
 // buildRequest turns the flags plus a prompt into the call to make.

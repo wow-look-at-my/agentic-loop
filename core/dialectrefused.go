@@ -19,7 +19,7 @@ var dialectRefusalRe = regexp.MustCompile(`(?i)(not|n't|never|no longer)?\s*(?:`
 	// Told where it IS served, which is the same direction stated the other way.
 	`(?:must |should |can |may )?(?:be )?(?:called|requested|sent|invoked) (?:through|on|via|against)|` +
 	`(?:only |exclusively )?(?:supported|available|works?|served) (?:only )?(?:in|on|with|via|through)` +
-	`)\s+(?:the\s+)?["'` + "`" + `]?/?(v\d+/(?:responses|messages|chat/completions))`)
+	`)\s+(?:the\s+)?["'` + "`" + `]?/?(v\d+/(?:responses|messages|chat/completions|completions))`)
 
 // dialectOfPath maps an API path to the dialect that speaks it.
 func dialectOfPath(path string) Dialect {
@@ -30,6 +30,8 @@ func dialectOfPath(path string) Dialect {
 		return DialectAnthropic
 	case strings.HasSuffix(p, "/chat/completions"):
 		return DialectOpenAI
+	case strings.HasSuffix(p, "/completions"):
+		return DialectCompletions
 	}
 	return DialectAuto
 }

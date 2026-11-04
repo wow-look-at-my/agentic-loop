@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
+	"slices"
 	"strings"
 )
 
@@ -20,6 +22,32 @@ type ModelList struct {
 
 	// Limits is per-model token limits, keyed by id; a model that published neither limit is ABSENT.
 	Limits map[string]Limits
+
+	// Endpoints is the protocols each model ADVERTISES (OpenRouter's "endpoints" array), keyed by id.
+	Endpoints map[string][]Dialect
+}
+
+// EndpointsFor answers the protocols the list advertises for model, with the
+// same suffix rule as LimitsFor.
+func (l *ModelList) EndpointsFor(model string) ([]Dialect, bool) {
+	if l == nil || model == "" {
+		return nil, false
+	}
+	if d, ok := l.Endpoints[model]; ok {
+		return d, true
+	}
+	var found []Dialect
+	matches := 0
+	for id, d := range l.Endpoints {
+		if strings.HasSuffix(id, "/"+model) {
+			found = d
+			matches++
+		}
+	}
+	if matches != 1 {
+		return nil, false
+	}
+	return found, true
 }
 
 // Limits is what a model list says a model can hold and produce, in tokens. Zero means unpublished.
@@ -60,47 +88,149 @@ func (l *ModelList) LimitsFor(model string) (Limits, bool) {
 // modelListMaxBytes caps the read; a model list is small, so anything larger is not the document being read.
 const modelListMaxBytes = 1 << 20
 
-// FetchModelList reads an endpoint's model list.
-//
-// It sends both credential forms, because which server is answering is exactly
-// what is not yet known, and each dialect ignores the other's header.
+// FetchModelList reads an endpoint's model list, every page of it, decoded.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
+	pages, err := FetchModelListPages(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	var out *ModelList
+	for _, p := range pages {
+		l, err := DecodeModelList(p)
+		if err != nil {
+			return nil, err
+		}
+		out = mergeModelLists(out, l)
+	}
+	return out, nil
+}
+
+// modelListMaxPages bounds the Anthropic page walk. A list longer than this is an ERROR, never a silent cut.
+const modelListMaxPages = 50
+
+// FetchModelListPages reads an endpoint's model list and returns each page's
+// raw document, for a host that decodes fields of its own.
+//
+// The first request is the OpenAI form: a Bearer token and NO
+// anthropic-version. A gateway that speaks both reads that header as a choice,
+// and answers a different, shorter list in Anthropic's shape. Only a refusal of
+// the OpenAI form re-asks in the Anthropic one. An Anthropic list is paged
+// (has_more, last_id), so every page is read.
+func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, error) {
 	url, err := modelListURL(cfg.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("reading the model list: %w", err)
 	}
+	body, status, err := getModelList(ctx, cfg, url, false)
+	if err != nil {
+		return nil, err
+	}
+	anthropic := false
+	if status < 200 || status >= 300 {
+		openaiStatus := status
+		body, status, err = getModelList(ctx, cfg, url+"?limit=1000", true)
+		if err != nil {
+			return nil, err
+		}
+		if status < 200 || status >= 300 {
+			return nil, fmt.Errorf("reading the model list: %s answered %d to a Bearer token and %d to x-api-key",
+				url, openaiStatus, status)
+		}
+		anthropic = true
+	}
+	pages := [][]byte{body}
+	for {
+		var page struct {
+			HasMore bool   `json:"has_more"`
+			LastID  string `json:"last_id"`
+		}
+		if json.Unmarshal(body, &page) != nil || !page.HasMore || page.LastID == "" {
+			return pages, nil
+		}
+		if len(pages) >= modelListMaxPages {
+			return nil, fmt.Errorf("reading the model list: %s still has more after %d pages", url, len(pages))
+		}
+		next := url + "?limit=1000&after_id=" + neturl.QueryEscape(page.LastID)
+		body, status, err = getModelList(ctx, cfg, next, anthropic)
+		if err != nil {
+			return nil, err
+		}
+		if status < 200 || status >= 300 {
+			return nil, fmt.Errorf("reading the model list: %s answered %d", next, status)
+		}
+		pages = append(pages, body)
+	}
+}
+
+// getModelList makes one model-list request, in the Anthropic form or the OpenAI one.
+func getModelList(ctx context.Context, cfg ProviderConfig, url string, anthropic bool) ([]byte, int, error) {
 	hc := cfg.HTTPClient
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("reading the model list: %w", err)
+		return nil, 0, fmt.Errorf("reading the model list: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	if cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-		req.Header.Set("x-api-key", cfg.APIKey)
+		if anthropic {
+			req.Header.Set("x-api-key", cfg.APIKey)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+		}
 	}
-	req.Header.Set("anthropic-version", defaultAnthropicVersion)
+	if anthropic {
+		req.Header.Set("anthropic-version", defaultAnthropicVersion)
+	}
 	for k, v := range cfg.Headers {
 		req.Header.Set(k, v)
 	}
-
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("reading the model list: %w", err)
+		return nil, 0, fmt.Errorf("reading the model list: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _, err := readCapped(resp.Body, modelListMaxBytes)
 	if err != nil {
-		return nil, fmt.Errorf("reading the model list: %w", err)
+		return nil, 0, fmt.Errorf("reading the model list: %w", err)
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("reading the model list: %s answered %d", url, resp.StatusCode)
+	return body, resp.StatusCode, nil
+}
+
+// advertisedDialects maps advertised API paths onto the dialects that speak
+// them, in the order given. A path no dialect speaks is left out, so a
+// batch-only model comes back empty rather than absent.
+func advertisedDialects(paths []string) []Dialect {
+	out := []Dialect{}
+	for _, p := range paths {
+		d := dialectOfPath(p)
+		if d == DialectAuto || slices.Contains(out, d) {
+			continue
+		}
+		out = append(out, d)
 	}
-	return DecodeModelList(body)
+	return out
+}
+
+// mergeModelLists folds a later page into the list so far; the first page names the dialect.
+func mergeModelLists(into, page *ModelList) *ModelList {
+	if into == nil {
+		return page
+	}
+	if into.Dialect == DialectAuto {
+		into.Dialect = page.Dialect
+	}
+	for k, v := range page.Prices {
+		into.Prices[k] = v
+	}
+	for k, v := range page.Limits {
+		into.Limits[k] = v
+	}
+	for k, v := range page.Endpoints {
+		into.Endpoints[k] = v
+	}
+	return into
 }
 
 // modelListURL is where an endpoint's model list lives; the trailing /v1 is trimmed because the chat dialects disagree
@@ -128,6 +258,8 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 			Object  string            `json:"object"`
 			Type    string            `json:"type"`
 			Pricing *modelListPricing `json:"pricing"`
+			// Endpoints is OpenRouter's list of the API paths that serve the model.
+			Endpoints []string `json:"endpoints"`
 			modelListLimits
 		} `json:"data"`
 	}
@@ -137,7 +269,8 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 
 	out := &ModelList{
 		Prices: make(map[string]Rates, len(doc.Data)),
-		Limits: make(map[string]Limits, len(doc.Data)),
+		Limits:    make(map[string]Limits, len(doc.Data)),
+		Endpoints: map[string][]Dialect{},
 	}
 
 	// The ENVELOPE decides, because a list with no models at all still
@@ -161,6 +294,9 @@ func DecodeModelList(body []byte) (*ModelList, error) {
 		id := strings.TrimSpace(m.ID)
 		if id == "" {
 			continue
+		}
+		if m.Endpoints != nil {
+			out.Endpoints[id] = advertisedDialects(m.Endpoints)
 		}
 		if l := m.limits(); l != (Limits{}) {
 			out.Limits[id] = l
