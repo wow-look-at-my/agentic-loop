@@ -65,6 +65,13 @@ type IWritableFolderProvider interface {
 	Remove(ctx context.Context, path string) (string, error)
 }
 
+// CreateRefuser is a writable folder that can refuse a Create from the path
+// alone, before the content exists.
+type CreateRefuser interface {
+	// RefuseCreate is the reason Create(path, ...) will fail, or "" when the path is free.
+	RefuseCreate(ctx context.Context, path string) (string, error)
+}
+
 // ReadOnlyExplainer lets a read-only folder name the writable route instead of a bare "read-only" refusal.
 type ReadOnlyExplainer interface {
 	ReadOnlyReason(path string) string

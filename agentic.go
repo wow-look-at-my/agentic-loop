@@ -11,6 +11,7 @@
 package agentic
 
 import (
+	"context"
 	"encoding/json"
 
 	loop "github.com/wow-look-at-my/agentic-loop/internal/loop"
@@ -71,6 +72,8 @@ type SystemMessageEvent = loop.SystemMessageEvent
 type ThinkingBlock = loop.ThinkingBlock
 type Timings = loop.Timings
 type Tool = loop.Tool
+type ArgWatcher = loop.ArgWatcher
+type ArgHook = loop.ArgHook
 type ToolCall = loop.ToolCall
 type ToolCallEvent = loop.ToolCallEvent
 
@@ -167,6 +170,7 @@ var NewResponsesProvider = loop.NewResponsesProvider
 var NewCompletionsProvider = loop.NewCompletionsProvider
 var NewSubagentRuns = loop.NewSubagentRuns
 var NewTool = loop.NewTool
+var WithArgHooks = loop.WithArgHooks
 var OneShot = loop.OneShot
 var Plural = loop.Plural
 var ReadCapped = loop.ReadCapped
@@ -180,3 +184,8 @@ func EnumSchema[In any](enums map[string][]string) json.RawMessage { return loop
 
 // InferSchema is forwarded from internal/loop. A generic function cannot
 func InferSchema[In any]() json.RawMessage { return loop.InferSchema[In]() }
+
+// OnArg is forwarded from internal/loop. A generic function cannot be a var alias.
+func OnArg[T any](key string, fn func(ctx context.Context, v T) *ToolResult) ArgHook {
+	return loop.OnArg[T](key, fn)
+}

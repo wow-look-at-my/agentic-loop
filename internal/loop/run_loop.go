@@ -313,6 +313,12 @@ func runOn(ctx context.Context, cfg Config, req Request, s *session) (*Result, e
 				}
 				asks = append(asks, call)
 
+				// The tool answered this call from its streamed arguments, so nothing runs it.
+				if refusal, ok := mc.refused[call.ID]; ok {
+					results[i] = refusal
+					continue
+				}
+
 				tool, known := cfg.Tools.Find(call.Name)
 				readonly := known && tool.Decl().Readonly
 

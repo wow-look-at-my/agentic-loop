@@ -246,6 +246,25 @@ func (e *files) writeFile(ctx context.Context, args json.RawMessage) (agentic.To
 	return agentic.ToolResult{Content: note}, nil
 }
 
+// refuseWritePath is write_file's hook on its path, run once the path has streamed and before the
+// content arrives. It asks everything that can refuse without the content: the guard, the mount,
+// Writable, and the folder's own CreateRefuser.
+func (e *files) refuseWritePath(ctx context.Context, path string) *agentic.ToolResult {
+	w, fail := e.writable(WriteFileToolName, path)
+	if fail != nil {
+		return fail
+	}
+	r, ok := w.(CreateRefuser)
+	if !ok {
+		return nil
+	}
+	reason, err := r.RefuseCreate(ctx, path)
+	if err != nil || reason == "" {
+		return nil
+	}
+	return &agentic.ToolResult{Content: WriteFileToolName + ": " + reason, IsError: true}
+}
+
 func (e *files) editFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[editArgs](EditFileToolName, args)
 	if bad != nil {

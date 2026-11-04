@@ -138,7 +138,7 @@ func NewFileTools(cfg FileToolsConfig) *FileTools {
 		agentic.NewTool(agentic.ToolDecl{Name: ReadFileToolName, Description: describe(ReadFileToolName, readFileDescription), InputSchema: readSchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.readFile),
 		agentic.NewTool(agentic.ToolDecl{Name: FindFilesToolName, Description: describe(FindFilesToolName, findFilesDescription), InputSchema: findSchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.findFiles),
 		agentic.NewTool(agentic.ToolDecl{Name: GrepToolName, Description: describe(GrepToolName, grepDescription), InputSchema: grepSchema, Readonly: true, OpenWorld: agentic.Bool(false)}, e.grep),
-		agentic.NewTool(agentic.ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema, Destructive: agentic.Bool(true), Idempotent: true, OpenWorld: agentic.Bool(false)}, e.writeFile),
+		agentic.WithArgHooks(agentic.NewTool(agentic.ToolDecl{Name: WriteFileToolName, Description: describe(WriteFileToolName, writeFileDescription), InputSchema: writeSchema, Destructive: agentic.Bool(true), Idempotent: true, OpenWorld: agentic.Bool(false)}, e.writeFile), agentic.OnArg("path", e.refuseWritePath)),
 		agentic.NewTool(agentic.ToolDecl{Name: EditFileToolName, Description: describe(EditFileToolName, editFileDescription), InputSchema: editSchema, Destructive: agentic.Bool(true), OpenWorld: agentic.Bool(false)}, e.editFile),
 		agentic.NewTool(agentic.ToolDecl{Name: DeleteFileToolName, Description: describe(DeleteFileToolName, deleteFileDescription), InputSchema: pathOnlySchema, Destructive: agentic.Bool(true), Idempotent: true, OpenWorld: agentic.Bool(false)}, e.deleteFile),
 	}

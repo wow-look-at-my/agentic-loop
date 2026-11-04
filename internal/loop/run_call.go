@@ -14,6 +14,8 @@ type modelCall struct {
 	comp  *Completion
 	nodes []IMessage
 	rec   *commonai.CallRecord
+	// refused holds, by call id, the result a tool gave from the call's streamed arguments. Such a call never runs.
+	refused map[string]ToolResult
 }
 
 // message is the call's turn as a flat message.
@@ -35,12 +37,12 @@ func runModelCall(
 		return modelCall{}, cberr
 	}
 
-	comp, nodes, rec, err := s.streamCall(ctx, cfg.Provider, r, turn, firstID)
+	comp, nodes, rec, refused, err := s.streamCall(ctx, cfg.Provider, r, turn, firstID, argHooksFor(cfg.Tools, tools))
 	res.Turns++
 	if comp != nil {
 		res.Usages = append(res.Usages, comp.Usage)
 	}
-	mc := modelCall{comp: comp, nodes: nodes, rec: rec}
+	mc := modelCall{comp: comp, nodes: nodes, rec: rec, refused: refused}
 	if cberr := cfg.Events.emitTurnEnd(TurnEndEvent{Turn: turn, Comp: comp, Err: err}); cberr != nil {
 		// The call happened; its data is kept, the run aborts on the sink failure.
 		return mc, cberr
