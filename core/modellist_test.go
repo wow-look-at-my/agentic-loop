@@ -1,5 +1,7 @@
 package commonai
 
+import _ "embed"
+
 import (
 	"context"
 	"fmt"
@@ -195,10 +197,7 @@ func TestFetchModelListNamesBothRefusals(t *testing.T) {
 
 // OpenRouter advertises the paths that serve each model; a batch-only model advertises none a dialect speaks.
 func TestDecodeModelListReadsAdvertisedEndpoints(t *testing.T) {
-	list, err := DecodeModelList([]byte(`{"data":[
-		{"id":"p/all","endpoints":["/api/v1/chat/completions","/api/v1/completions","/api/v1/messages","/api/v1/responses","/api/v1/images"]},
-		{"id":"p/batch","endpoints":["/api/v1/batches"]},
-		{"id":"p/none"}]}`))
+	list, err := DecodeModelList([]byte(testDecodeModelListReadsAdvertisedEndpointsJson))
 	require.NoError(t, err)
 	assert.Equal(t, []Dialect{DialectOpenAI, DialectCompletions, DialectAnthropic, DialectResponses}, list.Endpoints["p/all"])
 	got, ok := list.EndpointsFor("p/batch")
@@ -297,3 +296,6 @@ func TestPricingIsReadWhateverEnvelopeCarriesIt(t *testing.T) {
 	assert.InDelta(t, 0.000015, r.Prompt, 1e-12)
 	assert.InDelta(t, 0.000075, r.Completion, 1e-12)
 }
+
+//go:embed testdata/test-decode-model-list-reads-advertised-endpoints.json
+var testDecodeModelListReadsAdvertisedEndpointsJson string

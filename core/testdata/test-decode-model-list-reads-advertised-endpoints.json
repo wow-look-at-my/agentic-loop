@@ -1,0 +1,4 @@
+{"data":[
+		{"id":"p/all","endpoints":["/api/v1/chat/completions","/api/v1/completions","/api/v1/messages","/api/v1/responses","/api/v1/images"]},
+		{"id":"p/batch","endpoints":["/api/v1/batches"]},
+		{"id":"p/none"}]}

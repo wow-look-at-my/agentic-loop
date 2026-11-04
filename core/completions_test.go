@@ -1,5 +1,7 @@
 package commonai
 
+import _ "embed"
+
 import (
 	"context"
 	"encoding/json"
@@ -48,7 +50,7 @@ func TestCompletionsStreamsTextAndUsage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/completions", path)
 	assert.Equal(t, "Bearer k", auth)
-	assert.Equal(t, "System: Be brief.\n\nUser: Hi\n\nAssistant:", got["prompt"], "the core owns the prompt")
+	assert.Equal(t, testCompletionsStreamsTextAndUsageYml, got["prompt"], "the core owns the prompt")
 	assert.EqualValues(t, DefaultCompletionsMaxTokens, got["max_tokens"], "the API's own default of 16 is never left in place")
 	assert.InDelta(t, 0.5, got["temperature"], 1e-9)
 	assert.Equal(t, true, got["stream"])
@@ -108,3 +110,6 @@ func TestCompletionsNeedsABaseURL(t *testing.T) {
 	_, err := NewCompletionsProvider(CompletionsConfig{})
 	require.Error(t, err)
 }
+
+//go:embed testdata/test-completions-streams-text-and-usage.yml
+var testCompletionsStreamsTextAndUsageYml string
