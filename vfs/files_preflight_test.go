@@ -106,6 +106,8 @@ func (f *plainWritable) Create(ctx context.Context, p, content string) (string, 
 func (f *plainWritable) Replace(ctx context.Context, p, oldText, newText string) (string, error) {
 	return f.w.Replace(ctx, p, oldText, newText)
 }
-func (f *plainWritable) Remove(ctx context.Context, p string) (string, error) { return f.w.Remove(ctx, p) }
+func (f *plainWritable) Remove(ctx context.Context, p string) (string, error) {
+	return f.w.Remove(ctx, p)
+}
 
 var _ IWritableFolderProvider = (*plainWritable)(nil)
