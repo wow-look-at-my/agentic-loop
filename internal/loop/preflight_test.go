@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -34,12 +35,17 @@ func (h *turnsSSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fl.Flush()
 }
 
+// toolCallChunk is one chat-completions chunk carrying a fragment of call c1's arguments.
 func toolCallChunk(args string) string {
-	return `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"write_file","arguments":` + jsonString(args) + `}}]}}]}`
-}
-
-func jsonString(s string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`).Replace(s) + `"`
+	chunk := map[string]any{"choices": []any{map[string]any{"delta": map[string]any{
+		"tool_calls": []any{map[string]any{"index": 0, "id": "c1", "type": "function",
+			"function": map[string]any{"name": "write_file", "arguments": args}}},
+	}}}}
+	b, err := json.Marshal(chunk)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 // A tool that refuses from its streamed arguments ends the model call there. The refusal is the
