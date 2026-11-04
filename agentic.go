@@ -70,6 +70,8 @@ type SystemMessageEvent = loop.SystemMessageEvent
 type ThinkingBlock = loop.ThinkingBlock
 type Timings = loop.Timings
 type Tool = loop.Tool
+type Preflighter = loop.Preflighter
+type PreflightFunc = loop.PreflightFunc
 type ToolCall = loop.ToolCall
 type ToolCallEvent = loop.ToolCallEvent
 
@@ -163,6 +165,7 @@ var NewRateLimiter = loop.NewRateLimiter
 var NewResponsesProvider = loop.NewResponsesProvider
 var NewSubagentRuns = loop.NewSubagentRuns
 var NewTool = loop.NewTool
+var WithPreflight = loop.WithPreflight
 var OneShot = loop.OneShot
 var Plural = loop.Plural
 var ReadCapped = loop.ReadCapped

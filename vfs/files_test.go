@@ -147,6 +147,18 @@ func (f *writableFolder) Create(_ context.Context, p, content string) (string, e
 	return "Created " + rel + ".", nil
 }
 
+// RefuseCreate answers from the path alone, the way Create will.
+func (f *writableFolder) RefuseCreate(_ context.Context, p string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	rel := f.rel(p)
+	if _, exists := f.files[rel]; exists {
+		return rel + " already exists", nil
+	}
+	return "", nil
+}
+
 func (f *writableFolder) Replace(_ context.Context, p, oldText, newText string) (string, error) {
 	rel := f.rel(p)
 	content, ok := f.files[rel]

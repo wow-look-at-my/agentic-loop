@@ -246,6 +246,34 @@ func (e *files) writeFile(ctx context.Context, args json.RawMessage) (agentic.To
 	return agentic.ToolResult{Content: note}, nil
 }
 
+// writePreflight judges a write_file call from the arguments streamed so far. Once the path has
+// arrived whole, everything that can refuse the call without its content is asked. This is the
+// guard, the mount, Writable, and the folder's own CreateRefuser. A path still arriving is
+// undecided.
+func (e *files) writePreflight(ctx context.Context, partial string) (*agentic.ToolResult, bool) {
+	path, state := partialStringField(partial, "path")
+	switch state {
+	case fieldPending:
+		return nil, false
+	case fieldAbsent:
+		// No usable path: Execute reports what is wrong with the arguments.
+		return nil, true
+	}
+	w, fail := e.writable(WriteFileToolName, path)
+	if fail != nil {
+		return fail, true
+	}
+	r, ok := w.(CreateRefuser)
+	if !ok {
+		return nil, true
+	}
+	reason, err := r.RefuseCreate(ctx, path)
+	if err != nil || reason == "" {
+		return nil, true
+	}
+	return &agentic.ToolResult{Content: WriteFileToolName + ": " + reason, IsError: true}, true
+}
+
 func (e *files) editFile(ctx context.Context, args json.RawMessage) (agentic.ToolResult, error) {
 	in, bad := decodeArgs[editArgs](EditFileToolName, args)
 	if bad != nil {

@@ -4,6 +4,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -176,17 +177,49 @@ func (s *session) addText(rec *commonai.CallRecord, text string) {
 
 // sink is the CallSink of one model call: each node joins the tree when its
 // part begins.
-func (s *session) sink(rec *commonai.CallRecord, firstID string) *callSink {
-	return &callSink{s: s, rec: rec, firstID: firstID}
+func (s *session) sink(ctx context.Context, rec *commonai.CallRecord, firstID string, preflight preflightFn) *callSink {
+	return &callSink{s: s, ctx: ctx, rec: rec, firstID: firstID, preflight: preflight, decided: set.New[*commonai.ToolCallMessage]()}
 }
 
+// preflightFn judges one call by name from its streamed arguments; nil asks no tool.
+type preflightFn func(ctx context.Context, name, partial string) (*ToolResult, bool)
+
 type callSink struct {
-	s       *session
-	rec     *commonai.CallRecord
-	firstID string
-	mu      sync.Mutex
-	nodes   []IMessage
-	err     error
+	s         *session
+	ctx       context.Context
+	rec       *commonai.CallRecord
+	firstID   string
+	preflight preflightFn
+	mu        sync.Mutex
+	nodes     []IMessage
+	err       error
+	// decided holds the calls a preflight has judged; refused holds each refusal by call id.
+	decided set.Set[*commonai.ToolCallMessage]
+	refused map[string]ToolResult
+}
+
+// judge asks the call's tool about its arguments so far. A refusal is kept for the batch and stops
+// the stream; a decision either way means the call is not asked again.
+func (c *callSink) judge(tc *commonai.ToolCallMessage) {
+	if c.preflight == nil || c.decided.Contains(tc) {
+		return
+	}
+	refusal, decided := c.preflight(c.ctx, tc.Name, tc.Arguments.String())
+	if !decided {
+		return
+	}
+	c.mu.Lock()
+	c.decided.Add(tc)
+	if refusal != nil {
+		if c.refused == nil {
+			c.refused = map[string]ToolResult{}
+		}
+		c.refused[string(tc.CallID)] = *refusal
+	}
+	c.mu.Unlock()
+	if refusal != nil {
+		c.keep(wrapCallbackErr(errPreflightStop))
+	}
 }
 
 func (c *callSink) Start(n IMessage) {
@@ -205,11 +238,13 @@ func (c *callSink) Delta(n IMessage, f commonai.FieldID, delta string) {
 		commonai.WriterOf(field).Append(delta)
 	}
 	var err error
-	switch n.(type) {
+	switch node := n.(type) {
 	case *commonai.AssistantMessage:
 		err = c.s.events.EmitText(delta)
 	case *commonai.ThinkingMessage:
 		err = c.s.events.EmitReasoning(delta)
+	case *commonai.ToolCallMessage:
+		c.judge(node)
 	}
 	c.keep(err)
 	c.s.events.emitNode(NodeEvent{Node: n})
@@ -285,14 +320,21 @@ func partOfNode(n IMessage) commonai.Part {
 }
 
 // streamCall runs one model call into the tree and gives its result and the nodes it produced.
-func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn int, firstID string) (*Completion, []IMessage, *commonai.CallRecord, error) {
+func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn int, firstID string, preflight preflightFn) (*Completion, []IMessage, *commonai.CallRecord, map[string]ToolResult, error) {
 	rec := &commonai.CallRecord{Turn: uint(turn), Status: commonai.CallStreaming, Started: time.Now()}
-	sink := s.sink(rec, firstID)
+	sink := s.sink(ctx, rec, firstID, preflight)
 	comp, err := client.Stream(ctx, p, req, sink)
 	rec.Ended = time.Now()
 	nodes := sink.produced()
 	for _, n := range nodes {
 		commonai.FinishNode(n)
+	}
+	// A refusal ended the call on purpose. What streamed is the turn, and the batch answers the refused call.
+	if errors.Is(err, errPreflightStop) && comp != nil {
+		err = nil
+		if comp.StopReason == "" || comp.StopReason == StopEndTurn {
+			comp.StopReason = StopToolUse
+		}
 	}
 	switch {
 	case err == nil:
@@ -306,7 +348,9 @@ func (s *session) streamCall(ctx context.Context, p Provider, req Request, turn 
 		rec.StopReason, rec.Model, rec.Streamed = comp.StopReason, comp.Model, comp.Streamed
 	}
 	if err == nil {
-		err = sink.Err()
+		if serr := sink.Err(); serr != nil && !errors.Is(serr, errPreflightStop) {
+			err = serr
+		}
 	}
-	return comp, nodes, rec, err
+	return comp, nodes, rec, sink.refused, err
 }
