@@ -88,7 +88,7 @@ func TestThinkingSignatureRepairSecondFailureSurfaces(t *testing.T) {
 
 // TestThinkingSignatureRepairOverAnthropicProvider proves the wrapper reads
 // the SAME index Anthropic's own error names off the real wire body, not a
-// hand-computed, by driving the real dialect encoder end to end.
+// hand-computed. This happens by driving the real dialect encoder end to end.
 func TestThinkingSignatureRepairOverAnthropicProvider(t *testing.T) {
 	hits := 0
 	var secondBody []byte
@@ -102,9 +102,7 @@ func TestThinkingSignatureRepairOverAnthropicProvider(t *testing.T) {
 		n, _ := r.Body.Read(buf)
 		secondBody = append([]byte(nil), buf[:n]...)
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(`event: content_block_delta` + "\n" +
-			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}` + "\n\n" +
-			`event: message_stop` + "\n" + `data: {"type":"message_stop"}` + "\n\n"))
+		_, _ = w.Write([]byte(thinkingRepairStream))
 	}))
 	defer srv.Close()
 

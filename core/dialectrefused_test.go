@@ -26,6 +26,13 @@ func TestDialectRefusedReadsTheEndpointTheServerNamed(t *testing.T) {
 			ok:     true,
 		},
 		{
+			name:   "openai points an instruct model at the legacy completions API",
+			status: 404,
+			body:   `{"error":{"message":"This is not a chat model and thus not supported in the v1/chat/completions endpoint. Did you mean to use v1/completions?"}}`,
+			want:   DialectCompletions,
+			ok:     true,
+		},
+		{
 			name:   "only supported in, with no second path to confuse it",
 			status: 400,
 			body:   `{"error":{"message":"gpt-5-pro is only supported in v1/responses"}}`,

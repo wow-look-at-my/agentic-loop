@@ -28,10 +28,24 @@ func (r *replies) Complete(_ context.Context, req agentic.Request, _ *agentic.St
 	return &agentic.Completion{Message: agentic.Message{Role: agentic.RoleAssistant, Content: r.texts[i]}}, nil
 }
 
+// runWith runs one turn of "go" in a fresh session with the listener attached.
+func runWith(t *testing.T, provider agentic.Provider, listener *goal.StopListener) *agentic.Result {
+	t.Helper()
+	ctx := context.Background()
+	s, err := agentic.NewSession(agentic.SessionConfig{
+		Loop:    agentic.Config{Provider: provider},
+		Request: agentic.Request{Model: "m"},
+	})
+	require.NoError(t, err)
+	listener.Attach(ctx, s)
+	turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "go"})
+	require.NoError(t, turn.Wait(ctx))
+	return turn.Result()
+}
+
 func TestStopListenerBlocksThenLetsTheRunEnd(t *testing.T) {
 	provider := &replies{texts: []string{"I think I am done", "now the tests pass"}}
 	state := &goal.State{Condition: "tests pass"}
-	queue := &agentic.MessageQueue{}
 	var reported []goal.Outcome
 
 	listener := &goal.StopListener{
@@ -45,15 +59,7 @@ func TestStopListenerBlocksThenLetsTheRunEnd(t *testing.T) {
 		},
 		Report: func(v goal.Verdicts) { reported = append(reported, v.Outcome) },
 	}
-	events := agentic.Events{}
-	listener.Attach(context.Background(), &events, queue)
-
-	res, err := agentic.Run(context.Background(), agentic.Config{
-		Provider: provider,
-		Events:   &events,
-		Messages: queue,
-	}, agentic.Request{Model: "m", Messages: []agentic.Message{{Role: agentic.RoleUser, Content: "go"}}})
-	require.NoError(t, err)
+	res := runWith(t, provider, listener)
 
 	assert.Equal(t, []goal.Outcome{goal.Blocked, goal.Met}, reported)
 	assert.Equal(t, "now the tests pass", res.Final.Content)
@@ -74,7 +80,6 @@ func TestStopListenerBlocksThenLetsTheRunEnd(t *testing.T) {
 
 func TestStopListenerPermittedOutcomesQueueNothing(t *testing.T) {
 	provider := &replies{texts: []string{"done"}}
-	queue := &agentic.MessageQueue{}
 	listener := &goal.StopListener{
 		Evaluator: &goal.Evaluator{
 			State:  &goal.State{Condition: "tests pass"},
@@ -82,31 +87,14 @@ func TestStopListenerPermittedOutcomesQueueNothing(t *testing.T) {
 			Judge:  answers("not json at all"),
 		},
 	}
-	events := agentic.Events{}
-	listener.Attach(context.Background(), &events, queue)
-
-	res, err := agentic.Run(context.Background(), agentic.Config{
-		Provider: provider,
-		Events:   &events,
-		Messages: queue,
-	}, agentic.Request{Model: "m", Messages: []agentic.Message{{Role: agentic.RoleUser, Content: "go"}}})
-	require.NoError(t, err)
+	res := runWith(t, provider, listener)
 	assert.Equal(t, 1, provider.calls, "a suspended goal fails open: the run ends")
 	assert.Equal(t, "done", res.Final.Content)
 }
 
 func TestStopListenerWithNoEvaluatorDoesNothing(t *testing.T) {
 	provider := &replies{texts: []string{"done"}}
-	queue := &agentic.MessageQueue{}
-	events := agentic.Events{}
-	(&goal.StopListener{}).Attach(context.Background(), &events, queue)
-
-	_, err := agentic.Run(context.Background(), agentic.Config{
-		Provider: provider,
-		Events:   &events,
-		Messages: queue,
-	}, agentic.Request{Model: "m", Messages: []agentic.Message{{Role: agentic.RoleUser, Content: "go"}}})
-	require.NoError(t, err)
+	runWith(t, provider, &goal.StopListener{})
 	assert.Equal(t, 1, provider.calls)
 }
 

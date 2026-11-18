@@ -1,3 +1,5 @@
+// vector.go holds the vector code.
+
 package search
 
 import (

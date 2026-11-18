@@ -1,3 +1,5 @@
+// queued_message.go holds the queued message code.
+
 package loop
 
 // QueuedMessage is a message queued for delivery into a running loop.

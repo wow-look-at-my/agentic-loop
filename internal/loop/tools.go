@@ -1,3 +1,5 @@
+// tools.go holds the tools code.
+
 package loop
 
 import (

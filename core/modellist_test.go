@@ -1,5 +1,7 @@
 package commonai
 
+import _ "embed"
+
 import (
 	"context"
 	"fmt"
@@ -10,35 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// openRouterModelList is the shape an aggregator publishes: rates as STRINGS,
-// in USD per token, alongside the model list a host fetches anyway.
-const openRouterModelList = `{
-  "object": "list",
-  "data": [
-    {
-      "id": "anthropic/claude-opus-4-6",
-      "object": "model",
-      "pricing": {
-        "prompt": "0.000015",
-        "completion": "0.000075",
-        "input_cache_read": "0.0000015",
-        "input_cache_write": "0.00001875",
-        "input_cache_write_1h": "0.00003"
-      }
-    },
-    {
-      "id": "openai/gpt-5",
-      "pricing": {"prompt": "0.00000125", "completion": "0.00001"}
-    },
-    {
-      "id": "some/free-model",
-      "pricing": {"prompt": "0", "completion": "0"}
-    },
-    {"id": "local/llama", "pricing": {}},
-    {"id": "no-pricing-at-all"}
-  ]
-}`
 
 func decoded(t *testing.T, body string) *ModelList {
 	t.Helper()
@@ -124,18 +97,6 @@ func TestAnUnusableRateLeavesTheModelUnpriced(t *testing.T) {
 	assert.Empty(t, list.Prices, "a negative rate is a document nobody should bill from")
 }
 
-// crofAIModelList: crof.ai rates are strings, already USD per tokens, not per token.
-const crofAIModelList = `{
-  "object": "list",
-  "data": [
-    {
-      "id": "deepseek-v4-pro-0813",
-      "object": "model",
-      "pricing": {"prompt": "0.35", "completion": "0.80", "cache_prompt": "0.01"}
-    }
-  ]
-}`
-
 func TestDecodeModelListRescalesAnAlreadyPerMillionRate(t *testing.T) {
 	r, ok := decoded(t, crofAIModelList).Prices["deepseek-v4-pro-0813"]
 	require.True(t, ok)
@@ -159,12 +120,96 @@ func TestFetchModelListReadsTheEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/models", gotPath)
 	assert.Contains(t, list.Prices, "anthropic/claude-opus-4-6")
-	assert.Equal(t, DialectOpenAI, list.Dialect, "one request answers both")
+	assert.Equal(t, DialectOpenAI, list.Dialect)
 
-	// Both credential forms, because which server answers is what this asks.
+	// The OpenAI form only: a gateway reads anthropic-version as a choice of list.
 	assert.Equal(t, "Bearer sk-test", gotAuth)
-	assert.Equal(t, "sk-test", gotKey)
-	assert.Equal(t, defaultAnthropicVersion, gotVersion)
+	assert.Empty(t, gotKey)
+	assert.Empty(t, gotVersion)
+}
+
+// A gateway that speaks both answers a shorter, renamed list when it sees
+// anthropic-version. The fetch must get the full list.
+func TestFetchModelListGetsTheOpenAIListFromADualGateway(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("anthropic-version") != "" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"anthropic/x/a[1m]","type":"model"}],"has_more":false}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"x/a","endpoints":["/api/v1/chat/completions"]},{"id":"x/b"}]}`))
+	}))
+	defer srv.Close()
+	list, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, APIKey: "k", HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	assert.Equal(t, []Dialect{DialectOpenAI}, list.Endpoints["x/a"])
+	assert.NotContains(t, list.Endpoints, "anthropic/x/a[1m]")
+}
+
+// Anthropic refuses a Bearer token, so the fetch re-asks with x-api-key and reads every page.
+func TestFetchModelListFallsBackToAnthropicAndReadsEveryPage(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "k" || r.Header.Get("anthropic-version") == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("after_id") == "" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"claude-a","type":"model","max_tokens":10}],"has_more":true,"last_id":"claude-a"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-b","type":"model","max_tokens":20}],"has_more":false,"last_id":"claude-b"}`))
+	}))
+	defer srv.Close()
+	list, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, APIKey: "k", HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	assert.Equal(t, DialectAnthropic, list.Dialect)
+	assert.Equal(t, 10, list.Limits["claude-a"].MaxOutput)
+	assert.Equal(t, 20, list.Limits["claude-b"].MaxOutput, "the second page is read")
+	assert.Equal(t, []string{"limit=1000", "limit=1000&after_id=claude-a"}, queries)
+}
+
+// A list that never stops paging is an error, never a silent cut.
+func TestFetchModelListFailsOnAnEndlessPageWalk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[],"has_more":true,"last_id":"z"}`))
+	}))
+	defer srv.Close()
+	_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still has more")
+}
+
+// Both forms refused is an error that names both answers.
+func TestFetchModelListNamesBothRefusals(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("anthropic-version") != "" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	_, err := FetchModelList(context.Background(), ProviderConfig{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401 to a Bearer token (no body) and 403 to x-api-key (no body)")
+}
+
+// OpenRouter advertises the paths that serve each model; a batch-only model advertises none a dialect speaks.
+func TestDecodeModelListReadsAdvertisedEndpoints(t *testing.T) {
+	list, err := DecodeModelList([]byte(testDecodeModelListReadsAdvertisedEndpointsJson))
+	require.NoError(t, err)
+	assert.Equal(t, []Dialect{DialectOpenAI, DialectCompletions, DialectAnthropic, DialectResponses}, list.Endpoints["p/all"])
+	got, ok := list.EndpointsFor("p/batch")
+	assert.True(t, ok)
+	assert.Empty(t, got, "advertised, but on nothing a dialect speaks")
+	_, ok = list.EndpointsFor("p/none")
+	assert.False(t, ok, "a model that advertises nothing is absent")
+	got, ok = list.EndpointsFor("all")
+	assert.True(t, ok, "a gateway-stripped id resolves by suffix")
+	assert.Len(t, got, 4)
+	_, ok = (*ModelList)(nil).EndpointsFor("x")
+	assert.False(t, ok)
 }
 
 // The chat dialects disagree about a trailing /v1, so the model list accepts both spellings.
@@ -224,21 +269,6 @@ func TestAnEndpointWithNoPricingIsNotAnError(t *testing.T) {
 	assert.Equal(t, DialectOpenAI, list.Dialect)
 }
 
-// anthropicModelList is what api.anthropic.com answers: type/id/
-// display_name/created_at, and no pricing anywhere. It is the endpoint a
-// host's cost column has to survive, since nothing it sends can price a call.
-const anthropicModelList = `{
-  "data": [
-    {"type": "model", "id": "claude-opus-4-6", "display_name": "Claude Opus 4.6",
-     "created_at": "2026-02-05T00:00:00Z"},
-    {"type": "model", "id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6",
-     "created_at": "2026-02-05T00:00:00Z"}
-  ],
-  "has_more": false,
-  "first_id": "claude-opus-4-6",
-  "last_id": "claude-sonnet-4-6"
-}`
-
 // The Anthropic model list names its dialect and prices nothing, and BOTH of
 // those are the answer rather than a failure. A host prices the call from
 // config and renders an em dash when there is none.
@@ -259,16 +289,13 @@ func TestTheAnthropicModelListNamesItsDialectAndPricesNothing(t *testing.T) {
 // rates — a gateway in front of the Messages API — is priced. Gating the price
 // parse on the openai envelope would silently unprice every such endpoint.
 func TestPricingIsReadWhateverEnvelopeCarriesIt(t *testing.T) {
-	list := decoded(t, `{
-	  "has_more": false,
-	  "data": [
-	    {"type": "model", "id": "claude-opus-4-6",
-	     "pricing": {"prompt": "0.000015", "completion": "0.000075"}}
-	  ]
-	}`)
+	list := decoded(t, anthropicPricedModelList)
 	assert.Equal(t, DialectAnthropic, list.Dialect)
 	r, ok := list.Prices["claude-opus-4-6"]
 	require.True(t, ok)
 	assert.InDelta(t, 0.000015, r.Prompt, 1e-12)
 	assert.InDelta(t, 0.000075, r.Completion, 1e-12)
 }
+
+//go:embed testdata/test-decode-model-list-reads-advertised-endpoints.json
+var testDecodeModelListReadsAdvertisedEndpointsJson string

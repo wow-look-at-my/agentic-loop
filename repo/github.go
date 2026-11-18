@@ -1,3 +1,5 @@
+// github.go holds the github code.
+
 package repo
 
 import (
@@ -48,18 +50,20 @@ type RepoKeyCache interface {
 type GitHubConfig struct {
 	HTTPClient *http.Client
 	APIBaseURL string
+	// VFS, when non-nil, is consulted by every read before GitHub is.
+	VFS *VFSMux
 	// Tokens is the READ credential list; writes never touch it.
 	Tokens []GitHubToken
 	// WriteTokens is the WRITE list; nil means this client cannot write at all.
 	WriteTokens []GitHubToken
-	// NoAnonymous drops the unauthenticated attempt from every read order.
+	// NoAnonymous drops the unauthenticated attempt from EVERY read order this client issues.
 	NoAnonymous bool
 	Cache       RepoKeyCache
 	// OnRateLimit hears every response's core-quota headers. see rate_limit_headers.go
 	OnRateLimit func(RateLimitObservation)
 }
 
-// GitHub is the credential-rotating GitHub REST client behind the repo tools.
+// GitHub is the credential-rotating GitHub REST client.
 type GitHub struct {
 	hc          *http.Client
 	base        string
@@ -67,7 +71,9 @@ type GitHub struct {
 	writeTokens []GitHubToken
 	noAnonymous bool
 	cache       RepoKeyCache
+	vfs         *VFSMux
 	onRateLimit func(RateLimitObservation)
+	etags       *etagCache
 }
 
 // NewGitHub builds the client; the only constructor, so all callers share cache.
@@ -87,7 +93,9 @@ func NewGitHub(cfg GitHubConfig) *GitHub {
 		writeTokens: cfg.WriteTokens,
 		noAnonymous: cfg.NoAnonymous,
 		cache:       cfg.Cache,
+		vfs:         cfg.VFS,
 		onRateLimit: cfg.OnRateLimit,
+		etags:       newETagCache(),
 	}
 }
 

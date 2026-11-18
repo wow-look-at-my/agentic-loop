@@ -11,11 +11,7 @@ import (
 
 // A gateway that resolves an alias names the model it served. The list knows that name, not the alias.
 func TestOpenAINonStreamNamesTheModelServed(t *testing.T) {
-	srv := jsonServer(t, `{
-	  "model": "deepseek/deepseek-v4.1-flash",
-	  "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
-	  "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}
-	}`)
+	srv := jsonServer(t, openAIServedModelResponse)
 
 	comp, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{Model: "auto-alias"}, nil)
 	require.NoError(t, err)
@@ -23,12 +19,7 @@ func TestOpenAINonStreamNamesTheModelServed(t *testing.T) {
 }
 
 func TestLimitsForMatchesAServedModelBySuffix(t *testing.T) {
-	list := decoded(t, `{"object": "list", "data": [
-	  {"id": "openrouter/deepseek/deepseek-v4.1-flash", "context_length": 1048576},
-	  {"id": "IncoAI/deepseek-v4.1-flash", "context_length": 128000},
-	  {"id": "a/twin", "context_length": 10},
-	  {"id": "b/twin", "context_length": 20}
-	]}`)
+	list := decoded(t, servedModelList)
 
 	exact, ok := list.LimitsFor("IncoAI/deepseek-v4.1-flash")
 	require.True(t, ok)
@@ -52,11 +43,7 @@ func TestLimitsForMatchesAServedModelBySuffix(t *testing.T) {
 // A Bifrost gateway states the list id it routed to in extra_fields: the provider, a slash, and the provider's model.
 // The body's own model is the upstream's name for it, which the list does not hold.
 func TestOpenAINonStreamNamesTheListIDTheGatewayRoutedTo(t *testing.T) {
-	srv := jsonServer(t, `{
-	  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
-	  "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
-	  "extra_fields": {"routing_info": {"provider": "Synthetic", "model": "hf:deepseek-ai/DeepSeek-V4.1-Flash", "requested_model": "auto-pr-resolve"}}
-	}`)
+	srv := jsonServer(t, openAIRoutedModelResponse)
 
 	comp, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{Model: "auto-pr-resolve"}, nil)
 	require.NoError(t, err)

@@ -1,3 +1,5 @@
+// dialectparams.go holds the dialectparams code.
+
 package commonai
 
 import "sort"

@@ -1,6 +1,9 @@
+// subagent.go holds the subagent code.
+
 package subagent
 
 import (
+	_ "embed"
 	"encoding/json"
 	agentic "github.com/wow-look-at-my/agentic-loop"
 	"strings"
@@ -23,8 +26,8 @@ const DefaultSubagentSystemPrompt = "You are a sub-agent launched by another ass
 // adaptation: the source enumerated its own application's read-only tools
 // ("fetch a web page (web_fetch), read GitHub repositories (repo_read:...),
 // and any read-only MCP tools that are enabled") inside the CAPABILITIES
-// sentence; the library cannot know the host's toolset, so that enumeration
-// is dropped. Everything else is verbatim.
+// sentence. The library cannot know the host's toolset. That enumeration is
+// dropped. Everything else is verbatim.
 const subagentToolDescription = "Launch a sub-agent: an autonomous helper that runs its own agentic loop in a separate, " +
 	"throwaway context and reports back only its final answer. " +
 	"WHAT IT'S FOR: offload a focused, self-contained, read-only task so all the intermediate work -- many tool " +
@@ -56,48 +59,11 @@ const subagentToolDescription = "Launch a sub-agent: an autonomous helper that r
 	"CONSTRAINTS: sub-agents run one at a time and this call blocks until the sub-agent finishes; a sub-agent " +
 	"cannot launch further sub-agents."
 
-// subagentSchema is the static parameter schema, ported verbatim.
-// advertisedSchema specializes its allowed_tools field per turn when
-// grantable tools exist.
-var subagentSchema = json.RawMessage(`{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "description": {
-      "type": "string",
-      "description": "A short (3-5 word) label for the task, shown in the UI."
-    },
-    "prompt": {
-      "type": "string",
-      "description": "The full task for the sub-agent. Be specific and self-contained: by default the sub-agent does not see this conversation, only this prompt (and whatever you choose to share via share_context). State exactly what to investigate and what to report back."
-    },
-    "share_context": {
-      "type": "string",
-      "enum": ["none", "full", "last_n", "messages", "summary", "custom"],
-      "description": "What to share from THIS conversation with the sub-agent, in addition to the prompt. 'none' (default): only the prompt. 'full': the entire input context (system prompt + every message). 'last_n': the last N messages (set context_message_count). 'messages': specific recent messages by position (set context_message_indices). 'summary': an auto-generated briefing summarizing this conversation. 'custom': the exact text you supply in custom_context. Default 'none' -- only widen it when the sub-agent genuinely needs this conversation's history."
-    },
-    "context_message_count": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Required when share_context='last_n': how many of the most recent messages to include."
-    },
-    "context_message_indices": {
-      "type": "array",
-      "items": { "type": "integer", "minimum": 1 },
-      "description": "Required when share_context='messages': positions of specific recent messages to include, counted from the end (1 = the most recent message, 2 = the one before it, ...)."
-    },
-    "custom_context": {
-      "type": "string",
-      "description": "Required when share_context='custom': the exact background text to give the sub-agent."
-    },
-    "allowed_tools": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Restrict the sub-agent to ONLY these tools, by their exact names (as shown in your own tool list). STRONGLY RECOMMENDED: pinning the sub-agent to just the tools its task needs keeps it focused and stops it wasting turns on irrelevant tools like web search. By default the sub-agent gets only read-only tools; naming a tool here is also how you grant a NON-read-only (state-changing) tool when the task needs it. Omit to allow every read-only tool."
-    }
-  },
-  "required": ["prompt"]
-}`)
+// subagentSchema is the static parameter schema, ported verbatim; advertisedSchema specializes allowed_tools.
+var subagentSchema = json.RawMessage(subagentSchemaJSON)
+
+//go:embed schema/subagent.json
+var subagentSchemaJSON string
 
 // Subagent activity kinds delivered to SubagentConfig.OnActivity while a
 // run_subagent call executes. A host can show what the otherwise silent

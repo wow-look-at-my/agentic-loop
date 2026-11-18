@@ -84,11 +84,7 @@ func TestOpenAIUsageExtrasTriStateAbsent(t *testing.T) {
 func TestOpenAIPlainJSONUsageExtras(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"choices": [{"message": {"role": "assistant", "content": "plain", "reasoning": "plain thinking"}, "finish_reason": "stop"}],
-			"usage": {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19,
-				"completion_tokens_details": {"reasoning_tokens": 2}, "cost": 0.0003, "extra": 1}
-		}`))
+		_, _ = w.Write([]byte(openAIPlainUsageBody))
 	}))
 	defer srv.Close()
 	comp, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{Model: "m"}, nil)
@@ -197,12 +193,7 @@ func TestOpenAINonStreamingContentTypeInsensitive(t *testing.T) {
 func TestAnthropicNonStreamingJSONFallback(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"content":[
-			{"type":"thinking","thinking":"hmm","signature":"sig1"},
-			{"type":"text","text":"hello "},
-			{"type":"text","text":"world"},
-			{"type":"tool_use","id":"t1","name":"Glob","input":{"pattern":"*.go"}}
-		],"stop_reason":"tool_use","usage":{"input_tokens":100,"output_tokens":25,"cache_read_input_tokens":40}}`))
+		_, _ = w.Write([]byte(anthropicContentJSONBody))
 	}))
 	defer srv.Close()
 
@@ -330,8 +321,7 @@ func TestOpenAIPromptCacheDefaultsOff(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Part A extension: OpenAIConfig.ReplayReasoning
-// (gateway extension: message.reasoning on assistant messages; default off)
+// Reasoning replay: always on, with no switch to turn it off
 // ---------------------------------------------------------------------------
 
 func TestOpenAIReplayReasoning(t *testing.T) {
@@ -339,8 +329,7 @@ func TestOpenAIReplayReasoning(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	p := mustOpenAI(t, OpenAIConfig{
-		ProviderConfig:  ProviderConfig{BaseURL: srv.URL, Retry: retryTestPolicy(4)},
-		ReplayReasoning: true,
+		ProviderConfig: ProviderConfig{BaseURL: srv.URL, Retry: retryTestPolicy(4)},
 	})
 	messages := []Message{
 		{Role: RoleAssistant, Content: "checked", Thinking: []ThinkingBlock{{Text: "let me think"}}},
@@ -356,6 +345,8 @@ func TestOpenAIReplayReasoning(t *testing.T) {
 	assert.Equal(t, "assistant", assistant["role"])
 	assert.Equal(t, "let me think", assistant["reasoning"],
 		"the accumulated reasoning rides back as message.reasoning")
+	assert.Equal(t, "let me think", assistant["reasoning_content"],
+		"and as message.reasoning_content, the name DeepSeek, Kimi, GLM, vLLM and llama.cpp read")
 	assert.Equal(t, "checked", assistant["content"])
 	// Only assistant messages with reasoning carry the field.
 	user := msgs[1].(map[string]any)
@@ -363,30 +354,12 @@ func TestOpenAIReplayReasoning(t *testing.T) {
 	assert.False(t, hasReasoning)
 }
 
-func TestOpenAIReplayReasoningDefaultsOff(t *testing.T) {
-	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
-	srv := httptest.NewServer(h)
-	defer srv.Close()
-	p := oaProvider(t, srv.URL) // ReplayReasoning unset -> false
-	_, err := p.Complete(context.Background(), Request{Model: "m", Messages: []Message{
-		{Role: RoleAssistant, Content: "checked", Thinking: []ThinkingBlock{{Text: "let me think"}}},
-	}}, nil)
-	require.NoError(t, err)
-	body := bodyMap(t, h.body)
-	msgs := body["messages"].([]any)
-	assistant := msgs[0].(map[string]any)
-	_, hasReasoning := assistant["reasoning"]
-	assert.False(t, hasReasoning,
-		"strict OpenAI-compatible servers must never see a reasoning field by default")
-}
-
 func TestOpenAIReplayReasoningSkipsEmptyOrRedacted(t *testing.T) {
 	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	p := mustOpenAI(t, OpenAIConfig{
-		ProviderConfig:  ProviderConfig{BaseURL: srv.URL, Retry: retryTestPolicy(4)},
-		ReplayReasoning: true,
+		ProviderConfig: ProviderConfig{BaseURL: srv.URL, Retry: retryTestPolicy(4)},
 	})
 	messages := []Message{
 		{Role: RoleAssistant, Content: "a", Thinking: []ThinkingBlock{{Text: ""}}},

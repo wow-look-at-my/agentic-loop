@@ -1,3 +1,5 @@
+// param.go holds the param code.
+
 package commonai
 
 import (

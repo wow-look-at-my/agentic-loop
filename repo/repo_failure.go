@@ -1,3 +1,5 @@
+// repo_failure.go holds the repo failure code.
+
 package repo
 
 import (
@@ -73,7 +75,9 @@ func (rl rateLimit) waitAdvice() string {
 	return fmt.Sprintf("It clears in %s", rl.retryIn)
 }
 
-// failureRank scores a non-2xx response by how much it explains.
+// failureRank scores a non-2xx response by how much it explains, so
+// FetchURLOpts can report the most informative attempt instead of the last
+// one.
 func failureRank(res GHResponse) failureRankLevel {
 	if _, limited := classifyRateLimit(res, time.Now()); limited {
 		if res.authed {
@@ -226,6 +230,9 @@ func primaryDenialDetail(res GHResponse) string {
 // resource.
 func explainFailure(op, what string, res GHResponse, numTokens int, now time.Time) string {
 	lead := fmt.Sprintf("could not %s %s", op, what)
+	if res.target != "" {
+		lead += " (requested " + res.target + ")"
+	}
 	if rl, limited := classifyRateLimit(res, now); limited {
 		kind := "rate limit"
 		if rl.secondary {

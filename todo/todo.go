@@ -1,3 +1,5 @@
+// todo.go holds the todo code.
+
 package todo
 
 import (
@@ -99,9 +101,9 @@ const (
 	todoKindComplete
 )
 
-// NewTodoTools builds the task-list tools (todo_add, todo_edit,
-// todo_cancel, todo_complete), sharing in-memory store, as a flat agentic.Tools
-// slice. Each is a separate agentic.Tool; none is Readonly and none is approval-gated.
+// NewTodoTools builds the task-list tools, sharing in-memory store, as a flat
+// agentic.Tools slice. Each is a separate agentic.Tool; none is Readonly and none is
+// approval-gated.
 //
 // The tools are NOT read-only. They write state the host owns and shows to the
 // user, and a sub-agent inheriting them would overwrite its parent's plan.
@@ -165,9 +167,8 @@ func (e *todoTool) Decl() agentic.ToolDecl {
 // NeedsApproval always reports false; approval wiring stays the caller's concern.
 func (e *todoTool) NeedsApproval() bool { return false }
 
-// schema is inferred from the tool's argument struct, per the hard rule that a
-// tool's schema is never hand-written. closedState constrains the state field
-// to the enum a host can render.
+// schema is inferred from the tool's argument struct, per the hard rule that
+// a tool's schema is never hand-written.
 func (e *todoTool) schema() json.RawMessage {
 	var closed map[string][]string
 	if e.kind == todoKindAdd || e.kind == todoKindEdit {

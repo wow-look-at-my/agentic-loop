@@ -1,3 +1,5 @@
+// gate.go holds the gate code.
+
 package loop
 
 import "context"

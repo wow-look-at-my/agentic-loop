@@ -1,3 +1,5 @@
+// usage.go holds the usage code.
+
 package commonai
 
 import "encoding/json"

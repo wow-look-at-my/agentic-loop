@@ -1,3 +1,5 @@
+// subagent_context.go holds the subagent context code.
+
 package subagent
 
 import (

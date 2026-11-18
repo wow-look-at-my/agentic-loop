@@ -1,0 +1,10 @@
+{
+  "stop_reason": "tool_use",
+  "content": [
+    {"type":"thinking","thinking":"weighing it","signature":"sig-1"},
+    {"type":"redacted_thinking","data":"AAAA"},
+    {"type":"text","text":"here"},
+    {"type":"tool_use","id":"c1","name":"grep","input":{"q":"x"}}
+  ],
+  "usage": {"input_tokens":9,"output_tokens":3,"cache_read_input_tokens":7}
+}

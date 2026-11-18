@@ -1,3 +1,5 @@
+// dedup.go holds the dedup code.
+
 package loop
 
 import (

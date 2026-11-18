@@ -1,0 +1,6 @@
+{"object": "list", "data": [
+  {"id": "openrouter/deepseek/deepseek-v4.1-flash", "context_length": 1048576},
+  {"id": "IncoAI/deepseek-v4.1-flash", "context_length": 128000},
+  {"id": "a/twin", "context_length": 10},
+  {"id": "b/twin", "context_length": 20}
+]}

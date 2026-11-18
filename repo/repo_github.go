@@ -1,3 +1,5 @@
+// repo_github.go holds the repo github code.
+
 package repo
 
 import (
@@ -23,6 +25,8 @@ type GHResponse struct {
 	ctype     string
 	header    http.Header
 	truncated bool
+	// target is the FULL URL this response was fetched from — scheme, host, path, query.
+	target string
 	// authed records whether the credential that produced this response was a token.
 	authed bool
 	// credentialName is the Settings label of the token that produced this response.
@@ -41,7 +45,10 @@ func (r GHResponse) ContentType() string { return r.ctype }
 // Truncated reports that the body hit the read cap, so it is a PREFIX.
 func (r GHResponse) Truncated() bool { return r.truncated }
 
-// FetchOptions tunes repo fetch.
+// Target is the full URL this response was fetched from, e.g. https://api.github.com/repos/octo/hello/contents/README.md.
+func (r GHResponse) Target() string { return r.target }
+
+// FetchOptions tunes one repo fetch.
 type FetchOptions struct {
 	// NoAnonymous drops the unauthenticated attempt that makes public resources readable.
 	NoAnonymous bool
@@ -70,14 +77,26 @@ func (e *GitHub) FetchURL(ctx context.Context, cacheKey, target, accept string) 
 // 2xx it records the winning token id in the cache (an empty cacheKey
 // disables caching) and returns the response.
 //
+// A registered VFS mount is consulted FIRST: a path a mount owns is answered
+// by that mount and never reaches GitHub or the token rotation.
+//
 // When every attempt fails it returns the MOST INFORMATIVE failure, not the
 // last. The last attempt is the anonymous, whose says only that no credential
 // was sent. Returning that hid the actual reason a configured token was
 // refused — a spent code-search rate limit reads as " Requires
 // authentication". A transient wait looks like a permanent auth problem.
 func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept string, opt FetchOptions) (GHResponse, error) {
+	// A virtual filesystem owns this path: answer from it, never GitHub.
+	if e.vfs != nil {
+		if vfs, rest, ok := e.vfs.Resolve(target); ok {
+			return vfs.Read(ctx, rest, opt)
+		}
+	}
 	var best GHResponse
 	bestRank := rankNone
+	// bestAuthed is the most informative failure produced by a TOKEN attempt.
+	var bestAuthed GHResponse
+	bestAuthedRank := rankNone
 	var lastErr error
 	for _, att := range e.tokenOrder(cacheKey, opt.NoAnonymous) {
 		res, err := e.doGetOpts(ctx, target, att.token, accept, opt)
@@ -92,9 +111,23 @@ func (e *GitHub) FetchURLOpts(ctx context.Context, cacheKey, target, accept stri
 		}
 		res.authed = att.token != ""
 		res.credentialName = att.name
-		if r := failureRank(res); r > bestRank {
+		r := failureRank(res)
+		// A token's failure outranks any anonymous one: an anonymous result says
+		// only "no credential was sent", so when a PAT was configured and tried.
+		if att.token != "" {
+			if r > bestAuthedRank {
+				bestAuthedRank, bestAuthed = r, res
+			}
+			continue
+		}
+		if r > bestRank {
 			bestRank, best = r, res
 		}
+	}
+	// If any token produced a failure, that is the answer: never report an
+	// anonymous outcome when a configured PAT was tried and failed.
+	if bestAuthedRank != rankNone {
+		return bestAuthed, nil
 	}
 	if best.status == 0 && lastErr != nil {
 		return GHResponse{}, lastErr
@@ -109,13 +142,14 @@ type tokenAttempt struct {
 	token string
 }
 
-// tokenOrder is the credential order every repo read tries. The cached winner
-// for cacheKey (an empty cacheKey skips the cache), then every configured
-// token, then an unauthenticated attempt so public resources work without a
-// PAT. This happens unless NoAnonymous drops it, the host's policy that a
-// server holding a credential never lets a read fall through anonymously.
-// Duplicates are dropped. Writes use writeTokenOrder, which never falls
-// through.
+// tokenOrder is the credential order every repo read tries: the cached winner
+// for cacheKey first (if any. An empty cacheKey skips the cache), then every
+// configured token, then an unauthenticated attempt (so public resources work
+// without a PAT). This happens unless NoAnonymous drops it OR the client was
+// configured with NoAnonymous -- the host's policy. That policy is one that a
+// server holding at least one PAT must never let a read fall through to an
+// anonymous request. Duplicates are dropped so each distinct credential is
+// tried once.
 func (e *GitHub) tokenOrder(cacheKey string, NoAnonymous bool) []tokenAttempt {
 	var order []tokenAttempt
 	seen := set.New[string]()
@@ -311,6 +345,15 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	key := etagKey{target: target, accept: accept, token: token}
+	cacheable := method == http.MethodGet && body == nil && e.etags != nil
+	var cached GHResponse
+	if cacheable {
+		if etag, res, ok := e.etags.lookup(key); ok {
+			req.Header.Set("If-None-Match", etag)
+			cached = res
+		}
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return GHResponse{}, err
@@ -322,13 +365,21 @@ func (e *GitHub) doRequestOn(ctx context.Context, hc *http.Client, method, targe
 	}
 	// Every response states the quota, so nothing asks. see rate_limit_headers.go
 	e.observeRateLimit(token, resp.Header)
-	return GHResponse{
+	if resp.StatusCode == http.StatusNotModified && cached.status == http.StatusOK {
+		return cached, nil
+	}
+	res := GHResponse{
 		status:    resp.StatusCode,
 		body:      data,
 		ctype:     resp.Header.Get("Content-Type"),
 		header:    resp.Header,
 		truncated: truncated,
-	}, nil
+		target:    target,
+	}
+	if cacheable {
+		e.etags.store(key, res)
+	}
+	return res, nil
 }
 
 func EscapeSegments(p string) string {

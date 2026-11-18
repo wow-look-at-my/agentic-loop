@@ -1,3 +1,5 @@
+// message.go holds the message code.
+
 package loop
 
 import "context"

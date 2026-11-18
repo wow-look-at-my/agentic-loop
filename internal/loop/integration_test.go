@@ -36,7 +36,7 @@ func TestRunOpenAI429ThenSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := Run(context.Background(),
+	res, err := runTurn(context.Background(),
 		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestRunOpenAI524Retried(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := Run(context.Background(),
+	res, err := runTurn(context.Background(),
 		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m"})
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestRunOpenAIOverflowNotRetried(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := Run(context.Background(),
+	res, err := runTurn(context.Background(),
 		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
@@ -111,14 +111,11 @@ func TestRunAnthropicInStreamOverloadRetried(t *testing.T) {
 				`{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}` + "\n\n"))
 			return
 		}
-		_, _ = w.Write([]byte("event: content_block_delta\ndata: " +
-			`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"recovered"}}` + "\n\n" +
-			"event: message_delta\ndata: " +
-			`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n"))
+		_, _ = w.Write([]byte(recoveredStream))
 	}))
 	defer srv.Close()
 
-	res, err := Run(context.Background(),
+	res, err := runTurn(context.Background(),
 		Config{Provider: anProvider(t, srv.URL)},
 		Request{Model: "m", MaxTokens: 64, Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.NoError(t, err)
@@ -137,7 +134,7 @@ func (rt *countingFailRT) RoundTrip(*http.Request) (*http.Response, error) {
 func TestRunOpenAINetworkErrorRetried(t *testing.T) {
 	rt := &countingFailRT{}
 	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: "http://placeholder.invalid", HTTPClient: &http.Client{Transport: rt}, Retry: retryTestPolicy(3)}})
-	_, err := Run(context.Background(), Config{Provider: p}, Request{Model: "m"})
+	_, err := runTurn(context.Background(), Config{Provider: p}, Request{Model: "m"})
 	require.Error(t, err)
 	assert.Equal(t, int32(3), rt.calls.Load(), "network errors are retried up to the attempt cap")
 }
@@ -154,7 +151,7 @@ func TestRunOpenAIPartialStreamNotRetried(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := Run(context.Background(),
+	res, err := runTurn(context.Background(),
 		Config{Provider: oaProvider(t, srv.URL)},
 		Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
@@ -177,7 +174,7 @@ func TestRunEndToEndToolRoundTripOverOpenAI(t *testing.T) {
 	defer srv.Close()
 
 	exec := &fakeExec{tools: []ToolDecl{{Name: "echo"}}}
-	res, err := Run(context.Background(),
+	res, err := runTurn(context.Background(),
 		Config{Provider: oaProvider(t, srv.URL), Tools: exec.registry(), Approver: allowAll},
 		Request{Model: "m", System: "sys", Messages: []Message{{Role: RoleUser, Content: "start"}}})
 	require.NoError(t, err)

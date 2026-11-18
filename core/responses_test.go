@@ -391,6 +391,91 @@ func TestResponsesKeepsUnreplayableReasoning(t *testing.T) {
 	assert.Empty(t, comp.Message.Thinking[0].Signature)
 }
 
+// OpenRouter (DeepSeek, Qwen, GLM, Kimi), vLLM and LM Studio answer with the thinking itself as
+// reasoning_text content, an empty summary and no encrypted_content. That text is the reasoning,
+// and the server reads it back from content: dropping it deletes the thinking from every tool-loop turn.
+func TestResponsesStreamsAndReplaysReasoningText(t *testing.T) {
+	_, base := respServer(t,
+		jsonMust(jsonObj{"type": "response.output_item.added", "item": jsonObj{"type": "reasoning", "id": "rs_or", "summary": jsonArr{}}}),
+		jsonMust(jsonObj{"type": "response.reasoning_text.delta", "item_id": "rs_or", "delta": "read the "}),
+		jsonMust(jsonObj{"type": "response.reasoning_text.delta", "item_id": "rs_or", "delta": "file first"}),
+		jsonMust(jsonObj{"type": "response.output_item.done", "item": jsonObj{
+			"type": "reasoning", "id": "rs_or", "summary": jsonArr{},
+			"content": jsonArr{jsonObj{"type": "reasoning_text", "text": "read the file first"}},
+		}}),
+		jsonMust(jsonObj{"type": "response.output_item.done", "item": jsonObj{
+			"type": "function_call", "call_id": "call_1", "name": "read", "arguments": `{"p":"a"}`,
+		}}),
+		respCompletedEvent(jsonObj{"status": "completed"}),
+	)
+	var reasoning string
+	comp, err := respTestProvider(t, base, false).Complete(context.Background(), Request{Model: "m"}, &StreamEvents{
+		OnReasoning: func(s string) error { reasoning += s; return nil },
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "read the file first", reasoning, "reasoning_text deltas reach the caller as they stream")
+	require.Len(t, comp.Message.Thinking, 1)
+	assert.Equal(t, ThinkingBlock{ID: "rs_or", Text: "read the file first", Raw: true}, comp.Message.Thinking[0])
+
+	h, base2 := respServer(t, respCompletedEvent(jsonObj{"status": "completed"}))
+	_, err = respTestProvider(t, base2, false).Complete(context.Background(), Request{
+		Model: "m",
+		Messages: []Message{
+			{Role: RoleUser, Content: "what is in a?"},
+			comp.Message,
+			{Role: RoleTool, ToolCallID: "call_1", Content: "hello"},
+		},
+	}, nil)
+	require.NoError(t, err)
+	input := bodyMap(t, h.body)["input"].([]any)
+	reasoningItem := input[1].(map[string]any)
+	assert.Equal(t, "reasoning", reasoningItem["type"])
+	assert.Equal(t, "rs_or", reasoningItem["id"])
+	assert.Equal(t, []any{}, reasoningItem["summary"], "the API requires the summary list, empty or not")
+	assert.Equal(t, []any{jsonObj{"type": "reasoning_text", "text": "read the file first"}}, reasoningItem["content"],
+		"the thinking goes back where it came from")
+	assert.NotContains(t, reasoningItem, "encrypted_content")
+}
+
+// A non-streaming body reads reasoning_text too, and a summary still wins when an item has both.
+func TestResponsesNonStreamingReasoningText(t *testing.T) {
+	body := jsonMust(jsonObj{
+		"status": "completed",
+		"output": jsonArr{
+			jsonObj{"type": "reasoning", "id": "rs_a", "summary": jsonArr{},
+				"content": jsonArr{jsonObj{"type": "reasoning_text", "text": "raw thought"}}},
+			jsonObj{"type": "reasoning", "id": "rs_b", "encrypted_content": "enc-b",
+				"summary": jsonArr{jsonObj{"type": "summary_text", "text": "a summary"}},
+				"content": jsonArr{jsonObj{"type": "reasoning_text", "text": "raw thought b"}}},
+			jsonObj{"type": "message", "role": "assistant", "content": jsonArr{jsonObj{"type": "output_text", "text": "done"}}},
+		},
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	comp, err := respTestProvider(t, srv.URL, false).Complete(context.Background(), Request{Model: "m"}, nil)
+	require.NoError(t, err)
+	require.Len(t, comp.Message.Thinking, 2)
+	assert.Equal(t, ThinkingBlock{ID: "rs_a", Text: "raw thought", Raw: true}, comp.Message.Thinking[0])
+	assert.Equal(t, ThinkingBlock{ID: "rs_b", Text: "a summary", Signature: "enc-b"}, comp.Message.Thinking[1])
+}
+
+// Only reasoning_text deltas carried the words and the done item is bare: the block is still the thinking.
+func TestResponsesReasoningTextDeltasWithABareDoneItem(t *testing.T) {
+	_, base := respServer(t,
+		jsonMust(jsonObj{"type": "response.reasoning_text.delta", "item_id": "rs_x", "delta": "thinking"}),
+		jsonMust(jsonObj{"type": "response.output_item.done", "item": jsonObj{"type": "reasoning", "id": "rs_x"}}),
+		respCompletedEvent(jsonObj{"status": "completed"}),
+	)
+	comp, err := respTestProvider(t, base, false).Complete(context.Background(), Request{Model: "m"}, nil)
+	require.NoError(t, err)
+	require.Len(t, comp.Message.Thinking, 1)
+	assert.Equal(t, ThinkingBlock{ID: "rs_x", Text: "thinking", Raw: true}, comp.Message.Thinking[0])
+}
+
 // Noise between events must not derail the read.
 func TestResponsesToleratesUnknownAndUnparseableEvents(t *testing.T) {
 	_, base := respServer(t,

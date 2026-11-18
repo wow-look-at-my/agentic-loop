@@ -1,3 +1,5 @@
+// rate_limit_headers.go holds the rate limit headers code.
+
 package repo
 
 import (

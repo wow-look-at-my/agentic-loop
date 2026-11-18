@@ -1,3 +1,5 @@
+// providerconfig.go holds the providerconfig code.
+
 package commonai
 
 import "net/http"
@@ -25,8 +27,6 @@ type OpenAIConfig struct {
 	SelfHosted bool
 	// PromptCache emits ephemeral cache_control breakpoints for Anthropic-fronting gateways; default false.
 	PromptCache bool
-	// ReplayReasoning replays reasoning as message.reasoning/reasoning_details; default false for strict servers.
-	ReplayReasoning bool
 }
 
 // ResponsesConfig: shared ProviderConfig plus the knob specific to the Responses dialect.
@@ -57,14 +57,13 @@ func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 		return nil, badRequestErr("commonai: OpenAIConfig.BaseURL is required")
 	}
 	return (&openaiProvider{
-		baseURL:         cfg.BaseURL,
-		apiKey:          cfg.APIKey,
-		httpClient:      cfg.HTTPClient,
-		userAgent:       cfg.UserAgent,
-		selfHosted:      cfg.SelfHosted,
-		promptCache:     cfg.PromptCache,
-		replayReasoning: cfg.ReplayReasoning,
-		headers:         cfg.Headers,
+		baseURL:     cfg.BaseURL,
+		apiKey:      cfg.APIKey,
+		httpClient:  cfg.HTTPClient,
+		userAgent:   cfg.UserAgent,
+		selfHosted:  cfg.SelfHosted,
+		promptCache: cfg.PromptCache,
+		headers:     cfg.Headers,
 	}), nil
 }
 
@@ -84,6 +83,28 @@ func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
 		store:      cfg.Store,
 		headers:    cfg.Headers,
 	}), nil
+}
+
+// CompletionsConfig configures NewCompletionsProvider: the shared connection base and nothing else.
+type CompletionsConfig struct {
+	ProviderConfig
+}
+
+// NewCompletionsProvider builds the Provider for the OpenAI completions. API
+// (POST /completions). It fails fast -- with a permanent (never-retried)
+// error -- on an empty BaseURL. A request that declares tools or carries an
+// image FAILS: the API has no field for either.
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error) {
+	if cfg.BaseURL == "" {
+		return nil, badRequestErr("commonai: CompletionsConfig.BaseURL is required")
+	}
+	return &completionsProvider{
+		baseURL:    cfg.BaseURL,
+		apiKey:     cfg.APIKey,
+		httpClient: cfg.HTTPClient,
+		userAgent:  cfg.UserAgent,
+		headers:    cfg.Headers,
+	}, nil
 }
 
 // NewAnthropicProvider builds the Provider for the Anthropic Messages API. It

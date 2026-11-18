@@ -30,7 +30,7 @@ func window(entries ...goal.Entry) func() ([]goal.Entry, error) {
 }
 
 func TestParseVerdictReadsAFencedObject(t *testing.T) {
-	v, err := goal.ParseVerdict("```json\n{\"met\":true,\"reason\":\"go test passed\"}\n```")
+	v, err := goal.ParseVerdict(verdictFenced)
 	require.NoError(t, err)
 	assert.True(t, v.Met)
 	assert.Equal(t, "go test passed", v.Reason)
@@ -245,6 +245,6 @@ func TestOutcomeStrings(t *testing.T) {
 }
 
 func TestEvalUserCarriesTheConditionAndTheWindow(t *testing.T) {
-	assert.Equal(t, "Condition: tests pass\n\nTranscript:\nuser: go",
+	assert.Equal(t, evalUserOfATestsPassCondition,
 		goal.EvalUser("tests pass", "user: go"))
 }

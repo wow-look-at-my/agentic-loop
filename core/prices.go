@@ -1,3 +1,5 @@
+// prices.go holds the prices code.
+
 package commonai
 
 import (

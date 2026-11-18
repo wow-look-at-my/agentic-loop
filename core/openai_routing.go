@@ -1,3 +1,5 @@
+// openai_routing.go holds the openai routing code.
+
 package commonai
 
 // oaExtraFields is the extra_fields object a Bifrost gateway adds to every response and every stream chunk.

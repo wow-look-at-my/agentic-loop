@@ -1,3 +1,5 @@
+// errorkind.go holds the errorkind code.
+
 package commonai
 
 import (

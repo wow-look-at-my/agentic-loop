@@ -1,3 +1,5 @@
+// image.go holds the image code.
+
 package commonai
 
 // An image is held as supplied -- inline bytes or a URI -- and never converted between the.

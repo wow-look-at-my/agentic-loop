@@ -1,0 +1,4 @@
+[
+  {"full_name":"PazerOP/UE553","private":true,"permissions":{"admin":false,"maintain":false,"push":true,"triage":true,"pull":true}},
+  {"full_name":"PazerOP/second-repo","private":true,"permissions":{"admin":false,"maintain":false,"push":false,"triage":false,"pull":true}}
+]

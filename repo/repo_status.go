@@ -1,3 +1,5 @@
+// repo_status.go holds the repo status code.
+
 package repo
 
 import (

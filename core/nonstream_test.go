@@ -24,17 +24,7 @@ func jsonServer(t *testing.T, body string) *httptest.Server {
 }
 
 func TestOpenAINonStreamResponse(t *testing.T) {
-	srv := jsonServer(t, `{
-	  "choices": [{
-	    "finish_reason": "tool_calls",
-	    "message": {
-	      "content": "on it",
-	      "reasoning": "the user wants a search",
-	      "tool_calls": [{"id":"c1","function":{"name":"grep","arguments":"{\"q\":\"x\"}"}}]
-	    }
-	  }],
-	  "usage": {"prompt_tokens":11,"completion_tokens":4,"total_tokens":15,"cost":0.5}
-	}`)
+	srv := jsonServer(t, openAINonStreamResponse)
 
 	comp, err := oaProvider(t, srv.URL).Complete(context.Background(), Request{Model: "m"}, nil)
 	require.NoError(t, err)
@@ -68,16 +58,7 @@ func TestOpenAINonStreamInfersStopReason(t *testing.T) {
 }
 
 func TestAnthropicNonStreamResponse(t *testing.T) {
-	srv := jsonServer(t, `{
-	  "stop_reason": "tool_use",
-	  "content": [
-	    {"type":"thinking","thinking":"weighing it","signature":"sig-1"},
-	    {"type":"redacted_thinking","data":"AAAA"},
-	    {"type":"text","text":"here"},
-	    {"type":"tool_use","id":"c1","name":"grep","input":{"q":"x"}}
-	  ],
-	  "usage": {"input_tokens":9,"output_tokens":3,"cache_read_input_tokens":7}
-	}`)
+	srv := jsonServer(t, anthropicNonStreamResponse)
 
 	comp, err := anProvider(t, srv.URL).Complete(context.Background(), Request{Model: "m", MaxTokens: 64}, nil)
 	require.NoError(t, err)

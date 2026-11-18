@@ -1,0 +1,6 @@
+{
+  "total_count": 1,
+  "workflow_runs": [
+    {"id": 77, "name": "CI", "status": "completed", "conclusion": "failure", "html_url": "https://example.com/run/77"}
+  ]
+}

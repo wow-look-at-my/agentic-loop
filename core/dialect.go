@@ -1,3 +1,5 @@
+// dialect.go holds the dialect code.
+
 package commonai
 
 // Detection asks the endpoint which protocol it speaks; a gateway may serve the separately; callers may override.
@@ -13,12 +15,14 @@ const (
 	DialectAnthropic Dialect = "anthropic"
 	// DialectResponses is the OpenAI Responses API; Detection never returns it, so it is a deliberate explicit choice.
 	DialectResponses Dialect = "responses"
+	// DialectCompletions is the OpenAI completions API: one prompt string, text out, no tools.
+	DialectCompletions Dialect = "completions"
 )
 
 // Valid reports whether d is a dialect this library can speak.
 func (d Dialect) Valid() bool {
 	switch d {
-	case DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses:
+	case DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses, DialectCompletions:
 		return true
 	}
 	return false
@@ -35,6 +39,8 @@ func (d Dialect) Label() string {
 		return "openai-compatible"
 	case DialectResponses:
 		return "openai responses"
+	case DialectCompletions:
+		return "openai completions"
 	case DialectAuto:
 		return "detect"
 	}
@@ -44,5 +50,5 @@ func (d Dialect) Label() string {
 // Dialects is every dialect a host may offer, in the order it should present
 // them: the default.
 func Dialects() []Dialect {
-	return []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses}
+	return []Dialect{DialectAuto, DialectOpenAI, DialectAnthropic, DialectResponses, DialectCompletions}
 }

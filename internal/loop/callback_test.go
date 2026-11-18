@@ -34,7 +34,7 @@ func TestRunCallbackErrorSingleRequestAndPartialResult(t *testing.T) {
 			OnText: func(string) error { return errSink },
 		}},
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
 	assert.Equal(t, int32(1), hits.Load(), "a failing first callback still blocks the re-attempt")
@@ -70,21 +70,22 @@ func TestRunOnToolCallErrorAbortsBatch(t *testing.T) {
 	}
 	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
 	assert.False(t, IsTransient(err))
 	require.NotNil(t, res)
 	assert.Equal(t, 1, fails)
 
-	// alpha ran before the abort, but the batch is cleared: no orphan tool calls remain.
+	// The batch aborted: the calls stay, and each is answered as never run, so no orphan remains.
 	assert.Len(t, exec.executed, 1)
-	require.Len(t, res.Messages, 2)
-	final := res.Messages[1]
-	assert.Equal(t, "checking", final.Content)
-	assert.Equal(t, "hmm", final.Thinking[0].Text)
-	assert.Nil(t, final.ToolCalls)
-	assert.Equal(t, final, res.Final)
+	require.Len(t, res.Messages, 4)
+	turn := res.Messages[1]
+	assert.Equal(t, "checking", turn.Content)
+	assert.Equal(t, "hmm", turn.Thinking[0].Text)
+	require.Len(t, turn.ToolCalls, 2)
+	assertOmitted(t, res.Messages[2:], "c1", "c2")
+	assert.Nil(t, res.Final.ToolCalls)
 }
 
 func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
@@ -96,14 +97,14 @@ func TestRunOnToolResultErrorAbortsBatch(t *testing.T) {
 	toolResultCb := func(ev ToolResultEvent) error { return errSink }
 	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errSink)
 	require.NotNil(t, res)
 	assert.Len(t, exec.executed, 1, "the tool DID run; only its delivery failed")
-	require.Len(t, res.Messages, 2, "the executed result is dropped so the transcript stays replayable")
-	assert.Nil(t, res.Messages[1].ToolCalls)
-	assert.Equal(t, RoleAssistant, res.Messages[1].Role)
+	require.Len(t, res.Messages, 3, "the call stays and is answered, so the transcript stays replayable")
+	require.Len(t, res.Messages[1].ToolCalls, 1)
+	assertOmitted(t, res.Messages[2:], "c1")
 }
 
 // A hook rewrites a call's arguments. The rewrite is what the Approver judges
@@ -129,7 +130,7 @@ func TestRunOnToolCallRewritesWhatExecutes(t *testing.T) {
 	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: approver, Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, exec.executed, 1)
@@ -162,7 +163,7 @@ func TestRunOnToolBatchReplacesWhatTheTurnRecords(t *testing.T) {
 	})
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "go"}}})
 	require.NoError(t, err)
 
 	require.Len(t, exec.executed, 2)
@@ -190,7 +191,7 @@ func TestRunOnToolBatchRefusesACallNoResultCanAnswer(t *testing.T) {
 			keep(t, &events.OnToolBatch, func(ev ToolBatchEvent) error { *ev.Calls = batch; return nil })
 			cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 
-			res, err := Run(context.Background(), cfg, Request{Model: "m"})
+			res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 			require.Error(t, err)
 			assert.Empty(t, exec.executed)
 			assert.Nil(t, res.Final.ToolCalls, "no call nothing answers survives into the transcript")
@@ -212,7 +213,7 @@ func TestRunOnToolCallCannotOrphanTheResult(t *testing.T) {
 	keep(t, &events.OnToolCall, toolCallCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "c1", res.Messages[0].ToolCalls[0].ID)
 	assert.Equal(t, "c1", res.Messages[1].ToolCallID)
@@ -242,7 +243,7 @@ func TestRunOnToolResultCarriesTheRecordedMessage(t *testing.T) {
 	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
-	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 
 	require.Len(t, results, 2)
@@ -280,7 +281,7 @@ func TestRunOnToolResultCarriesADeniedMessage(t *testing.T) {
 	keep(t, &events.OnToolResult, toolResultCb)
 	cfg := Config{Provider: provider, Tools: exec.registry(), Events: &events}
 
-	_, err := Run(context.Background(), cfg, Request{Model: "m"})
+	_, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	require.Len(t, recorded, 1)
 	assert.Equal(t, DeniedMessage, recorded[0].Content)

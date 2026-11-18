@@ -1,0 +1,3 @@
+{"data":[{"provider":"synthetic","display_name":"DeepSeek V4.1 Flash",
+ "id":"hf:deepseek-ai/DeepSeek-V4.1-Flash","context_length":524288,"max_output_length":65536,
+ "pricing":{"prompt":"$0.0000006","completion":"$0.0000012"}}]}

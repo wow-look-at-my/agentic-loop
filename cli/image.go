@@ -1,3 +1,5 @@
+// image.go holds the image code.
+
 package cli
 
 import (

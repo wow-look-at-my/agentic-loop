@@ -1,0 +1,5 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
+  "extra_fields": {"routing_info": {"provider": "Synthetic", "model": "hf:deepseek-ai/DeepSeek-V4.1-Flash", "requested_model": "auto-pr-resolve"}}
+}

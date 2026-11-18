@@ -13,13 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sonnet is a record shaped like modelinfo's own: a canonical undated id, rates in USD per token as decimal strings,
-// and limits.
-const sonnet = `{"id":"anthropic/claude-sonnet-4-5",
-  "aliases":["claude-sonnet-4-5","claude-sonnet-4-5-20250929"],
-  "pricing":{"prompt":"0.000003","completion":"0.000015","input_cache_read":"0.0000003","input_cache_write":"0.00000375"},
-  "max_input_tokens":1000000,"max_output_tokens":64000}`
-
 var catalogue = map[string]string{
 	"anthropic/claude-sonnet-4-5":          sonnet,
 	"claude-sonnet-4-5":                    sonnet,

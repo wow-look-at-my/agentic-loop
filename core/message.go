@@ -1,3 +1,5 @@
+// Role identifies the author of a Message.
+
 package commonai
 
 import (
@@ -24,6 +26,8 @@ type ThinkingBlock struct {
 	ID string
 	// Redacted holds an opaque redacted_thinking payload; Text/Signature empty when set.
 	Redacted string
+	// Raw marks Text as the reasoning itself, not a summary of it: a Responses reasoning_text, replayed as content.
+	Raw bool
 }
 
 // ToolCall is tool invocation; Arguments is the raw JSON text, "{}" for a -argument tool.
@@ -168,6 +172,8 @@ type ThinkingPart struct {
 	Text      string
 	Signature string
 	ID        string
+	// Raw is ThinkingBlock.Raw.
+	Raw bool
 }
 
 // Kind implements Part.
@@ -206,7 +212,7 @@ func (m Message) EffectiveParts() []Part {
 			out = append(out, RedactedThinkingPart{Data: tb.Redacted})
 			continue
 		}
-		out = append(out, ThinkingPart{Text: tb.Text, Signature: tb.Signature, ID: tb.ID})
+		out = append(out, ThinkingPart{Text: tb.Text, Signature: tb.Signature, ID: tb.ID, Raw: tb.Raw})
 	}
 	if m.Content != "" {
 		out = append(out, TextPart{Text: m.Content})
@@ -233,7 +239,7 @@ func (m *Message) SyncViews() {
 		case TextPart:
 			text.WriteString(v.Text)
 		case ThinkingPart:
-			m.Thinking = append(m.Thinking, ThinkingBlock{Text: v.Text, Signature: v.Signature, ID: v.ID})
+			m.Thinking = append(m.Thinking, ThinkingBlock{Text: v.Text, Signature: v.Signature, ID: v.ID, Raw: v.Raw})
 		case RedactedThinkingPart:
 			m.Thinking = append(m.Thinking, ThinkingBlock{Redacted: v.Data})
 		case ToolCallPart:

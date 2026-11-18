@@ -1,0 +1,5 @@
+{
+  "choices": [{"message": {"role": "assistant", "content": "plain", "reasoning": "plain thinking"}, "finish_reason": "stop"}],
+  "usage": {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19,
+    "completion_tokens_details": {"reasoning_tokens": 2}, "cost": 0.0003, "extra": 1}
+}

@@ -47,10 +47,7 @@ func TestTestTokenListsVisibleReposWithPermissions(t *testing.T) {
 			_, _ = w.Write([]byte(`{"login":"octocat"}`))
 		case "/user/repos":
 			assert.Equal(t, "1", r.URL.Query().Get("page"))
-			_, _ = w.Write([]byte(`[
-				{"full_name":"octo/admin-repo","private":true,"permissions":{"admin":true,"maintain":true,"push":true,"triage":true,"pull":true}},
-				{"full_name":"octo/read-only-repo","private":false,"permissions":{"admin":false,"maintain":false,"push":false,"triage":false,"pull":true}}
-			]`))
+			_, _ = w.Write([]byte(fixtureUserReposTwo))
 		case "/user/orgs":
 			_, _ = w.Write([]byte(`[]`))
 		default:
@@ -254,10 +251,7 @@ func TestTestTokenFallsBackToRepoOwnersWhenUserOrgsFails(t *testing.T) {
 			_, _ = w.Write([]byte(`{"message":"Resource not accessible by personal access token"}`))
 		case r.URL.Path == "/orgs/PazerOP/repos":
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[
-				{"full_name":"PazerOP/UE553","private":true,"permissions":{"admin":false,"maintain":false,"push":true,"triage":true,"pull":true}},
-				{"full_name":"PazerOP/second-repo","private":true,"permissions":{"admin":false,"maintain":false,"push":false,"triage":false,"pull":true}}
-			]`))
+			_, _ = w.Write([]byte(fixtureOrgReposTwo))
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}

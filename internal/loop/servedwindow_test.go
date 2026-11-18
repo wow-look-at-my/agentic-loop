@@ -46,13 +46,13 @@ func TestRunResolvesTheWindowFromTheModelTheResponseNames(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "vendor/served"}, provider.asked, "the alias first, then the model the response named, once")
 	require.Len(t, *windows, 2)
 	assert.Error(t, (*windows)[0].Err, "the alias publishes no window")
-	assert.Equal(t, ContextWindowEvent{Window: 10000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
+	assert.Equal(t, ContextWindowEvent{Window: 10000, Reported: 10000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
 	assert.True(t, compacted, "8000 prompt tokens is 80% of the served model's 10000")
 }
 
@@ -71,7 +71,7 @@ func TestARequestedModelTheResponseEchoesIsNotLookedUpTwice(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "m", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"m"}, provider.asked)
@@ -94,7 +94,7 @@ func TestAServedModelWithNoPublishedWindowIsReportedOnce(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "vendor/unknown"}, provider.asked)
@@ -123,12 +123,12 @@ func TestTheRoutedListIDIsAskedBeforeTheBodyModel(t *testing.T) {
 	cfg := Config{Provider: provider, Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/hf:upstream/model"}, provider.asked)
 	require.Len(t, *windows, 2)
-	assert.Equal(t, ContextWindowEvent{Window: 64000, FromModelList: true, Served: "Gateway/hf:upstream/model"}, (*windows)[1])
+	assert.Equal(t, ContextWindowEvent{Window: 64000, Reported: 64000, FromModelList: true, Served: "Gateway/hf:upstream/model"}, (*windows)[1])
 }
 
 // A routed entry with no window falls back to the body's model name. Both misses are reported together, once.
@@ -146,12 +146,12 @@ func TestARoutedEntryWithNoWindowFallsBackToTheBodyModel(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked)
 	require.Len(t, *windows, 2)
-	assert.Equal(t, ContextWindowEvent{Window: 20000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
+	assert.Equal(t, ContextWindowEvent{Window: 20000, Reported: 20000, FromModelList: true, Served: "vendor/served"}, (*windows)[1])
 }
 
 func TestEveryServedNameMissingIsReportedOnce(t *testing.T) {
@@ -168,7 +168,7 @@ func TestEveryServedNameMissingIsReportedOnce(t *testing.T) {
 	cfg := Config{Provider: provider, Tools: exec.registry(), Approver: allowAll, Events: &events}
 	req := Request{Model: "auto-alias", AutoCompact: 0.8, Messages: []Message{{Role: RoleUser, Content: "go"}}}
 
-	_, err := Run(context.Background(), cfg, req)
+	_, err := runTurn(context.Background(), cfg, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"auto-alias", "Gateway/served", "vendor/served"}, provider.asked, "each name once per run")

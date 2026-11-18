@@ -1,3 +1,5 @@
+// truncate.go holds the truncate code.
+
 package loop
 
 import (

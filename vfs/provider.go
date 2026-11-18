@@ -1,3 +1,5 @@
+// provider.go holds the provider code.
+
 package vfs
 
 import (
@@ -61,6 +63,13 @@ type IWritableFolderProvider interface {
 	Replace(ctx context.Context, path, oldText, newText string) (string, error)
 	// Remove deletes an existing file.
 	Remove(ctx context.Context, path string) (string, error)
+}
+
+// CreateRefuser is a writable folder that can refuse a Create from the path
+// alone, before the content exists.
+type CreateRefuser interface {
+	// RefuseCreate is the reason Create(path, ...) will fail, or "" when the path is free.
+	RefuseCreate(ctx context.Context, path string) (string, error)
 }
 
 // ReadOnlyExplainer lets a read-only folder name the writable route instead of a bare "read-only" refusal.

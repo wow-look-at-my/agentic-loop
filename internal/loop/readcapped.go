@@ -1,3 +1,5 @@
+// readcapped.go holds the readcapped code.
+
 package loop
 
 import (

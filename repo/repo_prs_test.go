@@ -16,12 +16,7 @@ func TestRepoPRListRendersRows(t *testing.T) {
 		assert.Equal(t, "/repos/octo/hello/pulls", c.Path)
 		assert.Equal(t, "open", c.Query.Get("state")) // default state
 		assert.Equal(t, "10", c.Query.Get("per_page"))
-		return http.StatusOK, `[
-			{"number":7,"title":"Add feature","state":"open","draft":true,"updated_at":"2026-07-01T10:00:00Z",
-			 "user":{"login":"alice"},"head":{"ref":"feature-x"},"base":{"ref":"main"}},
-			{"number":5,"title":"Fix bug","state":"open","draft":false,"updated_at":"2026-06-30T09:00:00Z",
-			 "user":{"login":"bob"},"head":{"ref":"bugfix"},"base":{"ref":"main"}}
-		]`
+		return http.StatusOK, fixturePRsList
 	})
 	res := execRepoTool(t, ex, RepoReadToolName, repoReadArgs{What: "prs", Org: "octo", Repo: "hello"})
 	require.False(t, res.IsError, res.Content)
@@ -73,10 +68,7 @@ func TestRepoPRReadRendersDetailsAndFiles(t *testing.T) {
 			})
 		case c.Path == "/repos/octo/hello/pulls/7/files":
 			assert.Equal(t, fmt.Sprint(repoPRMaxFiles), c.Query.Get("per_page"))
-			return http.StatusOK, `[
-				{"filename":"a.go","status":"modified","additions":10,"deletions":2},
-				{"filename":"b.go","status":"added","additions":30,"deletions":0}
-			]`
+			return http.StatusOK, fixturePRFiles
 		}
 		t.Fatalf("unexpected request %s %s (accept %s)", c.Method, c.Path, c.Accept)
 		return 0, ""

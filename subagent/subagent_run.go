@@ -1,3 +1,5 @@
+// subagent_run.go holds the subagent run code.
+
 package subagent
 
 import (
@@ -110,13 +112,15 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 	}
 	task := composeSubagentTask(block, in.Prompt)
 
-	res, runErr := agentic.Run(ctx, e.runConfig(agentic.ToolCallID(ctx), subTools, granted), agentic.Request{
-		Model:     e.cfg.Model,
-		System:    e.system,
-		Messages:  []agentic.Message{{Role: agentic.RoleUser, Content: task}},
-		MaxTokens: e.cfg.MaxTokens,
-		Extra:     e.cfg.Extra,
-	})
+	res, runErr := runChild(ctx, agentic.SessionConfig{
+		Loop: e.runConfig(agentic.ToolCallID(ctx), subTools, granted),
+		Request: agentic.Request{
+			Model:     e.cfg.Model,
+			System:    e.system,
+			MaxTokens: e.cfg.MaxTokens,
+			Extra:     e.cfg.Extra,
+		},
+	}, task)
 	if res != nil {
 		spent = append(spent, res.Usages...)
 	}
@@ -125,6 +129,17 @@ func (e *subagentTool) runGated(ctx context.Context, in subagentArgs) (agentic.T
 	}
 	// Not the final text: a run that ended by emitting a tool-call envelope never answered.
 	return subagentReport(res.Final.Content), spent
+}
+
+// runChild runs the sub-agent as its own session, one turn on task.
+func runChild(ctx context.Context, cfg agentic.SessionConfig, task string) (*agentic.Result, error) {
+	s, err := agentic.NewSession(cfg)
+	if err != nil {
+		return nil, err
+	}
+	turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: task})
+	err = turn.Wait(context.WithoutCancel(ctx))
+	return turn.Result(), err
 }
 
 // unavailableTool tells a sub-agent why a tool it named is not offered this run.
@@ -172,8 +187,7 @@ func (e *subagentTool) runConfig(callID string, subTools agentic.Tools, granted 
 		act(SubagentActivity{CallID: callID, Kind: SubagentActivityTurn, Turn: turn})
 	}
 	cfg.Events = &agentic.Events{}
-	// event.Event holds weak pointers, so the callbacks must outlive the
-	// augmentConfig call. Store them on a struct that lives as long as cfg.
+	// Store them on a struct that lives as long as cfg.
 	type cbs struct {
 		toolCall   func(agentic.ToolCallEvent) error
 		toolResult func(agentic.ToolResultEvent) error
@@ -287,9 +301,10 @@ func (e *subagentTool) parentContext() []agentic.Message {
 // buildContextBlock renders the parent-conversation context the orchestrator
 // chose to share (share_context). It returns the rendered block (possibly
 // empty when there is nothing to share) or a non-empty errMsg describing a
-// misuse the model should fix. The summary mode makes bounded model call,
-// and returns its Completion so the briefing's cost travels with the run that
-// asked for it -- including when the call failed after spending tokens.
+// misuse the model should fix. The summary mode makes bounded model call. The
+// summary mode returns its Completion so the briefing's cost travels with the
+// run that asked for it. It includes when the call failed after spending
+// tokens.
 func (e *subagentTool) buildContextBlock(ctx context.Context, in subagentArgs) (block string, comp *agentic.Completion, errMsg string) {
 	switch strings.ToLower(strings.TrimSpace(in.ShareContext)) {
 	case "", "none":

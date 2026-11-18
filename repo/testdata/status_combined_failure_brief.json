@@ -1,0 +1,7 @@
+{
+  "state": "failure",
+  "sha": "0123456789abcdef",
+  "statuses": [
+    {"context": "all-builds", "state": "failure", "description": "1/2 builds failed"}
+  ]
+}

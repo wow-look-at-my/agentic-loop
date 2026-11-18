@@ -147,6 +147,18 @@ func (f *writableFolder) Create(_ context.Context, p, content string) (string, e
 	return "Created " + rel + ".", nil
 }
 
+// RefuseCreate answers from the path alone, the way Create will.
+func (f *writableFolder) RefuseCreate(_ context.Context, p string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	rel := f.rel(p)
+	if _, exists := f.files[rel]; exists {
+		return rel + " already exists", nil
+	}
+	return "", nil
+}
+
 func (f *writableFolder) Replace(_ context.Context, p, oldText, newText string) (string, error) {
 	rel := f.rel(p)
 	content, ok := f.files[rel]
@@ -270,6 +282,22 @@ func TestReadFileWindow(t *testing.T) {
 	missing := runFileTool(t, reg, ReadFileToolName, `{"path":"/work/nope.go"}`)
 	assert.True(t, missing.IsError)
 	assert.Contains(t, missing.Content, "does not exist")
+}
+
+// A model that writes a regexp but leaves "regexp" off gets an empty literal search. The reply says which mode ran
+// and points at the switch, rather than declaring the text absent and nothing more.
+func TestAnEmptyLiteralSearchThatLooksLikeARegexpSaysSo(t *testing.T) {
+	res := GrepResult{}
+	literal := renderGrep("/work", "foo|bar", false, nil, res)
+	assert.Contains(t, literal, `grep "foo|bar" (literal) in /work`)
+	assert.Contains(t, literal, grepLiteralHint)
+
+	plain := renderGrep("/work", "foo", false, nil, res)
+	assert.NotContains(t, plain, grepLiteralHint, "a plain word is not a regexp mistake")
+
+	pattern := renderGrep("/work", "foo|bar", true, nil, res)
+	assert.Contains(t, pattern, `grep "foo|bar" (regexp) in /work`)
+	assert.NotContains(t, pattern, grepLiteralHint)
 }
 
 func TestGrepStatesWhatAnEmptyResultProves(t *testing.T) {

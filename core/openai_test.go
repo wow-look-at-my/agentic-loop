@@ -320,9 +320,9 @@ func TestOpenAIReasoningDetailsStream(t *testing.T) {
 // TestOpenAIReplayReasoningDetails is the regression test for the bug. A
 // gateway fronting a Responses-only reasoning model needs the exact
 // reasoning_details array echoed back on the next turn to pair a
-// function_call with its output; replaying only the flattened text drops the
-// item ids and the gateway 400s with "No tool output found for function call
-// X" on the next turn after a tool call.
+// function_call. This holds with its output. Replaying only the flattened
+// text drops the item ids and the gateway 400s with "No tool output found for
+// function call. X" on the next turn after a tool call.
 func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	details := []oaReasoningDetail{
 		{Type: "reasoning.text", Text: "step one", ID: "rs_1", Format: "openai-responses-v1"},
@@ -335,7 +335,7 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}, ReplayReasoning: true})
+	p := mustOpenAI(t, OpenAIConfig{ProviderConfig: ProviderConfig{BaseURL: srv.URL}})
 	req := Request{
 		Model: "m",
 		Messages: []Message{
@@ -357,36 +357,6 @@ func TestOpenAIReplayReasoningDetails(t *testing.T) {
 	assert.Equal(t, "step one", assistant["reasoning"])
 	assert.JSONEq(t, string(raw), jsonMust(assistant["reasoning_details"]),
 		"the array replays byte-for-byte -- a gateway pairs a function_call by these item ids")
-}
-
-// TestOpenAINoReasoningDetailsWithoutReplay confirms the strict-server
-// default still sends neither field. A server that never advertised
-// reasoning_details must not see it because a captured block happens to
-// carry.
-func TestOpenAINoReasoningDetailsWithoutReplay(t *testing.T) {
-	details := []oaReasoningDetail{{Type: "reasoning.text", Text: "step one", ID: "rs_1"}}
-	raw, err := json.Marshal(details)
-	require.NoError(t, err)
-
-	h := &sseHandler{payloads: []string{`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`}}
-	srv := httptest.NewServer(h)
-	defer srv.Close()
-
-	p := oaProvider(t, srv.URL) // ReplayReasoning defaults false
-	req := Request{
-		Model: "m",
-		Messages: []Message{
-			{Role: RoleAssistant, Thinking: []ThinkingBlock{{Text: "step one", Signature: string(raw)}}, Content: "hi"},
-		},
-	}
-	_, err = p.Complete(context.Background(), req, nil)
-	require.NoError(t, err)
-
-	assistant := bodyMap(t, h.body)["messages"].([]any)[0].(map[string]any)
-	_, hasReasoning := assistant["reasoning"]
-	_, hasDetails := assistant["reasoning_details"]
-	assert.False(t, hasReasoning)
-	assert.False(t, hasDetails)
 }
 
 func TestOpenAIStopReasonMapping(t *testing.T) {

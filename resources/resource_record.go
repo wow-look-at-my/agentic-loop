@@ -1,3 +1,5 @@
+// resource_record.go holds the resource record code.
+
 package resources
 
 import (

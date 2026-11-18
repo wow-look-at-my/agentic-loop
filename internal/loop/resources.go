@@ -1,3 +1,5 @@
+// resources.go holds the resources code.
+
 package loop
 
 import (

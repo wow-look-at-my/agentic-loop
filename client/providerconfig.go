@@ -1,3 +1,5 @@
+// providerconfig.go holds the providerconfig code.
+
 package client
 
 import (
@@ -47,8 +49,6 @@ type OpenAIConfig struct {
 	SelfHosted bool
 	// PromptCache emits ephemeral cache_control breakpoints in openai shape; default false, plain servers reject them.
 	PromptCache bool
-	// ReplayReasoning replays accumulated reasoning as message.reasoning; default false, strict servers reject it.
-	ReplayReasoning bool
 }
 
 // ResponsesConfig configures NewResponsesProvider: the shared ProviderConfig
@@ -76,10 +76,9 @@ type AnthropicConfig struct {
 // BaseURL.
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error) {
 	p, err := commonai.NewOpenAIProvider(commonai.OpenAIConfig{
-		ProviderConfig:  cfg.core(),
-		SelfHosted:      cfg.SelfHosted,
-		PromptCache:     cfg.PromptCache,
-		ReplayReasoning: cfg.ReplayReasoning,
+		ProviderConfig: cfg.core(),
+		SelfHosted:     cfg.SelfHosted,
+		PromptCache:    cfg.PromptCache,
 	})
 	return finish(p, cfg.Retry, err)
 }
@@ -91,6 +90,19 @@ func NewResponsesProvider(cfg ResponsesConfig) (Provider, error) {
 		ProviderConfig: cfg.core(),
 		Store:          cfg.Store,
 	})
+	return finish(p, cfg.Retry, err)
+}
+
+// CompletionsConfig configures NewCompletionsProvider: the shared ProviderConfig connection base, nothing more.
+type CompletionsConfig struct {
+	ProviderConfig
+}
+
+// NewCompletionsProvider builds the Provider for the OpenAI completions. API.
+// It fails fast -- with a permanent (never-retried) error -- on an empty.
+// BaseURL.
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error) {
+	p, err := commonai.NewCompletionsProvider(commonai.CompletionsConfig{ProviderConfig: cfg.core()})
 	return finish(p, cfg.Retry, err)
 }
 
@@ -121,4 +133,9 @@ func finish(p commonai.Provider, policy *RetryPolicy, err error) (Provider, erro
 // FetchModelList reads an endpoint's model list: the dialect it speaks and what its models charge.
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error) {
 	return commonai.FetchModelList(ctx, cfg.core())
+}
+
+// FetchModelListPages reads every page of an endpoint's model list as raw documents.
+func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, error) {
+	return commonai.FetchModelListPages(ctx, cfg.core())
 }

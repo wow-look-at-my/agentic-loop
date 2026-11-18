@@ -9,11 +9,11 @@ A model list identifies its SERVER (`DecodeModelList`), and for a long time that
           "type":"invalid_request_error","code":"unsupported_model"}}
 ```
 
-That is the endpoint naming the protocol for that model, in its own words. It is the same kind of fact as the model list's envelope, arriving on a different request, so it is read the same way. This is established, not guessed. Nothing here looks at a model NAME. A caller that mapped `o1-*` or `claude-*` onto a dialect will be encoding today's model lineup into code. It will be wrong for the next model and for every gateway that renames one.
+That is the endpoint naming the protocol for that model, in its own words. It is the same kind of fact as the model list's envelope, arriving on a different request, so it is read the same way. This is established, not guessed. Nothing here looks at a model NAME. A caller that mapped `o1-*` or `claude-*` onto a dialect will encodes today's model lineup into code. It will be incorrect for the next model and for every gateway that renames one.
 
 ## What it reads
 
-The body must DIRECT the caller somewhere. The pattern takes a path only after a directive phrase -- `use`, `switch to`, `call`, `post to`, `belongs on`, `must be called through`, `only supported in`, `served via`, and their neighbours. And a phrase carrying a NEGATION (`not`, `n't`, `never`, `no longer`) is skipped, because a negated phrase names the path that was refused rather than the one to use. Both rules are needed for one sentence: the refusal above says `not supported in v1/chat/completions` and then `Use v1/responses`. As a result, it must answer `DialectResponses` while reading the same paths. A body that names the refused path alone ("this model is not supported in v1/chat/completions.") reports nothing: it says the request failed, not where the request belongs.
+The body must DIRECT the caller somewhere. And a phrase carrying a NEGATION is skipped, because a negated phrase names the path that was refused rather than the one to use. Both rules are needed for one sentence: the refusal above says `not supported in v1/chat/completions` and then `Use v1/responses`. As a result, it must answer `DialectResponses` while reading the same paths. A body that names the refused path alone ("this model is not supported in v1/chat/completions.") reports nothing: it says the request failed, not where the request belongs.
 
 The path decides the dialect by its tail: `/responses` is `DialectResponses`, `/messages` is `DialectAnthropic`, `/chat/completions` is `DialectOpenAI`. The version segment is matched but not read. As a result, a `v2/responses` still answers.
 

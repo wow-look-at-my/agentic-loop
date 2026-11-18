@@ -11,6 +11,7 @@
 package agentic
 
 import (
+	"context"
 	"encoding/json"
 
 	loop "github.com/wow-look-at-my/agentic-loop/internal/loop"
@@ -24,6 +25,7 @@ type AssistantMessageEvent = loop.AssistantMessageEvent
 type CompactResult = loop.CompactResult
 type Completion = loop.Completion
 type CompactionEvent = loop.CompactionEvent
+type CompactionFailedEvent = loop.CompactionFailedEvent
 type Config = loop.Config
 type ContextWindowEvent = loop.ContextWindowEvent
 type Dialect = loop.Dialect
@@ -31,6 +33,7 @@ type ElapsedTime = loop.ElapsedTime
 type Events = loop.Events
 type FinalizeAssistantEvent = loop.FinalizeAssistantEvent
 type Gate = loop.Gate
+type Inbox = loop.Inbox
 type Message = loop.Message
 type MessageID = loop.MessageID
 type MessageQueue = loop.MessageQueue
@@ -51,10 +54,13 @@ type ResourceNoticeEvent = loop.ResourceNoticeEvent
 type ResourcePoll = loop.ResourcePoll
 type ResourceWatcher = loop.ResourceWatcher
 type ResponsesConfig = loop.ResponsesConfig
+type CompletionsConfig = loop.CompletionsConfig
 type Result = loop.Result
 type RetryAttempt = loop.RetryAttempt
 type RetryPolicy = loop.RetryPolicy
 type Role = loop.Role
+type ReplayProbe = loop.ReplayProbe
+type StateLossEvent = loop.StateLossEvent
 type StopEvent = loop.StopEvent
 type StreamEvents = loop.StreamEvents
 type SubagentReport = loop.SubagentReport
@@ -66,6 +72,8 @@ type SystemMessageEvent = loop.SystemMessageEvent
 type ThinkingBlock = loop.ThinkingBlock
 type Timings = loop.Timings
 type Tool = loop.Tool
+type ArgWatcher = loop.ArgWatcher
+type ArgHook = loop.ArgHook
 type ToolCall = loop.ToolCall
 type ToolCallEvent = loop.ToolCallEvent
 
@@ -93,9 +101,13 @@ const DialectAuto = loop.DialectAuto
 const DialectOpenAI = loop.DialectOpenAI
 const DialectAnthropic = loop.DialectAnthropic
 const DialectResponses = loop.DialectResponses
+const DialectCompletions = loop.DialectCompletions
 
 var IsTransient = loop.IsTransient
 var IsContextOverflow = loop.IsContextOverflow
+
+// Run answers req in a fresh session, one turn: the one-shot entry point.
+var Run = loop.Run
 
 // DialectRefused: see docs/dialect-refusal.md
 var DialectRefused = loop.DialectRefused
@@ -123,6 +135,9 @@ const Version = loop.Version
 
 var DefaultRetry = loop.DefaultRetry
 var ErrStuck = loop.ErrStuck
+var ErrStateLost = loop.ErrStateLost
+var ErrContextWindowConfig = loop.ErrContextWindowConfig
+var ErrContextWindowExceeded = loop.ErrContextWindowExceeded
 
 var Anomalous = loop.Anomalous
 var Compact = loop.Compact
@@ -134,9 +149,12 @@ var Bool = loop.Bool
 var DecodeModelList = loop.DecodeModelList
 var Dialects = loop.Dialects
 var FetchModelList = loop.FetchModelList
+var FetchModelListPages = loop.FetchModelListPages
 var ModelLimitsOf = loop.ModelLimitsOf
 var ForwardModelLimits = loop.ForwardModelLimits
 var ErrNoModelList = loop.ErrNoModelList
+var ErrReasoningRefused = loop.ErrReasoningRefused
+var ProbeReasoningReplay = loop.ProbeReasoningReplay
 var FormatElapsed = loop.FormatElapsed
 var FormatElapsedNotice = loop.FormatElapsedNotice
 var FormatResourceNotice = loop.FormatResourceNotice
@@ -149,12 +167,13 @@ var NewOutputDeduper = loop.NewOutputDeduper
 var NewParamStripper = loop.NewParamStripper
 var NewRateLimiter = loop.NewRateLimiter
 var NewResponsesProvider = loop.NewResponsesProvider
+var NewCompletionsProvider = loop.NewCompletionsProvider
 var NewSubagentRuns = loop.NewSubagentRuns
 var NewTool = loop.NewTool
+var WithArgHooks = loop.WithArgHooks
 var OneShot = loop.OneShot
 var Plural = loop.Plural
 var ReadCapped = loop.ReadCapped
-var Run = loop.Run
 var ToolCallID = loop.ToolCallID
 var TruncateRunes = loop.TruncateRunes
 var UnifiedDiff = loop.UnifiedDiff
@@ -165,3 +184,8 @@ func EnumSchema[In any](enums map[string][]string) json.RawMessage { return loop
 
 // InferSchema is forwarded from internal/loop. A generic function cannot
 func InferSchema[In any]() json.RawMessage { return loop.InferSchema[In]() }
+
+// OnArg is forwarded from internal/loop. A generic function cannot be a var alias.
+func OnArg[T any](key string, fn func(ctx context.Context, v T) *ToolResult) ArgHook {
+	return loop.OnArg[T](key, fn)
+}

@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "A short (3-5 word) label for the task, shown in the UI."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "The full task for the sub-agent. Be specific and self-contained: by default the sub-agent does not see this conversation, only this prompt (and whatever you choose to share via share_context). State exactly what to investigate and what to report back."
+    },
+    "share_context": {
+      "type": "string",
+      "enum": ["none", "full", "last_n", "messages", "summary", "custom"],
+      "description": "What to share from THIS conversation with the sub-agent, in addition to the prompt. 'none' (default): only the prompt. 'full': the entire input context (system prompt + every message). 'last_n': the last N messages (set context_message_count). 'messages': specific recent messages by position (set context_message_indices). 'summary': an auto-generated briefing summarizing this conversation. 'custom': the exact text you supply in custom_context. Default 'none' -- only widen it when the sub-agent genuinely needs this conversation's history."
+    },
+    "context_message_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required when share_context='last_n': how many of the most recent messages to include."
+    },
+    "context_message_indices": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "Required when share_context='messages': positions of specific recent messages to include, counted from the end (1 = the most recent message, 2 = the one before it, ...)."
+    },
+    "custom_context": {
+      "type": "string",
+      "description": "Required when share_context='custom': the exact background text to give the sub-agent."
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Restrict the sub-agent to ONLY these tools, by their exact names (as shown in your own tool list). STRONGLY RECOMMENDED: pinning the sub-agent to just the tools its task needs keeps it focused and stops it wasting turns on irrelevant tools like web search. By default the sub-agent gets only read-only tools; naming a tool here is also how you grant a NON-read-only (state-changing) tool when the task needs it. Omit to allow every read-only tool."
+    }
+  },
+  "required": ["prompt"]
+}

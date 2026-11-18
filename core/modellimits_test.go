@@ -11,11 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// syntheticModelList is an excerpt of what api.synthetic.new/v1/models answers.
-const syntheticModelList = `{"data":[{"provider":"synthetic","display_name":"DeepSeek V4.1 Flash",
- "id":"hf:deepseek-ai/DeepSeek-V4.1-Flash","context_length":524288,"max_output_length":65536,
- "pricing":{"prompt":"$0.0000006","completion":"$0.0000012"}}]}`
-
 func TestTheModelListCarriesEachModelsLimits(t *testing.T) {
 	list := decoded(t, syntheticModelList)
 	assert.Equal(t, Limits{ContextWindow: 524288, MaxOutput: 65536},
@@ -23,16 +18,7 @@ func TestTheModelListCarriesEachModelsLimits(t *testing.T) {
 }
 
 func TestEverySpellingOfALimitIsRead(t *testing.T) {
-	list := decoded(t, `{"object":"list","data":[
-	  {"id":"groq","context_window":131072,"max_completion_tokens":32768},
-	  {"id":"lmstudio","max_context_length":32768},
-	  {"id":"vllm","max_model_len":65536},
-	  {"id":"anthropic","max_input_tokens":1000000,"max_tokens":128000},
-	  {"id":"openrouter","context_length":200000,"top_provider":{"context_length":100000,"max_completion_tokens":8192}},
-	  {"id":"provider-only","top_provider":{"context_length":100000,"max_completion_tokens":8192}},
-	  {"id":"output-only","max_output_tokens":4096},
-	  {"id":"string","context_length":"8192"}
-	]}`)
+	list := decoded(t, limitSpellingsList)
 	assert.Equal(t, map[string]Limits{
 		"groq":          {ContextWindow: 131072, MaxOutput: 32768},
 		"lmstudio":      {ContextWindow: 32768},

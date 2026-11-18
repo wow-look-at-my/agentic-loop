@@ -1,3 +1,5 @@
+// message_queue.go holds the message queue code.
+
 package loop
 
 import (

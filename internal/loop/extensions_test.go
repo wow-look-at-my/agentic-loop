@@ -40,7 +40,7 @@ func TestOnTurnBeginNumberedTurnsAndReqMutation(t *testing.T) {
 		Approver: allowAll,
 		Events:   &events,
 	}
-	res, err := Run(context.Background(), cfg, Request{
+	res, err := runTurn(context.Background(), cfg, Request{
 		Model:    "m",
 		System:   "sys",
 		Messages: []Message{{Role: RoleUser, Content: "go"}},
@@ -88,7 +88,7 @@ func TestOnTurnEndReceivesCompletionAndError(t *testing.T) {
 		Events:   &events,
 	}
 	req := Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}}}
-	res, err := Run(context.Background(), cfg, req)
+	res, err := runTurn(context.Background(), cfg, req)
 	require.Error(t, err)
 
 	// call succeeded (comp non-nil); the failed (comp nil -- nothing produced).
@@ -130,7 +130,7 @@ func TestOnFinalizeAssistantClassifiesNilCompletionCancellation(t *testing.T) {
 			}
 			keep(t, &events.OnFinalizeAssistant, finalizeCb)
 			cfg := Config{Provider: provider, Events: &events}
-			_, err := Run(context.Background(), cfg, Request{
+			_, err := runTurn(context.Background(), cfg, Request{
 				Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
 			})
 			require.Error(t, err)
@@ -152,7 +152,7 @@ func TestOnTurnBeginErrorAbortsBeforeTheCall(t *testing.T) {
 		Provider: provider,
 		Events:   &events,
 	}
-	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, sentinel, "the callback sentinel is reachable via errors.Is")
 	assert.False(t, IsTransient(err), "a callback error is never transient")
@@ -173,7 +173,7 @@ func TestOnTurnEndErrorAbortsAfterTheCall(t *testing.T) {
 		Provider: provider,
 		Events:   &events,
 	}
-	res, err := Run(context.Background(), cfg, Request{
+	res, err := runTurn(context.Background(), cfg, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "q"}},
 	})
 	require.Error(t, err)
@@ -203,7 +203,7 @@ func TestWrapUpFiresAsOnePastTheStalledTurn(t *testing.T) {
 		Approver: allowAll,
 		Events:   &events,
 	}
-	res, err := Run(context.Background(), cfg, Request{
+	res, err := runTurn(context.Background(), cfg, Request{
 		Model: "m", Messages: []Message{{Role: RoleUser, Content: "task"}},
 	})
 	require.NoError(t, err)
@@ -231,7 +231,7 @@ func TestInternalTurnHookUntouchedByPublicHooks(t *testing.T) {
 		Events:   &events,
 	}
 	cfg.TurnHook = func(turn int) { internal = append(internal, turn) }
-	res, err := Run(context.Background(), cfg, Request{Model: "m"})
+	res, err := runTurn(context.Background(), cfg, Request{Model: "m"})
 	require.NoError(t, err)
 	assert.Equal(t, "done", res.Final.Content)
 	// Both fire per numbered turn, in order; turnHook is unaffected by the public hooks.

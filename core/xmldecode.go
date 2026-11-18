@@ -1,3 +1,5 @@
+// Decoding goes through xml-validator, which accepts &#; and can check against the schema.
+
 package commonai
 
 import (
@@ -202,6 +204,8 @@ func messageFrom(el *validator.Element) (Message, error) {
 		Role:        Role(attrOf(el, "role")),
 		ToolCallID:  attrOf(el, "tool-call-id"),
 		ToolIsError: attrOf(el, "tool-is-error") == "true",
+		ID:          attrOf(el, "id"),
+		Kind:        attrOf(el, "kind"),
 	}
 	parts, err := partsFrom(el)
 	if err != nil {
@@ -246,6 +250,7 @@ func partFrom(el *validator.Element) (Part, error) {
 			Text:      el.TextContent(),
 			Signature: attrOf(el, "signature"),
 			ID:        attrOf(el, "id"),
+			Raw:       attrOf(el, "raw") == "true",
 		}, nil
 	case elRedacted:
 		return RedactedThinkingPart{Data: el.TextContent()}, nil

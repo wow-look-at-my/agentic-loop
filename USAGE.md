@@ -2,7 +2,7 @@
 
 A reusable agentic loop for chat-model APIs, with three provider dialects. OpenAI-compatible chat completions, the OpenAI Responses API, and the Anthropic Messages API — plus the machinery a production tool loop needs. Streaming callbacks that can abort the call, tool execution with a per-call approval seam, transient-failure retry, rejected-parameter recovery. This is prompt caching on both dialects, conversation compaction, and optional built-in tools (a sub-agent and a web fetcher).
 
-The loop's own dependencies are `xml-validator/validator` and `go-containers/set`. Cobra reaches `cli/` and the SQLite driver reaches `search/`, and Go links neither into a binary that does not import them. All I/O goes through an injectable `*http.Client`. The package reads **no environment variables** — every endpoint, key, and knob is explicit configuration.
+Cobra reaches `cli/` and the SQLite driver reaches `search/`, and Go links neither into a binary that does not import them. All I/O goes through an injectable `*http.Client`. The package reads **no environment variables** — every endpoint, key, and knob is explicit configuration.
 
 The dialects themselves live in [`core/`](core/). This speaks one XML format and translates it to and from each provider, behind the Go API in [`client/`](client/). This package re-exports what it uses as type aliases, so `agentic.Message` **is** `client.Message`. A value built here is one those packages take without a conversion step.
 
@@ -24,7 +24,7 @@ import (
 )
 ```
 
-The loop is `agentic.Run`. Optional tools sibl packages: `vfs.NewFileTools`, `repo.NewRepoTools`, `subagent.NewSubagentTool`, `webfetch.NewWebFetchTool`, `todo.NewTodoTools`, `resources.NewResourceWatcher`.
+The loop runs inside a session: `agentic.NewSession`, then `Send`. Optional tools sibl packages.
 
 ## Quick start — OpenAI-compatible
 
@@ -37,24 +37,22 @@ provider, err := agentic.NewOpenAIProvider(agentic.OpenAIConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{
-	Provider: agentic.NewParamStripper(provider),
-	Tools:    myTools,   // an agentic.Tools slice; empty for tool-less
-	Events: agentic.Events{
-		StreamEvents: agentic.StreamEvents{
-			OnText: func(s string) error { fmt.Print(s); return nil },
-		},
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{
+		Provider: agentic.NewParamStripper(provider),
+		Tools:    myTools, // an agentic.Tools slice; empty for tool-less
 	},
-}, agentic.Request{
-	Model:  "your-model-id",
-	System: "You are a helpful assistant.",
-	Messages: []agentic.Message{
-		{Role: agentic.RoleUser, Content: "What changed in the last release?"},
+	Request: agentic.Request{
+		Model:  "your-model-id",
+		System: "You are a helpful assistant.",
+		Extra:  map[string]any{"reasoning_effort": "high"}, // verbatim passthrough
 	},
-	Extra: map[string]any{"reasoning_effort": "high"}, // verbatim passthrough
 })
-if err != nil { /* res may still carry the partial transcript */ }
-fmt.Println(res.Final.Content)
+if err != nil { /* misconfiguration */ }
+
+turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "What changed in the last release?"})
+if err := turn.Wait(ctx); err != nil { /* the session still holds the partial conversation */ }
+fmt.Println(turn.Result().Final.Content)
 ```
 
 ## Quick start — OpenAI Responses
@@ -72,13 +70,15 @@ provider, err := agentic.NewResponsesProvider(agentic.ResponsesConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
-	agentic.Request{
-		Model:    "your-model-id",
-		System:   "You are a helpful assistant.", // sent as `instructions`
-		Messages: []agentic.Message{{Role: agentic.RoleUser, Content: "Hi!"}},
-		Extra:    map[string]any{"reasoning": map[string]any{"effort": "high"}},
-	})
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{Provider: provider, Tools: myTools},
+	Request: agentic.Request{
+		Model:  "your-model-id",
+		System: "You are a helpful assistant.", // sent as `instructions`
+		Extra:  map[string]any{"reasoning": map[string]any{"effort": "high"}},
+	},
+})
+turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "Hi!"})
 ```
 
 ## Quick start — Anthropic
@@ -93,13 +93,15 @@ provider, err := agentic.NewAnthropicProvider(agentic.AnthropicConfig{
 })
 if err != nil { /* misconfiguration */ }
 
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Tools: myTools},
-	agentic.Request{
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{Provider: provider, Tools: myTools},
+	Request: agentic.Request{
 		Model:     "your-model-id",
 		System:    "You are a helpful assistant.",
-		Messages:  []agentic.Message{{Role: agentic.RoleUser, Content: "Hi!"}},
 		MaxTokens: 4096, // REQUIRED on this dialect — the call fails fast without it
-	})
+	},
+})
+turn := s.Send(ctx, agentic.Message{Role: agentic.RoleUser, Content: "Hi!"})
 ```
 
 ## Layering — which layer owns what
@@ -110,7 +112,7 @@ Layers, and the split decides where anything new belongs. Get this backwards and
 
 Consequently **an error that reaches the loop is treated as real and permanent. The loop stops.** It is entitled to that assumption. By the time a failure surfaced this far, the layer whose job was to make the call happen has already given up. The loop does not second-guess it, does not retry, and has no retry knob to configure — deliberately.
 
-**The provider is where the loop's instructions are carried out.** When the loop says "complete this request", making that true is the provider's responsibility, including everything that can go transiently wrong in the attempt: a 429, a 502. This is a dropped connection, a rejected parameter. Those are implementation details of *doing the thing*, not outcomes worth propagating. The provider surfaces an error only when the operation genuinely cannot be completed — at which point it is, by construction, permanent.
+**The provider is where the loop's instructions are carried out.** When the loop says "complete this request", making that true is the provider's responsibility, including everything that can go transiently incorrect in the try: a 429, a 502. This is a dropped connection, a rejected parameter. Those are implementation details of *doing the thing*, not outcomes worth propagating. The provider surfaces an error only when the operation genuinely cannot be completed — at which point it is, by construction, permanent.
 
 So: the provider owns **how** a model call gets made and everything that can transiently go incorrect doing it. The loop owns **what** calls to make and what to do with the results.
 
@@ -130,11 +132,12 @@ type Provider interface {
 func NewOpenAIProvider(cfg OpenAIConfig) (Provider, error)
 func NewResponsesProvider(cfg ResponsesConfig) (Provider, error)
 func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error)
+func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error)
 ```
 
-The per-dialect constructors are the only way to build the dialect providers — the implementations are unexported, so consumers hold nothing but the `Provider` interface. `ProviderConfig` is the shared connection base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`, `Headers` — embedded in each dialect's config: `OpenAIConfig` adds `SelfHosted` (the `cache_prompt` opt-in for llama.cpp-style servers), `ResponsesConfig` adds `Store`. `AnthropicConfig` adds `Version` (the `anthropic-version` header) and `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
+The per-dialect constructors are the only way to build the dialect providers — the implementations are unexported, so consumers hold nothing but the `Provider` interface. `AnthropicConfig` adds `Version` (the `anthropic-version` header) and `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
 
-One streaming model call. `StreamEvents` carries optional callbacks — `OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings`, `OnRetry` — all nil-safe, and **every callback returns an error**. A non-nil return aborts the stream read immediately, and `Complete` returns the partial `*Completion` (content, reasoning, tool calls, usage so far) together with that error. The error surfaces unwrapped or `%w`-wrapped, so `errors.Is` against your sentinel holds. It is never converted into an `*APIError`. It never classified transient, so neither the retry policy nor the param stripper re-sends a call whose sink failed.
+One streaming model call. A non-nil return aborts the stream read immediately, and `Complete` returns the partial `*Completion` (content, reasoning, tool calls, usage so far) together with that error. The error surfaces unwrapped or `%w`-wrapped, so `errors.Is` against your sentinel holds. It is never converted into an `*APIError`. It never classified transient, so neither the retry policy nor the param stripper re-sends a call whose sink failed.
 
 On any other mid-stream failure or cancellation **after data arrived**, `Complete` likewise returns the partial `*Completion` alongside the error. Both dialects are safe for concurrent use.
 
@@ -142,17 +145,23 @@ A stored transcript can hold an assistant turn that carries nothing — a run ca
 
 A turn whose only output was a tool call is not empty, and is always replayed.
 
-`Request.Extra` is a verbatim top-level passthrough (`temperature`, `reasoning_effort`, `num_ctx`, `thinking`, ...). It is merged first, so the typed core fields always win. The library never interprets, gates, or filters what you put there.
+`Request.Extra` is a verbatim top-level passthrough. It is merged first, so the typed core fields always win. The library never interprets, gates, or filters what you put there.
 
 ### The Responses dialect, and when it is worth it
 
 Two of the dialects talk to the same OpenAI endpoints. They are not interchangeable, and exactly one thing separates them:
 
-**On chat completions, a reasoning model's chain of thought does not survive a tool call by default.** The reasoning arrives as deltas, and the standard request format has nowhere to put it back. So on the next turn the model re-derives what it already worked out, pays for those tokens again. The model loses the prompt cache at every reasoning boundary. In a long tool-using investigation that is the dominant cost.
+**On chat completions, the reasoning is always replayed.** The standard request format has no field for it, but the servers that stream it read it back: `reasoning_content` (DeepSeek, Kimi, GLM, vLLM, SGLang, llama.cpp) and `reasoning` (OpenRouter, Ollama). Each assistant message carries the reasoning under both names. A model that does not get its reasoning back starts every call from nothing. It re-derives what it already worked out, pays for it again, and loses the prompt cache. The run looks busy and gets nowhere.
 
-One gateway shape is the exception, and `ReplayReasoning` covers it. OpenRouter's chat-completions-compatible endpoint streams a structured `reasoning_details` array (fragments keyed by index, same shape as `tool_calls`) for a model it fronts with a Responses-only backend. The OpenAI dialect captures that array verbatim in the turn's `ThinkingBlock` (`Signature`), and replays it unchanged on the next request alongside the flattened `reasoning` text. Skipping it is not cosmetic. The gateway needs those item ids to pair a `function_call` with its output when it reconstructs the Responses-API request underneath, and a transcript missing. Them gets rejected with "No tool output found for function call `<id>`" on the very next turn after a tool call — with no clue, from this dialect's own wire shape, why.
+There is no switch to turn the replay off. An endpoint that rejects it fails the call with `ErrReasoningRefused`. The call is never sent again without the reasoning.
+
+The OpenAI dialect also captures one structured shape. OpenRouter's chat-completions-compatible endpoint streams a structured `reasoning_details` array (fragments keyed by index, same shape as `tool_calls`) for a model it fronts with a Responses-only backend. The OpenAI dialect captures that array verbatim in the turn's `ThinkingBlock` (`Signature`), and replays it unchanged on the next request alongside the flattened `reasoning` text. Skipping it is not cosmetic. The gateway needs those item ids to pair a `function_call` with its output when it reconstructs the Responses-API request underneath, and a transcript missing. Them gets rejected with "No tool output found for function call `<id>`" on the very next turn after a tool call — with no clue, from this dialect's own wire shape, why.
 
 **The Responses API models a turn as an ordered list of items**. A reasoning item can be sent back verbatim. This provider asks for `include: ["reasoning.encrypted_content"]`, keeps what comes back in `ThinkingBlock` (summary in `Text`, encrypted payload in `Signature`, item id in `ID`), and replays it — reasoning first, then the text. Then the tool calls, in the order the model emitted them. A block with no payload is dropped rather than half-replayed. A summary is prose *about* the reasoning, and sending it as though it were the reasoning hands the model a paraphrase of its own thinking.
+
+**A `reasoning_text` item is the reasoning itself. It is replayed.** OpenRouter's non-OpenAI models (DeepSeek, Qwen, GLM, Kimi), vLLM and LM Studio return the thinking as `content: [{type: "reasoning_text"}]` with an empty `summary` and no `encrypted_content`. It read it back from `content`. The provider streams `response.reasoning_text.delta` as reasoning, marks that block `ThinkingBlock.Raw`, and replays it as `{type: "reasoning", id, summary: [], content: [{type: "reasoning_text"}]}`. A block's text goes back to the field it came from. An item with a summary keeps the summary.
+
+A host that stores `ThinkingBlock` must store `Raw` with it, or the block reads back as a summary and is dropped.
 
 Positions this provider takes deliberately:
 
@@ -161,13 +170,19 @@ Positions this provider takes deliberately:
 
 Everything else behind the seam is unchanged: the same `Request`, the same callbacks, the same retry and error classification, the same `Run`. What differs is the wire — `instructions` rather than a system message, `max_output_tokens` rather than `max_tokens`, `input_tokens`/`output_tokens` rather than `prompt`/`completion`, no `finish_reason` (the shape of the turn says it). This is a failure that can arrive inside a 200 as a `response.failed` event. That last one surfaces as a permanent error, not a transient one: re-sending a request the server accepted. The server then rejected just gets billed twice.
 
+### The completions dialect
+
+`NewCompletionsProvider` speaks the legacy `POST /completions` API: one prompt string in, text out. Some models are served there and nowhere else (an instruct model, a base model on a self-hosted server). A gateway can advertise it beside the chat APIs. The transcript becomes labelled turns ending on an open `Assistant:`. Reasoning text and tool calls go in as text, so nothing the model produced is lost. Depth: `docs/completions.md`.
+
+It FAILS on what it cannot express: a request that declares tools, or a message with an image. A host that wants a tool-less turn on such a model drops the tools itself, and says so. A request with no `max_tokens` gets `DefaultCompletionsMaxTokens`, because the API's own default of multiple cuts every answer off. Its params are the `openai` namespace's.
+
 ### Which dialect an endpoint speaks
 
 ```go
-type Dialect string // DialectAuto (""), DialectOpenAI, DialectAnthropic
+type Dialect string // DialectAuto (""), DialectOpenAI, DialectAnthropic, DialectResponses, DialectCompletions
 
 func (d Dialect) Valid() bool
-func (d Dialect) Label() string          // "detect" / "openai-compatible" / "anthropic messages"
+func (d Dialect) Label() string          // "detect" / "openai-compatible" / "anthropic messages" / ...
 func Dialects() []Dialect                // every dialect, default first
 ```
 
@@ -186,9 +201,10 @@ The envelope is checked before the items, so a list with no models at all still 
 
 ```go
 type ModelList struct {
-    Dialect Dialect
-    Prices  map[string]Rates  // absent = published no pricing
-    Limits  map[string]Limits // absent = published neither limit
+    Dialect   Dialect
+    Prices    map[string]Rates     // absent = published no pricing
+    Limits    map[string]Limits    // absent = published neither limit
+    Endpoints map[string][]Dialect // absent = advertised nothing; empty = no path a dialect speaks
 }
 
 type Limits struct {
@@ -197,19 +213,26 @@ type Limits struct {
 }
 
 func FetchModelList(ctx context.Context, cfg ProviderConfig) (*ModelList, error)
+func FetchModelListPages(ctx context.Context, cfg ProviderConfig) ([][]byte, error)
 func DecodeModelList(body []byte) (*ModelList, error)
 func ModelLimitsOf(ctx context.Context, p Provider, model string) (Limits, bool, error)
 ```
 
-Each provider spells a limit its own way. As a result, every spelling is read: `context_length`, `context_window`, `max_context_length`, `max_model_len` and `max_input_tokens` for the window, and `max_output_length`, `max_completion_tokens`, `max_output_tokens` and `max_tokens` for the output. OpenRouter's `top_provider` block is used when the model itself names neither. A limit that is not a whole token count fails the decode.
+Each provider spells a limit its own way. As a result, every spelling is read. OpenRouter's `top_provider` block is used when the model itself names neither. A limit that is not a whole token count fails the decode.
 
 Every built-in provider is a `ModelLimiter`. It reads its own endpoint's list once and keeps it. A failed read is not kept, so the next question asks again. Every decorator the library ships forwards the question, and a caller's own decorator does the same with `ForwardModelLimits`. A decorator around a provider with no list answers `ErrNoModelList`, and `ModelLimitsOf` reports that as `ok == false`.
 
 `Run` compacts against `Config.ContextWindow`. When that is zero and the request auto-compacts, it uses the window the provider's model list publishes. `Events.OnContextWindow` says which window the run settled on. A run that has none gets an `Err` naming why, and never auto-compacts.
 
-A gateway that resolves an alias (`auto-pr-resolve`) lists the model it serves, not the alias. Every response names that model (`Completion.Model`), so when the requested name resolved no window, the loop asks the list about the served name. This happens after the first completion, once per name, and reports it in the event's `Served`. `ModelList.LimitsFor` also accepts the served name without its provider prefix: `deepseek/x` finds the entry ending in `/deepseek/x`. A Bifrost gateway puts the upstream's own name in the body (`deepseek-ai/DeepSeek-V4.1-Flash`), which its list does not hold. It also states `extra_fields.routing_info` on every response and stream chunk. The openai dialect reads `provider/model` from it into `Completion.Routed` (`Synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`), the exact list id, and the loop asks about that name before `Completion.Model`. When every name misses, one event reports them all.
+A gateway that resolves an alias (`auto-pr-resolve`) lists the model it serves, not the alias. Every response names that model (`Completion.Model`), so when the requested name resolved no window, the loop asks the list about the served name. This happens after the first completion, once per name, and reports it in the event's `Served`. `ModelList.LimitsFor` also accepts the served name without its provider prefix: `deepseek/x` finds the entry ending in `/deepseek/x`. A Bifrost gateway puts the upstream's own name in the body (`deepseek-ai/DeepSeek-V4.1-Flash`), which its list does not hold. It also states `extra_fields.routing_info` on every response and stream chunk.
 
-One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one request and one decode. `FetchModelList` does a `GET {base}/v1/models`, sending both credential forms, since which server answers is the very thing in question.
+The openai dialect reads `provider/model` from it into `Completion.Routed` (`Synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`), the exact list id, and the loop asks about that name before `Completion.Model`. When every name misses, one event reports them all.
+
+One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one decode per page. `FetchModelList` does a `GET {base}/v1/models` in the OpenAI form first: a Bearer token, and no `anthropic-version`. A gateway that serves both APIs reads that header as a choice. OpenRouter answers it with multiple Anthropic-shaped entries whose ids no chat call accepts, instead of its several hundred models.
+
+Only a 400, 401 or 403 re-asks in the Anthropic form. An Anthropic list is paged, so every page is read, and a walk past `modelListMaxPages` is an error rather than a cut. `FetchModelListPages` returns the raw pages for a host that decodes fields of its own.
+
+**A model's protocols can be advertised.** OpenRouter lists the API paths that serve each model (`"endpoints": ["/api/v1/chat/completions", "/api/v1/messages", ...]`). `Endpoints` maps them onto dialects with the same path reading `DialectRefused` uses. A model that advertises only paths no dialect speaks (`/api/v1/batches`) gets an EMPTY list, not an absent one. It is listed, and nothing can chat with it. `EndpointsFor` takes the same suffix rule as `LimitsFor`.
 
 The trailing `/v1` is trimmed off the base first. The chat dialects disagree about what a base URL contains — the OpenAI request is `baseURL + "/chat/completions"`. As a result, its base **ends** in `/v1`, while the Anthropic one is `baseURL + "/v1/messages"`. As a result, its base does not. And appending to the first spelling asks for `/v1/v1/models`, a 404 that reads as an endpoint publishing neither a dialect nor a price.
 
@@ -302,7 +325,7 @@ A tool is an individual thing, and nothing groups them. Every tool a run offers 
 
 The id of the call being answered is NOT an argument -- almost no tool wants it. `Run` puts it on the context, and the built-in that needs it (the sub-agent tool, to stamp its telemetry) reads it back with `ToolCallID(ctx)`.
 
-A `ToolResult` is `Content` (the text the MODEL is fed), `IsError`, and `Parts []ToolContentPart` — structured content for the HOST: images, audio, embedded files, or a block a tool. This is its host agree on. Parts never reach the model. As a result, a result can hand a front end a megabyte of image while costing the context only what `Content` says. `Run` passes the whole result to `Events.OnToolResult`, alongside the message it recorded for it. Nothing else in the loop reads them.
+This is its host agree on. Parts never reach the model. As a result, a result can hand a front end a megabyte of image while costing the context only what `Content` says. `Run` passes the whole result to `Events.OnToolResult`, alongside the message it recorded for it. Nothing else in the loop reads them.
 
 Restricting a toolset filters a slice, so `Tools` carries the helpers the loop and the sub-agent tool need:
 
@@ -312,6 +335,31 @@ Restricting a toolset filters a slice, so `Tools` carries the helpers the loop a
 - `Subset(names)` — the named tools, in the registry's order (the advertised list is part of the prompt-cache prefix, so it must not depend on the caller's argument order).
 
 `NewTool(decl, run)` is the shorthand for a plain function tool. Gating it is not part of building it: the host's `Approver` sees the call either way.
+
+**A tool can act on an argument the moment it streamed.** A model writes a whole file into `write_file`'s `content` before the loop learns the path is taken. The refusal then costs every token of that content, and the wait for it. An `ArgWatcher` names the top-level argument members it cares about. The loop calls each hook once, with that member's complete value, while the rest is still arriving:
+
+```go
+type ArgHook struct {
+	Key string
+	On  func(ctx context.Context, value json.RawMessage) *ToolResult // non-nil refuses the call
+}
+type ArgWatcher interface {
+	Tool
+	ArgHooks() []ArgHook
+}
+tool := agentic.WithArgHooks(agentic.NewTool(decl, run),
+	agentic.OnArg("path", func(ctx context.Context, path string) *agentic.ToolResult { ... }))
+```
+
+The loop scans each watched call's arguments incrementally, reading every byte once, and reports a member when its value ends. This covers a string at its closing quote, an object or array at its closing bracket, a number or literal at the delimiter after it. A hook is never called on a partial value. `OnArg` decodes the value as `T`. A value that does not decode never reaches it, and `Execute` reports it with the rest of the arguments. A call whose tool has no hooks is not scanned, and a turn whose tools have none scans nothing.
+
+Only top-level members are watched.
+
+A nil result lets the call run as usual once it arrives whole. A refusal ends the model call there: the stream is closed. The assistant turn is what streamed before the cut (the refused call's arguments stop where they stopped), the refusal is recorded as the call's result, and the tool never runs. The run goes on to the next turn, where the model reads the refusal.
+
+`Events.OnToolCall` and `OnToolResult` fire for the refused call as for any other. The `Approver` is not asked, since nothing runs. A refused call is replayed with its cut arguments, which the wire writers send as `{}` like any arguments that are not valid JSON.
+
+What a cut costs: the call's usage never arrives. That turn reports none (its `Usage` is zero and unreported), and any call the model queued after the refused one in the same turn is never written. The model asks for it again next turn, after reading why the first was refused. A turn that advertises no tools runs no hook. The provider never re-sends a cut call: the stop is a callback error, which is permanent by contract.
 
 ### Built-in tools (the plugin pattern)
 
@@ -346,13 +394,13 @@ tools = append(tools, subagent.NewSubagentTool(subagent.SubagentConfig{
 
   It is cut at the envelope and returned as an error result carrying `SubagentCutOffNote`, or `SubagentNoReportText` when nothing usable survives.
 - **`NewWebFetchTool(WebFetchConfig)`** — the `web_fetch` tool: one unauthenticated, plain HTTP GET (http/https only, userinfo rejected, 5 MiB body cap, 45 s default client timeout), cleaned to readable text (built-in HTML cleanup, or an optional Apache Tika server via `TikaURL` with silent fallback) and rune-capped at 200 000 with an explicit truncation note. An optional `summary_prompt` argument runs one bounded, tool-less call to the configured `Provider`/`Model` to summarize the cleaned content (`OneShot`, 2 min timeout). `OnCompletion func(*Completion)` is handed that call's completion — including a partial one from a failed call, because those tokens were spent too. Since the tool itself answers only with text. `BlockURL func(url string) string` is the injectable refusal seam: return a non-empty teaching message to refuse a fetch (the source application used it to redirect fetches of its workspace repository). The library ships the hook, not the policy. The tool is `Readonly`, so a sub-agent's default toolset includes it.
-- **`NewTodoTools(TodoConfig)`** — four task-list tools, `todo_add`, `todo_edit`, `todo_cancel` and `todo_complete`, returned as one flat `Tools` slice and sharing a single in-memory store. This is the model's own task list. As a result, a long job stays legible to the user while it runs. Each tool mutates ONE task by its stable per-task `id` (`Todo.ID`), which is minted once, not reused, and re-read in every reply. The model never resends or reconstructs the rest of the list from memory. `TodoConfig.Write(ctx, []Todo)` is where the host keeps and displays the list.
+- This is the model's own task list. As a result, a long job stays legible to the user while it runs. Each tool mutates ONE task by its stable per-task `id` (`Todo.ID`), which is minted once, not reused, and re-read in every reply. The model never resends or reconstructs the rest of the list from memory. `TodoConfig.Write(ctx, []Todo)` is where the host keeps and displays the list.
 
   It receives the whole post-mutation list, ids and all, after every call, and an empty list arrives as an empty (non-nil) one. This is because clearing the list is a real instruction. A host that KEEPS that list between runs must hand it back as `TodoConfig.Initial`: the store lives in memory, so a toolset built without. It starts empty, and the new run's first mutation persists a list holding only that one task. The earlier tasks are gone, and nothing in the exchange looks like a failure. Each successful mutation's result also carries the list itself as a `TodoListPartType` content part whose JSON equals what `Write` just stored.
 
   As a result, a host can draw the plan mid-turn instead of parsing it back out of the text. The library owns the tools' semantics — the schemas' `pending`/`in_progress`/`done` enum, the caps (tasks, 200-rune titles), the exact teaching errors naming the offending `title`/`state`/`id`. This is `RenderTodos` (exported, so a host renders the same text the model is answered with, each task line carrying its `#id`). A `Write` that returns an error is reported to the model as a failure: a list that was not stored is never reported as stored. NOT `Readonly` — they write state the host shows, and a sub-agent inheriting them will overwrite its parent's plan.
 
-No built-in tool gates itself — each one only declares `Readonly` truthfully, and `Config.Approver` decides every call. Which means a run with a nil `Approver` executes the read-only built-ins (`repo_read`, the read file tools, `web_fetch`, `mcp_resource_diff`) and refuses the rest (`repo_file_write`, `repo_pr_create`, `write_file`/`edit_file`/`delete_file`, the task-list tools, and `run_subagent`) with `DeniedMessage`. A host that wants any of those runnable wires an `Approver`. The sub-agent tool's own nested run already carries an approve-everything one. This is because a tool the sub-agent holds was authorized when it was granted.
+No built-in tool gates itself — each one only declares `Readonly` truthfully, and `Config.Approver` decides every call. Which means a run with a nil `Approver` executes the read-only built-ins (`repo_read`, the read file tools, `web_fetch`, `mcp_resource_diff`) and refuses the rest with `DeniedMessage`. A host that wants any of those runnable wires an `Approver`. The sub-agent tool's own nested run already carries an approve-everything one. This is because a tool the sub-agent holds was authorized when it was granted.
 
 The model-calling built-ins use the `Provider` you hand them exactly as given — the library never wraps it. In the source application every one of these model calls (the sub-agent's nested loop, the context-summary briefing, and the web summary) went through its rejected-parameter recovery. To reproduce that, pass a `NewParamStripper`-wrapped provider in `SubagentConfig`/`WebFetchConfig` — the same wrapped value you give `Config.Provider`.
 
@@ -361,7 +409,8 @@ The model-calling built-ins use the `Provider` you hand them exactly as given �
 `Run(ctx, cfg, req)` drives the turn loop: call the model, execute the requested tools, feed the results back, repeat. Key behaviors:
 
 - **Nothing caps the run unless you ask for it.** The loop runs until the model stops asking for tools. A counted cap cannot tell a model looping uselessly from one deep in a hard task, so a default one fires. This is at the worst possible moment: after the run spent every call gathering context and just. This is before the model writes any of it down. Bound a run with the mechanisms that judge the right thing — `ErrStuck` below (evidence the model stopped progressing) and your own `ctx` (wall-clock and spend, without discarding work in flight). `Config.MaxTurns` is there for a host that must bound a turn anyway (an interactive UI answering one request). It counts model calls. The last permitted call is made WITHOUT tools so the model answers instead of asking for a tool nothing will run.
-- **A stuck model is caught, not waited out.** A turn whose tool calls are byte-identical to the previous turn's cannot learn anything new — the same calls return the same results. These produce the same turn again. The third identical turn in a row (`StuckNudgeAt`) gets one nudge appended after its tool results. The sixth (`StuckFailAt`) ends the run with `ErrStuck` (match it with `errors.Is`) rather than letting it spin. The failing batch is never executed and its tool calls are cleared. As a result, the partial transcript stays replayable. Any change in what the model asks for clears the count. Call IDs are excluded from the comparison, since providers mint a fresh one per call.
+- **Lost state ends the run.** Before each call that continues a tool batch, the loop checks that the previous turn's output reached it. The recorded assistant message must keep all the reasoning and text the completion had. The provider's reported `PromptTokens` must grew by at least that output plus the tool results, at a floor of several characters per token. A shortfall of multiple tokens or more is a loss: an endpoint, gateway or host dropped part of the transcript. `Events.OnStateLoss` fires, `Result.StateLosses` keeps it, and the run ends with `ErrStateLost`. There is no opt-out. The check is skipped only without evidence. A call with no reported usage, or a turn boundary with a new user message, where chat templates legitimately drop older reasoning. `ProbeReasoningReplay(ctx, provider, model)` asks a live chat-completions endpoint the same question up front. It sends one transcript with and without a reasoning block, at one output token each, and compares the prompt tokens.
+- **A stuck model is caught, not waited out.** A turn whose tool calls are byte-identical to the previous turn's cannot learn anything new — the same calls return the same results. These produce the same turn again. The third same turn in a row (`StuckNudgeAt`) gets one nudge appended after its tool results. The sixth (`StuckFailAt`) ends the run with `ErrStuck` (match it with `errors.Is`) rather than letting it spin. The failing batch is never executed and its tool calls are cleared. As a result, the partial transcript stays replayable. Any change in what the model asks for clears the count. Call IDs are excluded from the comparison, since providers mint a fresh one per call.
 - **Tool failures never abort the loop.** An `Execute` error becomes a `tool execution failed: ...` error result. A refused call records the `Approval.Reason`, or exactly `DeniedMessage` ("The user denied permission to run this tool.") when the refusal gave none. A call to a name the run does not offer gets `unknown tool: ...`. In every case the loop continues so the model can react.
 - **One pass over every call, in a fixed order.** `OnToolCall(call *ToolCall)` observes and may REWRITE the call (its `Arguments`, in practice), then `Approver.Ask` decides on the rewritten call, then the tool executes it. The order is load-bearing: an approver judging the original while a hook rewrote the command will be a hole with a process around it. The transcript keeps recording what the MODEL asked for — what was requested and what ran are different facts, and a mutation that silently rewrote. History will be worse than no mutation at all, so a host that needs the executed version records it alongside. The tool result answers the model's own call id either way. A rewritten id is ignored, since a mismatch there is an orphan no upstream will replay.
 - **`OnToolResult(call, result, recorded)` reports both halves of the event.** `recorded` is the `RoleTool` message the loop actually appended — after output dedup has possibly replaced the content with an `[unchanged]` marker. This carries the `ToolCallID` and `ToolIsError` as recorded, and equal to the corresponding entry in `Result.Messages`. A host that persists the transcript must store what the model saw. The loop is the only thing that knows it. Deriving it by diffing `Result.Messages` against the events afterwards is a second copy of dedup's rules, in another repository, incorrect the day they change.
@@ -374,23 +423,22 @@ The model-calling built-ins use the `Provider` you hand them exactly as given �
 
 #### Delivering a message into a running loop
 
-A run is not a closed box. One queue, `Config.Messages` (`*MessageQueue`, safe for concurrent producers), carries a message from anywhere in your program into the transcript the model works on. It holds kinds, told apart by the value's own type rather than by which field you set: `SystemMessage` for an automated notice (a CI status change, a stop-hook nudge, a sub-agent report) and `UserMessage`. This is for what the user typed while the model was busy. Both implement `QueuedMessage` and wrap a `Message`.
+A turn is not a closed box. `ISession.Queue` (safe for concurrent producers) carries a message from anywhere in your program into the conversation the model works on. It holds kinds, told apart by the value's own type. `SystemMessage` for an automated notice (a CI status change, a stop-hook nudge, a sub-agent report) and `UserMessage` for what the user typed while the model was busy. Both implement `QueuedMessage` and wrap a `Message`.
 
 ```go
-q := &agentic.MessageQueue{}
 go func() {
     notice := agentic.SystemMessage{Message: agentic.Message{Role: agentic.RoleUser,
         Kind: "ci_status_change", Content: "[CI status changed] checks went red on abc1234 ..."}}
-    if !q.Queue(notice) {
-        startANewRun(notice) // the run ended; nothing else will deliver it
+    if !s.Queue(notice) {
+        // the session is closed; nothing will deliver it
     }
 }()
-res, err := agentic.Run(ctx, agentic.Config{Provider: p, Messages: q, ...}, req)
+turn := s.Send(ctx, msg)
 ```
 
-- **A queued message always reaches the model.** The queue is drained at the top of every turn, system messages first, and a message queued when the model. There is nothing to poll and no window in which a notice is quietly dropped: a turn boundary is either coming or is created.
-- **`Queue` reports whether the queue took the message.** Run closes the queue as it returns, so `false` means the run ended and no other run will show that message to anyone. That is the signal to start a new run with it — the alternative, a hopeful `true`, is how a CI notice ends up sitting. This is in a queue nothing reads. The same logic closes a nil queue.
-- **`Result.Undelivered` is what the run never delivered**, system first. It is empty for a run that ended normally, and non-empty when the run ended first for another reason — a cancelled `ctx`. This is a model-call error, or a host `MaxTurns` cap that left no turn to deliver into. Re-deliver those into the next run rather than dropping them.
+- **A queued message always reaches the model.** A running turn drains it. At its next turn boundary, system messages first, and a message queued when the model will otherwise finish starts another turn. The next `Send` delivers a message queued while no turn runs.
+- **`Queue` reports whether the session took the message.** It returns `false` only once the session is closed.
+- **`Result.Undelivered` is what the turn never delivered**, system first. It is empty for a turn that ended normally, and non-empty when the turn ended first. This holds for another reason — a cancelled `ctx`, a model-call error, or a host `MaxTurns` cap that left no turn to deliver into. `SessionState.Undelivered` collects them across turns. Re-deliver those rather than dropping them.
 - **The host persists them**, through `Events.OnSystemMessage`: the loop hands over each message it is about to append. The loop takes back the durable id the host minted for it, so the stored thread and the transcript agree.
 - The `Kind` you set rides along untouched (`SubagentReportKind` is the loop's own), which is what lets a host render a CI notice differently from a nudge.
 
@@ -489,7 +537,7 @@ They are never summed). The finalized total is floored at prompt+completion whil
 
 `Completion.UsageReported` is true iff at least one usage snapshot was merged during the call: `Usage` is a value type. As a result, this is how a caller reading only the returned `Completion` distinguishes an upstream that reported all-zero usage. This is from one that reported none at all (common on local servers) — check it before persisting or displaying `Usage`.
 
-`Completion.RawUsage` carries the provider's usage object verbatim (the raw wire JSON on the openai dialect, the merged wire-shaped object on Anthropic) for logging and for extracting provider extras the normalized `Usage` drops: `Completion.ReasoningTokens` (openai `usage.completion_tokens_details.reasoning_tokens`) and `Completion.CostUsd` (`usage.cost`, falling back to `usage.estimated_cost`). This is each a tri-state pointer present only when the upstream reported it.
+`Completion.RawUsage` carries the provider's usage object verbatim (the raw wire JSON on the openai dialect, the merged wire-shaped object on Anthropic) for logging and for extracting provider extras the normalized `Usage` drops. This is each a tri-state pointer present only when the upstream reported it.
 
 `Completion.Streamed` records whether the response actually arrived as an SSE stream. A 200 that is NOT `text/event-stream` is read as a plain JSON body and reassembled into a Completion with `Streamed` false. A server that ignores `stream: true` is accepted transparently, and the flag preserves the truth of how the call was transported.
 
@@ -509,26 +557,38 @@ cr, err := agentic.Compact(ctx, provider, agentic.Request{
 
 Compose it with `context.WithoutCancel(parent)` for fire-and-forget work that must survive the parent request ending.
 
-**Every entry point that makes a model call surfaces its `*Completion`, not a projection of it.** A `Usage` return cannot distinguish an upstream that reported all-zero usage from one that reported none — that is exactly what. `Completion.UsageReported` is for — and it silently drops `CostUsd`, `ReasoningTokens`, `RawUsage`, `Timings` and `Streamed`. Under-counting money is not a rounding error. It cannot be repaired afterwards, because the numbers were never emitted. That principle is why `OneShot` returns a completion, why `CompactResult` carries one, why `SubagentActivity` has a `turn_end` kind, why `WebFetchConfig` has `OnCompletion`.
+**Every entry point that makes a model call surfaces its `*Completion`, not a projection of it.** A `Usage` return cannot distinguish an upstream that reported all-zero usage from one that reported none — that is exactly what. Under-counting money is not a rounding error. It cannot be repaired afterwards, because the numbers were never emitted. That principle is why `OneShot` returns a completion, why `CompactResult` carries one, why `SubagentActivity` has a `turn_end` kind, why `WebFetchConfig` has `OnCompletion`.
 
 This is why `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
 ### Auto-compaction
 
-`Run` can compact the transcript automatically when the context window is almost full. As a result, a long conversation continues without the host measuring token counts or calling `Compact` itself. The trigger is a fraction of the model's context window, set on the session:
+The session can compact the conversation automatically when the context window is almost full. As a result, a long conversation continues without the host measuring token counts or calling `Compact` itself. The trigger is a fraction of the model's context window, set on the session:
 
 ```go
-res, err := agentic.Run(ctx, agentic.Config{
-	Provider:      provider,
-	ContextWindow: 200_000, // the model's context window, in tokens
-}, agentic.Request{
-	Model:       "your-model-id",
-	AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
-	Messages:    history,
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{Provider: provider}, // the window comes from its model list
+	Request: agentic.Request{
+		Model:       "your-model-id",
+		AutoCompact: agentic.DefaultAutoCompact, // 0.8 — compact at 80% full
+	},
 })
 ```
 
-`Request.AutoCompact` is the fraction (0..1) of `Config.ContextWindow` at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
+**The window comes from the server. A host cannot set it by accident.** The loop reads it from the provider's model list. That host is by the requested model and then by the model a response names. No field sets it outright:
+
+| Host setting | Server reports a window `W` | Server reports none |
+|---|---|---|
+| neither | `W` | no window, no compaction, `Err` on the event |
+| `ContextWindowFallback: F` | `W`, and `F` is ignored | `F`, with a `Warning` |
+| `ContextWindowOverride: O` | `O` when `O <= W`; the run fails with `ErrContextWindowConfig` when `O > W` | `O`, with a `Warning` that nothing checked it |
+| both | the run fails with `ErrContextWindowConfig` before any call | the same |
+
+`Events.OnContextWindow` reports which row applied. A served model whose list entry arrives later replaces a fallback, and fails the run when an override exceeds it.
+
+**The window also caps each request.** Before each call the loop estimates the next prompt: the server's last prompt count plus the transcript appended since, at a few characters a token. When the estimate reaches the window, the loop compacts first if `AutoCompact` is armed. Otherwise, or when compaction fails, the run ends with `ErrContextWindowExceeded` and sends nothing.
+
+`Request.AutoCompact` is the fraction (0..1) of the window at which the loop compacts. Zero (the default) disables the feature. Once a turn reports `Usage.PromptTokens` at or above `AutoCompact * ContextWindow`, the loop calls `Compact` internally, replaces the transcript with the summary, resets the output deduper (its `[unchanged]` markers referenced outputs now gone from context). This is notifies the host through `Events.OnCompaction`. The compaction call's cost is in the event's `Completion`.
 
 **It fires at the turn boundary, not inside one.** The check runs at the top of the next turn, after the turn's tool calls ran and their results are recorded. As a result, no call is summarized away while the model is still owed an answer for it. Firing it mid-turn dropped the calls the model asked for and left a host storing an assistant row nothing ever answered. This every later turn then replayed, and which an OpenAI-dialect endpoint rejects. It also runs *before* the message queue drains, so a message queued while the model talks is delivered after the summary.
 
@@ -540,18 +600,23 @@ This is not folded into it.
 
 **Persisting it is the host's job, and skipping it is expensive.** The loop's transcript is in-memory and lives for one `Run`. A host that rebuilds the next turn's thread from durable storage, without recording the compaction, is back over the threshold immediately and compacts again. This is every turn, forever, each one paying a full-context summarization call. Store the summary and start the model's next thread from it.
 
-`AutoCompact` lives on `Request` because a session IS a stored request. The fraction is a property of the conversation, not of the model call, and it persists with the session document. `ContextWindow` lives on `Config` because it is a property of the model the host chose, not of the conversation. A server that reports no usage never triggers compaction: without a token count the loop cannot know the context is full. A compaction failure (the model returned an empty summary) is non-fatal — the loop continues with the un-compacted transcript.
+`AutoCompact` lives on `Request` because a session IS a stored request. The fraction is a property of the conversation, not of the model call, and it persists with the session document. The window settings live on `Config` because the window is a property of the model the host chose, not of the conversation. A server that reports no usage never triggers compaction: without a token count the loop cannot know the context is full. A compaction failure (the model returned an empty summary) does not end the run. The loop continues with the un-compacted transcript and fires `Events.OnCompactionFailed` with the error.
+
+A call that fails with a context-overflow error (`IsContextOverflow`) compacts and asks again, once per turn, when `AutoCompact` is armed. This is the only path out for a stored transcript that is already past the window. The run has no usage yet, and an alias may name no window. When the summary call overflows too, the loop summarizes the older half first (split at a user message, so a tool call keeps its result) and lets that summary stand in for it. With `AutoCompact` at zero, an overflow ends the run as before.
 
 ### Telling the model what time it is, and how much has passed
 
 A model reads a transcript with no clock in it. It cannot tell what time it is. The turn it answers may arrived a few seconds. This is after the last one or a few days. This is after it, with nothing in the messages saying which. `Config.ElapsedTime` puts both facts in front of it on every model call:
 
 ```go
-res, err := agentic.Run(ctx, agentic.Config{
-	Provider: provider,
-	// Since seeds the first call: when this conversation last made a request.
-	ElapsedTime: &agentic.ElapsedTime{Since: conv.LastRequestAt},
-}, req)
+s, err := agentic.NewSession(agentic.SessionConfig{
+	Loop: agentic.Config{
+		Provider: provider,
+		// Since seeds the first call: when this conversation last made a request.
+		ElapsedTime: &agentic.ElapsedTime{Since: conv.LastRequestAt},
+	},
+	Request: req,
+})
 ```
 
 Each call then carries one extra `RoleUser` message at the end, `Kind: ElapsedKind`, reading:
@@ -564,7 +629,7 @@ Current time is 3:14 AM on 8/26/2026, 1d 23hrs have passed
 - **Every model call, including the tool loop.** The gap between multiple turns of a tool loop is seconds, and saying so is the point. It is how the model learns what its own tool calls cost in wall-clock time. The stall wrap-up call carries one too.
 - **`Since` is the seed, and the loop keeps its own clock after that.** Zero means the run opens the conversation. As a result, the notice is the time alone: there is nothing to measure from, and inventing a gap will be worse than omitting one. Every later call measures from the previous call in this run. A clock that went backwards states the time alone for the same reason.
 - **The wall clock is rendered in the zone `Now` returns** — `time.Now` is local. As a result, the model reads the server's time. Hand it a clock in another zone to change that.
-- **The gap renders as its largest non-zero units** — `3d 4hrs`, `2hrs 14mins`, `45secs` — and anything under a second is `<1sec` rather than `0secs`. This looks like a stopped clock. `FormatElapsed` and `FormatElapsedNotice` are exported for a host that wants the same wording elsewhere.
+- This looks like a stopped clock. `FormatElapsed` and `FormatElapsedNotice` are exported for a host that wants the same wording elsewhere.
 - **Helper calls are not conversation turns**, so `Compact`, `OneShot` and the optional tools' own summarizing calls carry no notice and do not move the clock. A compaction the host never asked about must not read as a request the user made.
 - **`Now` overrides the clock** for tests. Nil is `time.Now`.
 
@@ -585,13 +650,12 @@ listener := &goal.StopListener{
     },
     Report: func(v goal.Verdicts) { recordNotice(v); persist(state) },
 }
-events := agentic.Events{}
-listener.Attach(ctx, &events, queue)
-
-res, err := agentic.Run(ctx, agentic.Config{Provider: provider, Events: &events, Messages: queue, Tools: tools}, req)
+s, err := agentic.NewSession(agentic.SessionConfig{Loop: agentic.Config{Provider: provider, Tools: tools}, Request: req})
+listener.Attach(ctx, s)
+turn := s.Send(ctx, msg)
 ```
 
-- **`Attach` subscribes to `Events.OnStop`**, and a blocked stop queues the directive as a `SystemMessage` of `goal.DirectiveKind`, which takes the loop round again IN PLACE. A fresh run will replay the transcript from the top and pay for it. The model will read the directive as the opening of a new conversation rather than as the answer to the stop it just tried. `ctx` is the RUN's context, which is what makes cancellation win. `msgs` must be the queue the run was configured with.
+- **`Attach` subscribes to the session's `Events.OnStop`**, and a blocked stop queues the directive through `ISession.Queue` as a `SystemMessage` of `goal.DirectiveKind`. This takes the loop round again IN PLACE. A fresh turn will read the directive as a new request rather than as the answer to the stop it just tried. `ctx` is the RUN's context, which is what makes cancellation win.
 - **The verdict is one of five outcomes.** `Blocked` refuses the stop. `Met` and `Failed` clear the goal. `Permitted` and `Suspended` let the run end. `Report` hears every one of them, on the run's own goroutine, because a queued directive says only what the MODEL is told. The host still records the notice, persists the counters, clears a goal that is met, and bills the evaluator's own call (`Verdicts.Completion`).
 - **Goal mode fails open.** A provider that will not answer suspends the goal loudly and permits the stop. A cancelled run is permitted with no model call at all. Ending a run one iteration early is one keystroke from being resumed. The alternative is a wedged session.
 - **Three same reasons end the goal.** That is the evidence `ErrStuck` uses one layer down. It earns the same answer — a verdict, not a budget, so it clears rather than pauses.
@@ -634,7 +698,7 @@ hits, mode, err := idx.Search(ctx, search.Query{
 
 A non-2xx answer from the endpoint comes back as `*search.HTTPError`, which carries the `Status` beside the body. The status is the only thing separating "this model does not embed" from "the attempt did not get through". A provider 400s a chat model sent to `/v1/embeddings`, and 429s or 5xxs a model it will otherwise serve. A host offering a picker of models that actually embed decides between those two on `errors.As`, not on the sentence.
 
-Call `Ingest` and `EmbedPending` on whatever cadence suits the host. Both are resumable and neither re-does finished work. The index is deliberately behind the store — embedding is a network call. So `Status` reports the stale conversations, the pending embeddings and the last error, and `Search` returns the `Mode` that answered (`text`, `semantic`, `hybrid`, or the `substring` fallback). Depth, including what the vector scan measures at and where it stops being interactive: [`docs/search.md`](docs/search.md).
+Call `Ingest` and `EmbedPending` on whatever cadence suits the host. Both are resumable and neither re-does finished work. The index is deliberately behind the store — embedding is a network call. So `Status` reports the stale conversations, the pending embeddings and the last error, and `Search` returns the `Mode` that answered. Depth, including what the vector scan measures at and where it stops being interactive: [`docs/search.md`](docs/search.md).
 
 Everything in the file is derived, so `Open` never refuses one it cannot read. It checks each half's tables against the shape this version writes and rebuilds the half that does not match. A recorded version can come from another implementation of the same index and describe different columns. Rebuilding the text half re-reads what the host already holds. The vectors are a separate half and are kept when they are still readable.
 
@@ -655,13 +719,13 @@ Nothing in it knows what MCP is. A host supplies multiple seams:
 - **`ResourceSource`** — `ID`/`Name`/`List`/`Read`. One thing that publishes resources (an MCP server, a directory, anything listable).
 - **`ResourceSnapshots`** — where the watcher keeps what it saw, and where it records each change. `RecordChange` returns the id. As a result, the host owns id generation (it is the side that resolves one later).
 
-`NewResourceDiffTool(ResourceChanges)` is the matching tool: it resolves a change id to the before/after captured AT THAT MOMENT, from the change record's own copy. A resource that has moved a few times since still answers the first notice with the first change. Failures are recoverable results that list the real ids. A source that can not be listed becomes a WARNING, not a removal (absent-because-unreachable is not absent). Binary content is watched by hash and size and reported as such, not rendered as a diff.
+`NewResourceDiffTool(ResourceChanges)` is the matching tool: it resolves a change id to the before/after captured AT THAT MOMENT, from the change record's own copy. A resource that moved a few times since still answers the first notice with the first change. Failures are recoverable results that list the real ids. A source that can not be listed becomes a WARNING, not a removal (absent-because-unreachable is not absent). By hash and size and reported as such, binary content is watched, not rendered as a diff.
 
 `UnifiedDiff`/`CountLineChanges`/`HumanSize` are exported for hosts rendering their own changes with the same words.
 
 ### Filesystem tools (optional, package `vfs`)
 
-`vfs.NewFileTools(vfs.FileToolsConfig)` returns a `*vfs.FileTools` handle providing the seven-tool file vocabulary — `list_dir`, `read_file`, `find_files`, `grep`, `write_file`, `edit_file`, `delete_file` — over whatever a host mounts. The library owns what a file tool IS: the names, the model-facing descriptions, the argument schemas, the caps and every word of the rendering. A host owns what is behind a mount, and nothing about its storage reaches here. Mount nothing and you get non-nil tools that return the unavailable message, rather than nil tools.
+The library owns what a file tool IS: the names, the model-facing descriptions, the argument schemas, the caps and every word of the rendering. A host owns what is behind a mount, and nothing about its storage reaches here. Mount nothing and you get non-nil tools that return the unavailable message, rather than nil tools.
 
 A host mounts `IFolderProvider`s (folder hierarchies) and `IFileProvider`s (single files) under virtual path prefixes. More specific prefixes always shadow less specific ones, regardless of registration order:
 
@@ -691,6 +755,7 @@ ft.Remove("/repos")
 - **`IFolderProvider`** — embeds `IProvider`. Adds `Display`/`List`/`Read`/ `Find`/`Grep`. Every method receives the WHOLE virtual path as the model wrote it, because only the folder knows its own grammar.
 - **`IFileProvider`** — embeds `IProvider`. Adds `Read`/`Display`. Serves exactly one virtual file at its registered path. Use it when you only need to expose a single document without a full folder hierarchy.
 - **`IWritableFolderProvider`** adds `Writable`/`Create`/`Replace`/`Remove`. A folder that is not one gets the write tools' refusals for free. A `ReadOnlyExplainer` lets it say *why* a particular path is read-only.
+- **`CreateRefuser`** lets a writable folder refuse a `Create` from the path alone. `RefuseCreate(ctx, path)` is the reason `Create` will give, or `""` when the path is free. `write_file` has an `ArgHook` on `path` (see "Tools and approval"). Once the `path` member streamed whole, it asks the guard, the mount, `Writable` and then `RefuseCreate`, and a refusal ends the model call. This happens before the `content` streams in. A folder without it is refused at `Create`, after the whole file arrived. An error from `RefuseCreate` means the folder cannot tell yet, and `Create` decides.
 - **`PathGuard`** blocks a path before any provider sees it, with the reason the model is shown.
 - **`DuplicateMountError`** — returned by `Add`/`AddFile` when a provider is already registered at that path (case-insensitive). Never a silent overwrite.
 
@@ -718,9 +783,11 @@ Properties run through all of it:
 - **`what=status` answers "why is CI red" from whichever API the credential can read.** The Checks API (`/commits/{sha}/check-runs`) needs the `checks` permission, which a GitHub App installation can hold and a fine-grained personal access token cannot. Its repository-permission list has no "Checks" entry — so a token-backed host is refused there routinely. When that read fails, the report falls back to the Actions API (`/actions/runs?head_sha=`, then each run's jobs). The report renders the workflow runs, their jobs, and the failed steps inside each failed job. `actions` IS a permission a token can hold. Which endpoint answered plumbs and the report never mentions it. The reader wanted the verdict, not a permissions lecture they may be unable to act on. The fallback runs only after a failure. As a result, a readable Checks API costs no extra requests, and only when NEITHER answers — the case where there is genuinely no verdict. The readable Checks API are both failures reported.
 - **`what=job_log` is where that chain ends.** Naming the step that failed only renames the question. The compiler error and the failing assertion are in the job's log. As a result, every failed job in the report carries the `job_log` call that fetches it. `/actions/jobs/{id}/logs` is served under `actions` too, so a token-backed host can reach it. It answers 302 with a signed URL on storage, and that hop is made WITHOUT the token.
 
-  The signature is the credential there, and forwarding a PAT to a third party is not a tidiness question. The whole log is returned when it fits. Past that the tail comes back (where a failure is) and `offset`/`limit` address any other window, so nothing in the log is out of reach. GitHub also 404s this endpoint for multiple reasons that have nothing to do with a token's access. Both look same to "no token can see this": while the job has not finished — undocumented. However, both reported: the log is not archived to storage until it is — and when GitHub marks the job "skipped".
+  The signature is the credential there, and forwarding a PAT to a third party is not a tidiness question. The whole log is returned when it fits. Past that the tail comes back (where a failure is) and `offset`/`limit` address any other window, so nothing in the log is out of reach. `pattern` is a Go regular expression that returns only the matching lines, each with its line number. That `pattern` is from the whole log or from the window `offset`/`limit` name. A failure that sits thousands of lines above the tail is one call away, not a page-by-page hunt.
+
+  A search with no match states the lines it read. One that hits its cap of `jobLogMaxMatches` names the offset to continue from. GitHub also 404s this endpoint for multiple reasons that have nothing to do with a token's access. Both look same to "no token can see this": while the job has not finished — undocumented. However, both reported: the log is not archived to storage until it is — and when GitHub marks the job "skipped".
 
   This never ran a step and so never produced one. A 404 here re-reads the job's own status first, and reports whichever of those it PROVES. When the job is completed and not skipped, that read confirmed the job exists and these tokens can see it. As a result, the generic "none of your tokens can see it" wording will directly contradict what was read — the message instead points at the log itself. This is as what is missing (most likely expired log retention), not the job.
 - **A write never falls through to anonymous** and uses ONLY `WriteTokens`. Filtering that list by initiator is the host's job: a model-facing toolset gets `ModelWriteTokens(...)`, a user-initiated action gets everything. `RepoToolsConfig.Blocked` vetoes a write per repository (a working copy whose staged state a direct commit will bypass). Reads are never asked, because a working copy holds no version of history or CI.
 
-The client is a separate value from the tools because a host needs it directly. A `/repos` filesystem folder and a "test this token" button take the same `*GitHub`, so all three share one credential order and one winning-token cache — `Fetch`. This is `FetchURL`, `OwnerRepos`, `DefaultBranch`, `CIStatusReport`, `TestToken`, and, for a host running its own git push, `WriteCredentials`, `Do`, `ClassifyWriteStatus` and `MoreInformativeAuthFailure`.
+The client is a separate value from the tools because a host needs it directly. A `/repos` filesystem folder and a "test this token" button take the same `*GitHub`, so all three share one credential order and one winning-token cache — `Fetch`.

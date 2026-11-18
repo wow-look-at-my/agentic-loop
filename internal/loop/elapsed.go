@@ -1,3 +1,5 @@
+// elapsed.go holds the elapsed code.
+
 package loop
 
 import (

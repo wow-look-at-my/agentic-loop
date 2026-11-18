@@ -1,3 +1,5 @@
+// xmlwrite.go holds the xmlwrite code.
+
 package commonai
 
 import (

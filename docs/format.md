@@ -1,6 +1,6 @@
 # The format
 
-Namespace `https://github.com/wow-look-at-my/common-ai-api/schema/v1`, with `/anthropic`, `/openai` and `/responses` under it. Root elements: `<request>`, `<response>`, `<conversation>`, `<conversations>`, `<error>`.
+Namespace `https://github.com/wow-look-at-my/common-ai-api/schema/v1`, under it. Root elements.
 
 The schema is `go/core/schema/`, symlinked to `schema/` at the repo root, and embedded in the core package so validation needs nothing on disk.
 
@@ -12,7 +12,7 @@ Cross-dialect output is a different question and deliberately NOT round-trip. On
 
 ## Content parts
 
-A message's content is an ordered list: `<text>`, `<image>`, `<thinking>`, `<redacted-thinking>`, `<tool-call>`. Order is the meaning. A reply whose text brackets a thinking block reads the way the model wrote it, and flattening it to a string will lose that.
+A message's content is an ordered list. Order is the meaning. A reply whose text brackets a thinking block reads the way the model wrote it, and flattening it to a string will lose that.
 
 `<text>` holds characters plus character references. `<image>` holds either inline bytes (`media-type` plus base64 content) or a `src` URI, whichever was supplied. `<thinking>` carries the `signature` that makes a block replayable. Without it the block is prose ABOUT the reasoning. This is why a dialect that needs the signature drops an unsigned block rather than sending a paraphrase of the model to itself.
 

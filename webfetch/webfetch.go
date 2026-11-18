@@ -1,8 +1,11 @@
+// webfetch.go holds the webfetch code.
+
 package webfetch
 
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,21 +37,10 @@ const (
 )
 
 // webFetchSchema is the tool's parameter schema, ported verbatim.
-var webFetchSchema = json.RawMessage(`{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "url": {
-      "type": "string",
-      "description": "The http or https URL to fetch. Userinfo credentials are rejected."
-    },
-    "summary_prompt": {
-      "type": "string",
-      "description": "Optional instructions for a second call to the same model to summarize the cleaned content."
-    }
-  },
-  "required": ["url"]
-}`)
+var webFetchSchema = json.RawMessage(webFetchSchemaJSON)
+
+//go:embed schema/webfetch.json
+var webFetchSchemaJSON string
 
 // WebFetchConfig configures NewWebFetchTool.
 type WebFetchConfig struct {
@@ -229,9 +221,10 @@ const webSummarySystemPrompt = "You summarize cleaned web content for another as
 
 // generateWebSummary asks the model to summarize cleaned fetched content:
 // bounded (webSummaryModelTimeout), tool-less call with no retry, via
-// OneShot. onCompletion, when non-nil, is handed the call's Completion --
-// including a partial from a failed call, because those tokens were spent too
-// and a host that is not told about them under-counts what the session cost.
+// OneShot. onCompletion, when non-nil, is handed the call's Completion.
+// Including a partial from a failed call. This is because those tokens were
+// spent too and a host that is not told about them under-counts what the
+// session cost.
 func generateWebSummary(ctx context.Context, p agentic.Provider, onCompletion func(*agentic.Completion), model, url, cleaned, instructions string, maxTokens int, extra map[string]any) (string, error) {
 	comp, err := agentic.OneShot(ctx, p, agentic.Request{
 		Model:  model,

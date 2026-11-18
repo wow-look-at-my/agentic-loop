@@ -1,3 +1,5 @@
+// alias.go holds the alias code.
+
 package client
 
 import (
@@ -75,10 +77,11 @@ const (
 
 // Wire dialects.
 const (
-	DialectAuto      = commonai.DialectAuto
-	DialectOpenAI    = commonai.DialectOpenAI
-	DialectAnthropic = commonai.DialectAnthropic
-	DialectResponses = commonai.DialectResponses
+	DialectAuto        = commonai.DialectAuto
+	DialectOpenAI      = commonai.DialectOpenAI
+	DialectAnthropic   = commonai.DialectAnthropic
+	DialectResponses   = commonai.DialectResponses
+	DialectCompletions = commonai.DialectCompletions
 )
 
 // DefaultRetry is the retry policy a provider gets when its config names none.
@@ -97,6 +100,8 @@ var (
 	// DialectRefused: see docs/dialect-refusal.md
 	DialectRefused = commonai.DialectRefused
 	ErrNoModelList = commonai.ErrNoModelList
+	// ErrReasoningRefused is the OnRetry cause when an endpoint rejects replayed reasoning.
+	ErrReasoningRefused = commonai.ErrReasoningRefused
 )
 
 // Error constructors; a caller's own marker for refusal would be classified transient and re-sent.
