@@ -1,6 +1,6 @@
 # Searching stored conversations
 
-Word and can find `search` indexes a host's conversations so they, when an embedding model is available, by meaning. It owns one SQLite file: an FTS5 index over message text, plus the vectors for a semantic search over the same messages.
+`search` indexes a host's conversations so they can be found by word and, when an embedding model is available, by meaning. It owns one SQLite file: an FTS5 index over message text, plus the vectors for a semantic search over the same messages.
 
 The conversations stay wherever the host keeps them. The index reads them through `Source`, and `SessionSource` adapts a `session.Store`, so `cai`. The http/socket servers get searchable history without changing how any of them store anything.
 
@@ -71,7 +71,7 @@ An edit, rather than an append, retires a message id whose vector no conversatio
 
 ## Ranking
 
-**Reciprocal rank fusion fuses the halves**: `score = Σ 1/(60 + rank)`. Fusion is by position rather than by score. This is because bm25 is an unbounded relevance score whose scale depends on the corpus and cosine similarity is a bounded geometric one. Putting them on a common axis means inventing an exchange rate between them. Using positions means never claiming one exists.
+By **reciprocal rank fusion**: `score = Σ 1/(60 + rank)`, the halves are fused. Fusion is by position rather than by score. This is because bm25 is an unbounded relevance score whose scale depends on the corpus and cosine similarity is a bounded geometric one. Putting them on a common axis means inventing an exchange rate between them. Using positions means never claiming one exists.
 
 Each half is asked for twice the caller's limit, because fusion reorders. A result placed second in both lists outranks one that leads only the first. It cannot do that if it was cut before fusing.
 
@@ -81,7 +81,7 @@ A message contributes its **best** chunk to the semantic half. Summing or averag
 
 ## The query is never a query language
 
-`ftsQuery` wraps every term in double quotes, so FTS5's own operators — `AND`, `OR`, `NOT`, `NEAR`, `-`, `^`, `:`, parentheses — are literal text. A search for `NOT` or `c++` is a search, not a parse error. Terms are split on the same boundary the `unicode61` tokenizer uses, which is also why no term needs escaping inside its quotes. A double quote is not a letter or a digit. As a result, it ends a term rather than appearing in one.
+A search for `NOT` or `c++` is a search, not a parse error. Terms are split on the same boundary the `unicode61` tokenizer uses, which is also why no term needs escaping inside its quotes. A double quote is not a letter or a digit. As a result, it ends a term rather than appearing in one.
 
 The last term gets a prefix match **only when the query ends mid-word**. This backs an as-you-type search box, where the last word is usually half-typed and requiring it whole empties the list exactly. This is while the user is looking at it. A query that ends in a separator has said where that word stops: `100%` asks for the token `100`. Prefix-matching there will return every `100x` and `1000` too — turning the character the user typed to be literal into the wildcard it resembles.
 

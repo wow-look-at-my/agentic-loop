@@ -90,9 +90,9 @@ func TestTodoToolsAreTheFourNamedMutationTools(t *testing.T) {
 	}
 }
 
-// todo_add appends exactly task, mints a fresh id, and answers with the new
-// full list both as rendered text and as a todo_list. Part whose JSON
-// equals the list the host stored.
+// todo_add appends. This covers exactly task, mints a fresh id. And answers
+// with the new full list both as rendered text and as a todo_list part
+// whose JSON equals the list the host stored.
 func TestTodoAddAppendsOneTaskAndReturnsTheNewFullList(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)
@@ -377,7 +377,7 @@ func TestNoWriterMeansTheToolsRefuse(t *testing.T) {
 	}
 }
 
-// TestAddMintsMonotonicIds in a row hand out distinct ids; ids never collide across adds.
+// Add calls in a row hand out distinct ids; ids never collide across adds.
 func TestAddMintsMonotonicIds(t *testing.T) {
 	rec := &recordingTodos{}
 	byName := todoTools(t, rec)

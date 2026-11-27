@@ -2,7 +2,7 @@
 
 A reusable agentic loop for chat-model APIs, with three provider dialects. OpenAI-compatible chat completions, the OpenAI Responses API, and the Anthropic Messages API — plus the machinery a production tool loop needs. Streaming callbacks that can abort the call, tool execution with a per-call approval seam, transient-failure retry, rejected-parameter recovery. This is prompt caching on both dialects, conversation compaction, and optional built-in tools (a sub-agent and a web fetcher).
 
-The loop's own dependencies are `xml-validator/validator` and `go-containers/set`. Cobra reaches `cli/` and the SQLite driver reaches `search/`, and Go links neither into a binary that does not import them. All I/O goes through an injectable `*http.Client`. The package reads **no environment variables** — every endpoint, key, and knob is explicit configuration.
+Cobra reaches `cli/` and the SQLite driver reaches `search/`, and Go links neither into a binary that does not import them. All I/O goes through an injectable `*http.Client`. The package reads **no environment variables** — every endpoint, key, and knob is explicit configuration.
 
 The dialects themselves live in [`core/`](core/). This speaks one XML format and translates it to and from each provider, behind the Go API in [`client/`](client/). This package re-exports what it uses as type aliases, so `agentic.Message` **is** `client.Message`. A value built here is one those packages take without a conversion step.
 
@@ -24,7 +24,7 @@ import (
 )
 ```
 
-The loop runs inside a session: `agentic.NewSession`, then `Send`. Optional tools sibl packages: `vfs.NewFileTools`, `repo.NewRepoTools`, `subagent.NewSubagentTool`, `webfetch.NewWebFetchTool`, `todo.NewTodoTools`, `resources.NewResourceWatcher`.
+The loop runs inside a session: `agentic.NewSession`, then `Send`. Optional tools sibl packages.
 
 ## Quick start — OpenAI-compatible
 
@@ -112,7 +112,7 @@ Layers, and the split decides where anything new belongs. Get this backwards and
 
 Consequently **an error that reaches the loop is treated as real and permanent. The loop stops.** It is entitled to that assumption. By the time a failure surfaced this far, the layer whose job was to make the call happen has already given up. The loop does not second-guess it, does not retry, and has no retry knob to configure — deliberately.
 
-**The provider is where the loop's instructions are carried out.** When the loop says "complete this request", making that true is the provider's responsibility, including everything that can go transiently incorrect in the try: a 429, a 502. This is a dropped connection, a rejected parameter. Those are implementation details of *doing the thing*, not outcomes worth propagating. Construction cannot complet the provider surfaces an error only when the operation genuinely, permanent.
+**The provider is where the loop's instructions are carried out.** When the loop says "complete this request", making that true is the provider's responsibility, including everything that can go transiently incorrect in the try: a 429, a 502. This is a dropped connection, a rejected parameter. Those are implementation details of *doing the thing*, not outcomes worth propagating. The provider surfaces an error only when the operation genuinely cannot be completed — at which point it is, by construction, permanent.
 
 So: the provider owns **how** a model call gets made and everything that can transiently go incorrect doing it. The loop owns **what** calls to make and what to do with the results.
 
@@ -135,9 +135,9 @@ func NewAnthropicProvider(cfg AnthropicConfig) (Provider, error)
 func NewCompletionsProvider(cfg CompletionsConfig) (Provider, error)
 ```
 
-The per-dialect constructors are the only way to build the dialect providers — the implementations are unexported, so consumers hold nothing but the `Provider` interface. `ProviderConfig` is the shared connection base — required `BaseURL`, plus `APIKey`, `HTTPClient`, `UserAgent`, `Headers` — embedded in each dialect's config: `OpenAIConfig` adds `SelfHosted` (the `cache_prompt` opt-in for llama.cpp-style servers), `ResponsesConfig` adds `Store`. `AnthropicConfig` adds `Version` (the `anthropic-version` header) and `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
+The per-dialect constructors are the only way to build the dialect providers — the implementations are unexported, so consumers hold nothing but the `Provider` interface. `AnthropicConfig` adds `Version` (the `anthropic-version` header) and `DisableCaching`. An empty `BaseURL` fails fast with a permanent error.
 
-One streaming model call. `StreamEvents` carries optional callbacks — `OnText`, `OnReasoning`, `OnUsage`, `OnProgress`, `OnTimings`, `OnRetry` — all nil-safe, and **every callback returns an error**. A non-nil return aborts the stream read immediately, and `Complete` returns the partial `*Completion` (content, reasoning, tool calls, usage so far) together with that error. The error surfaces unwrapped or `%w`-wrapped, so `errors.Is` against your sentinel holds. It is never converted into an `*APIError`. It never classified transient, so neither the retry policy nor the param stripper re-sends a call whose sink failed.
+One streaming model call. A non-nil return aborts the stream read immediately, and `Complete` returns the partial `*Completion` (content, reasoning, tool calls, usage so far) together with that error. The error surfaces unwrapped or `%w`-wrapped, so `errors.Is` against your sentinel holds. It is never converted into an `*APIError`. It never classified transient, so neither the retry policy nor the param stripper re-sends a call whose sink failed.
 
 On any other mid-stream failure or cancellation **after data arrived**, `Complete` likewise returns the partial `*Completion` alongside the error. Both dialects are safe for concurrent use.
 
@@ -145,7 +145,7 @@ A stored transcript can hold an assistant turn that carries nothing — a run ca
 
 A turn whose only output was a tool call is not empty, and is always replayed.
 
-`Request.Extra` is a verbatim top-level passthrough (`temperature`, `reasoning_effort`, `num_ctx`, `thinking`, ...). It is merged first, so the typed core fields always win. The library never interprets, gates, or filters what you put there.
+`Request.Extra` is a verbatim top-level passthrough. It is merged first, so the typed core fields always win. The library never interprets, gates, or filters what you put there.
 
 ### The Responses dialect, and when it is worth it
 
@@ -172,7 +172,7 @@ Everything else behind the seam is unchanged: the same `Request`, the same callb
 
 ### The completions dialect
 
-`NewCompletionsProvider` speaks the legacy `POST /completions` API: one prompt string in, text out. Some models are served there and nowhere else (an instruct model, a base model on a self-hosted server). A gateway can advertise it beside the chat APIs. The transcript becomes labelled turns (`System:`, `User:`, `Assistant:`, `Tool result (<id>):`) ending on an open `Assistant:`. Reasoning text and tool calls go in as text, so nothing the model produced is lost. Depth: `docs/completions.md`.
+`NewCompletionsProvider` speaks the legacy `POST /completions` API: one prompt string in, text out. Some models are served there and nowhere else (an instruct model, a base model on a self-hosted server). A gateway can advertise it beside the chat APIs. The transcript becomes labelled turns ending on an open `Assistant:`. Reasoning text and tool calls go in as text, so nothing the model produced is lost. Depth: `docs/completions.md`.
 
 It FAILS on what it cannot express: a request that declares tools, or a message with an image. A host that wants a tool-less turn on such a model drops the tools itself, and says so. A request with no `max_tokens` gets `DefaultCompletionsMaxTokens`, because the API's own default of multiple cuts every answer off. Its params are the `openai` namespace's.
 
@@ -218,7 +218,7 @@ func DecodeModelList(body []byte) (*ModelList, error)
 func ModelLimitsOf(ctx context.Context, p Provider, model string) (Limits, bool, error)
 ```
 
-Each provider spells a limit its own way. As a result, every spelling is read: `context_length`, `context_window`, `max_context_length`, `max_model_len` and `max_input_tokens` for the window, and `max_output_length`, `max_completion_tokens`, `max_output_tokens` and `max_tokens` for the output. OpenRouter's `top_provider` block is used when the model itself names neither. A limit that is not a whole token count fails the decode.
+Each provider spells a limit its own way. As a result, every spelling is read. OpenRouter's `top_provider` block is used when the model itself names neither. A limit that is not a whole token count fails the decode.
 
 Every built-in provider is a `ModelLimiter`. It reads its own endpoint's list once and keeps it. A failed read is not kept, so the next question asks again. Every decorator the library ships forwards the question, and a caller's own decorator does the same with `ForwardModelLimits`. A decorator around a provider with no list answers `ErrNoModelList`, and `ModelLimitsOf` reports that as `ok == false`.
 
@@ -228,7 +228,9 @@ A gateway that resolves an alias (`auto-pr-resolve`) lists the model it serves, 
 
 The openai dialect reads `provider/model` from it into `Completion.Routed` (`Synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`), the exact list id, and the loop asks about that name before `Completion.Model`. When every name misses, one event reports them all.
 
-One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one decode per page. `FetchModelList` does a `GET {base}/v1/models` in the OpenAI form first: a Bearer token, and no `anthropic-version`. A gateway that serves both APIs reads that header as a choice. OpenRouter answers it with multiple Anthropic-shaped entries whose ids no chat call accepts, instead of its several hundred models. Only a 400, 401 or 403 re-asks in the Anthropic form (`x-api-key`, `anthropic-version`, `limit=1000`). An Anthropic list is paged, so every page is read (`has_more`, `last_id`, `after_id`), and a walk past `modelListMaxPages` is an error rather than a cut. `FetchModelListPages` returns the raw pages for a host that decodes fields of its own.
+One document answers both questions a host has before it can talk to an endpoint at all — which protocol it speaks. This is what its models charge. So there is one decode per page. `FetchModelList` does a `GET {base}/v1/models` in the OpenAI form first: a Bearer token, and no `anthropic-version`. A gateway that serves both APIs reads that header as a choice. OpenRouter answers it with multiple Anthropic-shaped entries whose ids no chat call accepts, instead of its several hundred models.
+
+Only a 400, 401 or 403 re-asks in the Anthropic form. An Anthropic list is paged, so every page is read, and a walk past `modelListMaxPages` is an error rather than a cut. `FetchModelListPages` returns the raw pages for a host that decodes fields of its own.
 
 **A model's protocols can be advertised.** OpenRouter lists the API paths that serve each model (`"endpoints": ["/api/v1/chat/completions", "/api/v1/messages", ...]`). `Endpoints` maps them onto dialects with the same path reading `DialectRefused` uses. A model that advertises only paths no dialect speaks (`/api/v1/batches`) gets an EMPTY list, not an absent one. It is listed, and nothing can chat with it. `EndpointsFor` takes the same suffix rule as `LimitsFor`.
 
@@ -253,7 +255,7 @@ func Anomalous(u Usage) bool
 
 A provider reporting more cached tokens than prompt tokens is inconsistent: the uncached term clamps at zero and `Anomalous` reports the same condition. As a result, a host says so out loud instead of quietly billing under the invoice.
 
-**`Cost` carries `CacheWrite1h`**: `CacheWriteTokens` is one integer with no tier in it, and the library places only five-minute breakpoints. As a result, `CacheWrite` is the right rate for every call it makes.
+`CacheWrite1h` is carried and **not used by `Cost`**: `CacheWriteTokens` is one integer with no tier in it, and the library places only five-minute breakpoints. As a result, `CacheWrite` is the right rate for every call it makes.
 
 What this cannot settle, and why a host must keep an override: it reads the MODELS endpoint and infers the CHAT endpoint from it. A gateway may serve those independently, and proving the chat dialect means posting to it. Spending tokens, or deliberately sending a malformed request to read the error shape back. `Dialects()` and `Label()` exist so that override's UI does not carry its own copy of the vocabulary.
 
@@ -323,7 +325,7 @@ A tool is an individual thing, and nothing groups them. Every tool a run offers 
 
 The id of the call being answered is NOT an argument -- almost no tool wants it. `Run` puts it on the context, and the built-in that needs it (the sub-agent tool, to stamp its telemetry) reads it back with `ToolCallID(ctx)`.
 
-A `ToolResult` is `Content` (the text the MODEL is fed), `IsError`, and `Parts []ToolContentPart` — structured content for the HOST: images, audio, embedded files, or a block a tool. This is its host agree on. Parts never reach the model. As a result, a result can hand a front end a megabyte of image while costing the context only what `Content` says. `Run` passes the whole result to `Events.OnToolResult`, alongside the message it recorded for it. Nothing else in the loop reads them.
+This is its host agree on. Parts never reach the model. As a result, a result can hand a front end a megabyte of image while costing the context only what `Content` says. `Run` passes the whole result to `Events.OnToolResult`, alongside the message it recorded for it. Nothing else in the loop reads them.
 
 Restricting a toolset filters a slice, so `Tools` carries the helpers the loop and the sub-agent tool need:
 
@@ -392,13 +394,13 @@ tools = append(tools, subagent.NewSubagentTool(subagent.SubagentConfig{
 
   It is cut at the envelope and returned as an error result carrying `SubagentCutOffNote`, or `SubagentNoReportText` when nothing usable survives.
 - **`NewWebFetchTool(WebFetchConfig)`** — the `web_fetch` tool: one unauthenticated, plain HTTP GET (http/https only, userinfo rejected, 5 MiB body cap, 45 s default client timeout), cleaned to readable text (built-in HTML cleanup, or an optional Apache Tika server via `TikaURL` with silent fallback) and rune-capped at 200 000 with an explicit truncation note. An optional `summary_prompt` argument runs one bounded, tool-less call to the configured `Provider`/`Model` to summarize the cleaned content (`OneShot`, 2 min timeout). `OnCompletion func(*Completion)` is handed that call's completion — including a partial one from a failed call, because those tokens were spent too. Since the tool itself answers only with text. `BlockURL func(url string) string` is the injectable refusal seam: return a non-empty teaching message to refuse a fetch (the source application used it to redirect fetches of its workspace repository). The library ships the hook, not the policy. The tool is `Readonly`, so a sub-agent's default toolset includes it.
-- **`NewTodoTools(TodoConfig)`** — four task-list tools, `todo_add`, `todo_edit`, `todo_cancel` and `todo_complete`, returned as one flat `Tools` slice and sharing a single in-memory store. This is the model's own task list. As a result, a long job stays legible to the user while it runs. Each tool mutates ONE task by its stable per-task `id` (`Todo.ID`), which is minted once, not reused, and re-read in every reply. The model never resends or reconstructs the rest of the list from memory. `TodoConfig.Write(ctx, []Todo)` is where the host keeps and displays the list.
+- This is the model's own task list. As a result, a long job stays legible to the user while it runs. Each tool mutates ONE task by its stable per-task `id` (`Todo.ID`), which is minted once, not reused, and re-read in every reply. The model never resends or reconstructs the rest of the list from memory. `TodoConfig.Write(ctx, []Todo)` is where the host keeps and displays the list.
 
   It receives the whole post-mutation list, ids and all, after every call, and an empty list arrives as an empty (non-nil) one. This is because clearing the list is a real instruction. A host that KEEPS that list between runs must hand it back as `TodoConfig.Initial`: the store lives in memory, so a toolset built without. It starts empty, and the new run's first mutation persists a list holding only that one task. The earlier tasks are gone, and nothing in the exchange looks like a failure. Each successful mutation's result also carries the list itself as a `TodoListPartType` content part whose JSON equals what `Write` just stored.
 
   As a result, a host can draw the plan mid-turn instead of parsing it back out of the text. The library owns the tools' semantics — the schemas' `pending`/`in_progress`/`done` enum, the caps (tasks, 200-rune titles), the exact teaching errors naming the offending `title`/`state`/`id`. This is `RenderTodos` (exported, so a host renders the same text the model is answered with, each task line carrying its `#id`). A `Write` that returns an error is reported to the model as a failure: a list that was not stored is never reported as stored. NOT `Readonly` — they write state the host shows, and a sub-agent inheriting them will overwrite its parent's plan.
 
-No built-in tool gates itself — each one only declares `Readonly` truthfully, and `Config.Approver` decides every call. Which means a run with a nil `Approver` executes the read-only built-ins (`repo_read`, the read file tools, `web_fetch`, `mcp_resource_diff`) and refuses the rest (`repo_file_write`, `repo_pr_create`, `write_file`/`edit_file`/`delete_file`, the task-list tools, and `run_subagent`) with `DeniedMessage`. A host that wants any of those runnable wires an `Approver`. The sub-agent tool's own nested run already carries an approve-everything one. This is because a tool the sub-agent holds was authorized when it was granted.
+No built-in tool gates itself — each one only declares `Readonly` truthfully, and `Config.Approver` decides every call. Which means a run with a nil `Approver` executes the read-only built-ins (`repo_read`, the read file tools, `web_fetch`, `mcp_resource_diff`) and refuses the rest with `DeniedMessage`. A host that wants any of those runnable wires an `Approver`. The sub-agent tool's own nested run already carries an approve-everything one. This is because a tool the sub-agent holds was authorized when it was granted.
 
 The model-calling built-ins use the `Provider` you hand them exactly as given — the library never wraps it. In the source application every one of these model calls (the sub-agent's nested loop, the context-summary briefing, and the web summary) went through its rejected-parameter recovery. To reproduce that, pass a `NewParamStripper`-wrapped provider in `SubagentConfig`/`WebFetchConfig` — the same wrapped value you give `Config.Provider`.
 
@@ -535,7 +537,7 @@ They are never summed). The finalized total is floored at prompt+completion whil
 
 `Completion.UsageReported` is true iff at least one usage snapshot was merged during the call: `Usage` is a value type. As a result, this is how a caller reading only the returned `Completion` distinguishes an upstream that reported all-zero usage. This is from one that reported none at all (common on local servers) — check it before persisting or displaying `Usage`.
 
-`Completion.RawUsage` carries the provider's usage object verbatim (the raw wire JSON on the openai dialect, the merged wire-shaped object on Anthropic) for logging and for extracting provider extras the normalized `Usage` drops: `Completion.ReasoningTokens` (openai `usage.completion_tokens_details.reasoning_tokens`) and `Completion.CostUsd` (`usage.cost`, falling back to `usage.estimated_cost`). This is each a tri-state pointer present only when the upstream reported it.
+`Completion.RawUsage` carries the provider's usage object verbatim (the raw wire JSON on the openai dialect, the merged wire-shaped object on Anthropic) for logging and for extracting provider extras the normalized `Usage` drops. This is each a tri-state pointer present only when the upstream reported it.
 
 `Completion.Streamed` records whether the response actually arrived as an SSE stream. A 200 that is NOT `text/event-stream` is read as a plain JSON body and reassembled into a Completion with `Streamed` false. A server that ignores `stream: true` is accepted transparently, and the flag preserves the truth of how the call was transported.
 
@@ -555,7 +557,7 @@ cr, err := agentic.Compact(ctx, provider, agentic.Request{
 
 Compose it with `context.WithoutCancel(parent)` for fire-and-forget work that must survive the parent request ending.
 
-**Every entry point that makes a model call surfaces its `*Completion`, not a projection of it.** A `Usage` return cannot distinguish an upstream that reported all-zero usage from one that reported none — that is exactly what. `Completion.UsageReported` is for — and it silently drops `CostUsd`, `ReasoningTokens`, `RawUsage`, `Timings` and `Streamed`. Under-counting money is not a rounding error. It cannot be repaired afterwards, because the numbers were never emitted. That principle is why `OneShot` returns a completion, why `CompactResult` carries one, why `SubagentActivity` has a `turn_end` kind, why `WebFetchConfig` has `OnCompletion`.
+**Every entry point that makes a model call surfaces its `*Completion`, not a projection of it.** A `Usage` return cannot distinguish an upstream that reported all-zero usage from one that reported none — that is exactly what. Under-counting money is not a rounding error. It cannot be repaired afterwards, because the numbers were never emitted. That principle is why `OneShot` returns a completion, why `CompactResult` carries one, why `SubagentActivity` has a `turn_end` kind, why `WebFetchConfig` has `OnCompletion`.
 
 This is why `SubagentReport`/`SubagentUpdate` carry `Usages`.
 
@@ -582,7 +584,7 @@ s, err := agentic.NewSession(agentic.SessionConfig{
 | `ContextWindowOverride: O` | `O` when `O <= W`; the run fails with `ErrContextWindowConfig` when `O > W` | `O`, with a `Warning` that nothing checked it |
 | both | the run fails with `ErrContextWindowConfig` before any call | the same |
 
-`Events.OnContextWindow` reports which row applied: `Reported`, `FromModelList`, `FromFallback`, `Overridden`, `Warning`. A served model whose list entry arrives later replaces a fallback, and fails the run when an override exceeds it.
+`Events.OnContextWindow` reports which row applied. A served model whose list entry arrives later replaces a fallback, and fails the run when an override exceeds it.
 
 **The window also caps each request.** Before each call the loop estimates the next prompt: the server's last prompt count plus the transcript appended since, at a few characters a token. When the estimate reaches the window, the loop compacts first if `AutoCompact` is armed. Otherwise, or when compaction fails, the run ends with `ErrContextWindowExceeded` and sends nothing.
 
@@ -627,7 +629,7 @@ Current time is 3:14 AM on 8/26/2026, 1d 23hrs have passed
 - **Every model call, including the tool loop.** The gap between multiple turns of a tool loop is seconds, and saying so is the point. It is how the model learns what its own tool calls cost in wall-clock time. The stall wrap-up call carries one too.
 - **`Since` is the seed, and the loop keeps its own clock after that.** Zero means the run opens the conversation. As a result, the notice is the time alone: there is nothing to measure from, and inventing a gap will be worse than omitting one. Every later call measures from the previous call in this run. A clock that went backwards states the time alone for the same reason.
 - **The wall clock is rendered in the zone `Now` returns** — `time.Now` is local. As a result, the model reads the server's time. Hand it a clock in another zone to change that.
-- **The gap renders as its largest non-zero units** — `3d 4hrs`, `2hrs 14mins`, `45secs` — and anything under a second is `<1sec` rather than `0secs`. This looks like a stopped clock. `FormatElapsed` and `FormatElapsedNotice` are exported for a host that wants the same wording elsewhere.
+- This looks like a stopped clock. `FormatElapsed` and `FormatElapsedNotice` are exported for a host that wants the same wording elsewhere.
 - **Helper calls are not conversation turns**, so `Compact`, `OneShot` and the optional tools' own summarizing calls carry no notice and do not move the clock. A compaction the host never asked about must not read as a request the user made.
 - **`Now` overrides the clock** for tests. Nil is `time.Now`.
 
@@ -667,7 +669,7 @@ Depth, including every notice and why the directive ends where it does: `docs/go
 
 ## Searching stored conversations
 
-Word can find `search` indexes conversations so they (FTS5) and, when an embedding model is available, by meaning. The conversations stay wherever the host keeps them — the index reads them through a `Source`, and `SessionSource` adapts a `session.Store`:
+`search` indexes conversations so they can be found by word (FTS5) and, when an embedding model is available, by meaning. The conversations stay wherever the host keeps them — the index reads them through a `Source`, and `SessionSource` adapts a `session.Store`:
 
 ```go
 idx, err := search.Open(ctx, filepath.Join(dir, "search.db"))
@@ -696,7 +698,7 @@ hits, mode, err := idx.Search(ctx, search.Query{
 
 A non-2xx answer from the endpoint comes back as `*search.HTTPError`, which carries the `Status` beside the body. The status is the only thing separating "this model does not embed" from "the attempt did not get through". A provider 400s a chat model sent to `/v1/embeddings`, and 429s or 5xxs a model it will otherwise serve. A host offering a picker of models that actually embed decides between those two on `errors.As`, not on the sentence.
 
-Call `Ingest` and `EmbedPending` on whatever cadence suits the host. Both are resumable and neither re-does finished work. The index is deliberately behind the store — embedding is a network call. So `Status` reports the stale conversations, the pending embeddings and the last error, and `Search` returns the `Mode` that answered (`text`, `semantic`, `hybrid`, or the `substring` fallback). Depth, including what the vector scan measures at and where it stops being interactive: [`docs/search.md`](docs/search.md).
+Call `Ingest` and `EmbedPending` on whatever cadence suits the host. Both are resumable and neither re-does finished work. The index is deliberately behind the store — embedding is a network call. So `Status` reports the stale conversations, the pending embeddings and the last error, and `Search` returns the `Mode` that answered. Depth, including what the vector scan measures at and where it stops being interactive: [`docs/search.md`](docs/search.md).
 
 Everything in the file is derived, so `Open` never refuses one it cannot read. It checks each half's tables against the shape this version writes and rebuilds the half that does not match. A recorded version can come from another implementation of the same index and describe different columns. Rebuilding the text half re-reads what the host already holds. The vectors are a separate half and are kept when they are still readable.
 
@@ -723,7 +725,7 @@ Nothing in it knows what MCP is. A host supplies multiple seams:
 
 ### Filesystem tools (optional, package `vfs`)
 
-`vfs.NewFileTools(vfs.FileToolsConfig)` returns a `*vfs.FileTools` handle providing the seven-tool file vocabulary — `list_dir`, `read_file`, `find_files`, `grep`, `write_file`, `edit_file`, `delete_file` — over whatever a host mounts. The library owns what a file tool IS: the names, the model-facing descriptions, the argument schemas, the caps and every word of the rendering. A host owns what is behind a mount, and nothing about its storage reaches here. Mount nothing and you get non-nil tools that return the unavailable message, rather than nil tools.
+The library owns what a file tool IS: the names, the model-facing descriptions, the argument schemas, the caps and every word of the rendering. A host owns what is behind a mount, and nothing about its storage reaches here. Mount nothing and you get non-nil tools that return the unavailable message, rather than nil tools.
 
 A host mounts `IFolderProvider`s (folder hierarchies) and `IFileProvider`s (single files) under virtual path prefixes. More specific prefixes always shadow less specific ones, regardless of registration order:
 
@@ -788,4 +790,4 @@ Properties run through all of it:
   This never ran a step and so never produced one. A 404 here re-reads the job's own status first, and reports whichever of those it PROVES. When the job is completed and not skipped, that read confirmed the job exists and these tokens can see it. As a result, the generic "none of your tokens can see it" wording will directly contradict what was read — the message instead points at the log itself. This is as what is missing (most likely expired log retention), not the job.
 - **A write never falls through to anonymous** and uses ONLY `WriteTokens`. Filtering that list by initiator is the host's job: a model-facing toolset gets `ModelWriteTokens(...)`, a user-initiated action gets everything. `RepoToolsConfig.Blocked` vetoes a write per repository (a working copy whose staged state a direct commit will bypass). Reads are never asked, because a working copy holds no version of history or CI.
 
-The client is a separate value from the tools because a host needs it directly. A `/repos` filesystem folder and a "test this token" button take the same `*GitHub`, so all three share one credential order and one winning-token cache — `Fetch`. This is `FetchURL`, `OwnerRepos`, `DefaultBranch`, `CIStatusReport`, `TestToken`, and, for a host running its own git push, `WriteCredentials`, `Do`, `ClassifyWriteStatus` and `MoreInformativeAuthFailure`.
+The client is a separate value from the tools because a host needs it directly. A `/repos` filesystem folder and a "test this token" button take the same `*GitHub`, so all three share one credential order and one winning-token cache — `Fetch`.

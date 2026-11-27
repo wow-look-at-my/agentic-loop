@@ -22,7 +22,7 @@ A follow-up sweep asked whether the same loss happens. On Ollama endpoints, and 
 | simple-llm-harness storage and projection | A thinking block with no signature and no redacted payload was dropped before a Responses request. | [wow-look-at-my/simple-llm-harness#66](https://github.com/wow-look-at-my/simple-llm-harness/pull/66) stores and projects `Raw` |
 | simple-llm-ui storage | Nothing. It stores each whole `agentic.ThinkingBlock` as JSON, so `Raw` survives with no change. | [wow-look-at-my/simple-llm-ui#323](https://github.com/wow-look-at-my/simple-llm-ui/pull/323) adds the test that proves it |
 
-The agentic-loop chat-completions dialect was already correct. It writes `reasoning_content`, `reasoning` and `reasoning_details` on every assistant message, and `core/conservation_test.go` fails when a dialect stops sending a transcript field.
+The agentic-loop chat-completions dialect was already correct.
 
 ## Impact
 
@@ -63,6 +63,6 @@ A translator that knows one spelling writes that spelling, and a translator that
 ## Lessons
 
 - **A transcript field must survive every hop.** Test it at each hop: response in, next request out, the field present.
-- **Write every name a provider can read.** On chat completions, send `reasoning_content` and `reasoning` and `reasoning_details` when the response carried them, unless a provider rejects one. Narrow the set only on a rejection that names the field.
+- **Write every name a provider can read.** Narrow the set only on a rejection that names the field.
 - **Never drop a reasoning item for the shape of its payload.** An item with content and no summary is still reasoning.
 - **A store keeps every field of every dialect.** A field that only one dialect sets is still part of the transcript.

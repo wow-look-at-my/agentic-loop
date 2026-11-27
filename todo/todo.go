@@ -101,9 +101,9 @@ const (
 	todoKindComplete
 )
 
-// NewTodoTools builds the task-list tools (todo_add, todo_edit,
-// todo_cancel, todo_complete), sharing in-memory store, as a flat agentic.Tools
-// slice. Each is a separate agentic.Tool; none is Readonly and none is approval-gated.
+// NewTodoTools builds the task-list tools, sharing in-memory store, as a flat
+// agentic.Tools slice. Each is a separate agentic.Tool; none is Readonly and none is
+// approval-gated.
 //
 // The tools are NOT read-only. They write state the host owns and shows to the
 // user, and a sub-agent inheriting them would overwrite its parent's plan.

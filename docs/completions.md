@@ -24,7 +24,7 @@ Tool result (<id>): <content>
 Assistant:
 ```
 
-The default stop sequences are `"\nUser:"` and `"\nTool result"`. The model stops where it starts to write the next turn. A caller's own `stop` param replaces them. The leading space every answer to `Assistant:` starts with is trimmed from the result.
+The model stops where it starts to write the next turn. A caller's own `stop` param replaces them. The leading space every answer to `Assistant:` starts with is trimmed from the result.
 
 ## What it keeps, what it refuses
 
@@ -34,6 +34,6 @@ The default stop sequences are `"\nUser:"` and `"\nTool result"`. The model stop
 
 ## Params and limits
 
-Params are read from the `openai` namespace (`ParamsFor(DialectOpenAI)`): the same vendor, the same names (`temperature`, `top_p`, `seed`, `stop`, ...). `prompt`, `model`, `stream`, `messages` and `tools` are the core's.
+Params are read from the `openai` namespace (`ParamsFor(DialectOpenAI)`): the same vendor, the same names.
 
 A request with no `max_tokens` gets `DefaultCompletionsMaxTokens`. The API's own default is tokens, which cuts off almost every answer. `stream_options.include_usage` is sent unless the caller sets its own. The last chunk carries usage.

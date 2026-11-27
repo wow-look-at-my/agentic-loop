@@ -245,9 +245,10 @@ func (e *repoTools) fileWrite(ctx context.Context, args json.RawMessage) agentic
 // teaching error. Existing files are edited through a PR workspace's
 // workspace_edit replace, never rewritten wholesale by a direct commit. The
 // existence check runs against the ref the content would come from, the
-// target branch, or, when the branch is still to be created. The ref it would
-// be created from. A fresh branch cannot be used to dodge the check (and a
-// refused call creates nothing, branch included).
+// target branch. Otherwise, the existence check runs, when the branch is
+// still to be created, the ref it would be created from. A fresh branch
+// cannot be used to dodge the check (and a refused call creates nothing,
+// branch included).
 func (e *repoTools) tryFileWrite(ctx context.Context, token string, in repoFileWriteArgs, branchCreated *bool, createdFrom *string) (string, error) {
 	meta, err := e.repoMeta(ctx, token, in.Org, in.Repo)
 	if err != nil {

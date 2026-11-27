@@ -19,7 +19,7 @@ cmd/cai      main for cai
 todo/driver  main for the task-list launch check
 ```
 
-Optional tool families sibl packages that return `agentic.Tools` values a host appends itself: `vfs`, `repo`, `subagent`, `webfetch`, `todo`, `resources`.
+Optional tool families sibl packages that return `agentic.Tools` values a host appends itself.
 
 Every `main` sits under `<area>/<binary>/` or `cmd/<binary>/`. That is not taste: go-toolchain names a binary after the MODULE when the main package is one level down, so `cli`. `todo/driver` will both resolve to the module root and collide. A couple of levels down, the leaf directory is the name.
 
@@ -56,7 +56,7 @@ require github.com/wow-look-at-my/go-containers v0.0.0-...           // go-toolc
 
 `auto-branch` follows each module's default branch, and `go-toolchain` re-resolves it to that branch's head on every run, rewriting the pseudo-version. Without it the line sits at whatever version it was written with, rotting into something nobody built against. The marker goes on DIRECT requires only — `go-toolchain` warns and skips an `// indirect` line. This is because a per-line branch pin cannot mean what it looks like on a dependency Go resolved transitively.
 
-`xml-validator` is itself cut into modules now (`validator`, `reader`, `writer`, `cli`). As a result, the require names `.../xml-validator/validator` rather than the repository root, which is no longer a module.
+`xml-validator` is itself cut into modules now. As a result, the require names `.../xml-validator/validator` rather than the repository root, which is no longer a module.
 
 ## Building
 

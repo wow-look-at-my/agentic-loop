@@ -38,8 +38,7 @@ type anContentBlock struct {
 	Data      string `json:"data"`
 }
 
-// anDelta carries both content_block_delta payloads (text_delta,
-// thinking_delta, signature_delta, input_json_delta) and the message_delta
+// anDelta carries both content_block_delta payloads and the message_delta
 // stop_reason.
 type anDelta struct {
 	Type        string `json:"type"`

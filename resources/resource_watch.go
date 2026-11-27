@@ -135,8 +135,10 @@ type resourceWatcher struct {
 }
 
 // NewResourceWatcher returns a watcher over cfg.Sources. Nil when there is
-// nothing to watch or nowhere to keep it. This is which is the common case,
-// and the where this whole subsystem must cost nothing. Do this otherwise.
+// NewResourceWatcher returns a watcher over cfg.Sources, or nil when there is
+// nothing to watch or nowhere to keep it. That NewResourceWatcher is the
+// common case, and the where this whole subsystem must cost nothing. Do this
+// otherwise.
 func NewResourceWatcher(cfg ResourceWatchConfig) agentic.ResourceWatcher {
 	var sources []ResourceSource
 	for _, s := range cfg.Sources {

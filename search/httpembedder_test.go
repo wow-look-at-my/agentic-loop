@@ -142,9 +142,11 @@ func TestHTTPEmbedderReportsWhatTheProviderSaid(t *testing.T) {
 
 // Retrieval is asymmetric in most modern embedding models: the stored passage
 // and the question that should find it are embedded differently. The model is
-// told which it is being given. Applying side's prefix to the other is
-// invisible at runtime, every call succeeds and the results are merely worse.
-// It is worth a test rather than a careful reading.
+// told which it is being given. Applying side's prefix to the other is and the
+// question that should find it are embedded differently. The model is told
+// which it is being given. Applying side's prefix to the other is invisible at
+// runtime. Every call succeeds and the results are merely worse. It is worth a
+// test rather than a careful reading.
 func TestHTTPEmbedderPrefixesEachSideWithItsOwnTask(t *testing.T) {
 	srv, got := embeddingsServer(t, http.StatusOK, nil)
 	e := HTTPEmbedder{

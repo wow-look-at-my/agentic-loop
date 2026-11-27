@@ -25,7 +25,7 @@ type respItem struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
 	Role string `json:"role,omitempty"`
-	// Content is a message's parts: input_text in, output_text out.
+	// Content is a message's parts.
 	Content []respContent `json:"content,omitempty"`
 	// CallID, Name and Arguments describe a function_call; CallID and Output a function_call_output.
 	CallID    string `json:"call_id,omitempty"`
